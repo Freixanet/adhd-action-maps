@@ -5,6 +5,7 @@ import EngravedNucleoMark, { ENGRAVED_NUCLEO_COMPACT_FONT_SIZE } from './Engrave
 import AppIcon from './AppIcon';
 import FloatingGlassButton from './FloatingGlassButton';
 import GlassSurface from './GlassSurface';
+import { TEXT_BODY, TEXT_PRIMARY, TEXT_SECONDARY } from '@shared/uiTokens';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 
 /** Mirrors web CSS vars on .mobile-sidebar */
@@ -66,9 +67,9 @@ export function SidebarBrandHeader({
 }: SidebarBrandHeaderProps) {
   const searchRef = useRef<TextInput>(null);
   const { reduceMotion } = useGlassAccessibility();
-  const iconColor = isDark ? '#d4d4d4' : '#525252';
-  const placeholderColor = isDark ? '#737373' : '#a3a3a3';
-  const inputColor = isDark ? '#f5f5f5' : '#171717';
+  const iconColor = TEXT_SECONDARY;
+  const placeholderColor = TEXT_SECONDARY;
+  const inputColor = TEXT_PRIMARY;
 
   const focusSearch = useCallback(() => {
     searchRef.current?.focus();
@@ -100,10 +101,10 @@ export function SidebarBrandHeader({
               accessibilityLabel="Ir a inicio"
             >
               <View style={[styles.brandMark, { height: SIDEBAR_HEADER_BUTTON_SIZE }]}>
-                <AppIcon size={28} color={isDark ? '#ffffff' : undefined} />
+                <AppIcon size={28} color={TEXT_PRIMARY} />
                 <EngravedNucleoMark
                   fontSize={ENGRAVED_NUCLEO_COMPACT_FONT_SIZE}
-                  tone={isDark ? 'sidebar' : 'hero'}
+                  tone="sidebar"
                   rowHeight={SIDEBAR_HEADER_BUTTON_SIZE}
                 />
               </View>
@@ -122,7 +123,7 @@ export function SidebarBrandHeader({
                   ref={searchRef}
                   value={searchQuery}
                   onChangeText={onSearchQueryChange}
-                  placeholder="Buscar mapas y contenido…"
+                  placeholder="Buscar Núcleos y contenido…"
                   placeholderTextColor={placeholderColor}
                   returnKeyType="search"
                   autoCorrect={false}

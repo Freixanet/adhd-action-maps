@@ -27,7 +27,7 @@ export default function ProfileAvatar({
 
     return (
       <View
-        className="overflow-hidden bg-neutral-200 dark:bg-neutral-800"
+        className="overflow-hidden bg-neutral-200 bg-surface-2"
         style={{ width: size, height: size, borderRadius: size / 2 }}
       >
         <Image
@@ -44,7 +44,7 @@ export default function ProfileAvatar({
     return (
       <UserRound
         size={20}
-        color={signedIn ? '#4f46e5' : isDark ? '#d4d4d4' : '#525252'}
+        color={signedIn ? '#8B8FF5' : isDark ? '#d4d4d4' : '#525252'}
         strokeWidth={2.25}
       />
     );
@@ -53,7 +53,7 @@ export default function ProfileAvatar({
   return (
     <View
       className={`w-9 h-9 rounded-full items-center justify-center ${
-        signedIn ? 'bg-indigo-600' : 'bg-neutral-500/10 dark:bg-white/10'
+        signedIn ? 'bg-accent' : 'bg-base0/10 dark:bg-white/10'
       }`}
     >
       <UserRound size={18} color={signedIn ? '#ffffff' : '#525252'} />

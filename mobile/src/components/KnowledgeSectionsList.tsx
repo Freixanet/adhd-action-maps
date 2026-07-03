@@ -39,17 +39,17 @@ export default function KnowledgeSectionsList({
         glassRefreshKey={isStreamGenerating ? 'streaming' : 'ready'}
       >
         <View className="px-5 py-6">
-          <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400 mb-2">
+          <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary mb-2">
             Secciones extraídas
           </Text>
 
-          <Text className="text-xs leading-[18px] text-neutral-500 dark:text-neutral-400 font-medium mb-4">
+          <Text className="text-xs leading-[18px] text-secondary font-medium mb-4">
             Bloques de información que Núcleo pudo organizar desde la fuente.
           </Text>
 
-          <View className="flex-row items-center gap-2 mb-4 bg-indigo-500/10 dark:bg-indigo-400/15 px-3 py-1.5 rounded-full self-start">
-            <Layers size={13} color="#6366f1" />
-            <Text className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+          <View className="flex-row items-center gap-2 mb-4 bg-accent/100/10 bg-accent px-3 py-1.5 rounded-full self-start">
+            <Layers size={13} color="#8B8FF5" />
+            <Text className="text-xs font-semibold text-accent">
               {sections.length} {sections.length === 1 ? 'sección' : 'secciones'}
             </Text>
           </View>
@@ -67,7 +67,7 @@ export default function KnowledgeSectionsList({
                     onPress={() => toggleSection(index)}
                     className="flex-row items-center justify-between p-4 active:bg-neutral-100/50 dark:active:bg-white/[0.03]"
                   >
-                    <Text className="flex-1 text-sm font-semibold text-neutral-800 dark:text-neutral-100 leading-5 pr-2">
+                    <Text className="flex-1 text-sm font-semibold text-primary text-primary leading-5 pr-2">
                       {section.title}
                     </Text>
                     {isExpanded ? (
@@ -79,14 +79,14 @@ export default function KnowledgeSectionsList({
 
                   {isExpanded ? (
                     <View className="px-4 pb-4 border-t border-neutral-200/25 dark:border-white/5 pt-3">
-                      <Text className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
+                      <Text className="text-sm leading-relaxed text-body">
                         {section.summary}
                       </Text>
 
                       {/* Referencias */}
                       {section.references && section.references.length > 0 ? (
                         <View className="mt-4 pt-3 border-t border-neutral-200/20 dark:border-white/5">
-                          <Text className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-2">
+                          <Text className="text-[10px] font-bold uppercase tracking-wider text-secondary mb-2">
                             Referencias
                           </Text>
                           {section.references.map((ref, rIndex) => (
@@ -96,17 +96,17 @@ export default function KnowledgeSectionsList({
                             >
                               <Bookmark size={12} color="#8b5cf6" style={{ marginTop: 2 }} />
                               <View className="flex-1">
-                                <Text className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 leading-4">
+                                <Text className="text-xs font-semibold text-body leading-4">
                                   {ref.label}{' '}
                                   {ref.locator ? (
-                                    <Text className="font-normal text-neutral-400 dark:text-neutral-500">
+                                    <Text className="font-normal text-secondary">
                                       ({ref.locator})
                                     </Text>
                                   ) : null}
                                 </Text>
                                 {ref.excerpt ? (
                                   <Text
-                                    className="text-xs leading-[18px] text-neutral-500 dark:text-neutral-400 mt-1 italic"
+                                    className="text-xs leading-[18px] text-secondary mt-1 italic"
                                     numberOfLines={3}
                                   >
                                     &ldquo;{ref.excerpt.trim()}&rdquo;
@@ -125,8 +125,8 @@ export default function KnowledgeSectionsList({
           </View>
 
           {/* Nota/Límite de exhaustividad */}
-          <Text className="text-[11px] leading-[16px] text-neutral-400 dark:text-neutral-500 mt-5 pt-3 border-t border-neutral-200/60 dark:border-white/10 text-center font-medium italic">
-            Esto no sustituye la fuente original: organiza la señal que el mapa pudo extraer.
+          <Text className="text-[11px] leading-[16px] text-secondary mt-5 pt-3 border-t border-white/10 text-center font-medium italic">
+            Esto no sustituye la fuente original: organiza la señal que el Núcleo pudo extraer.
           </Text>
         </View>
       </GlassSurface>

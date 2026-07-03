@@ -23,8 +23,8 @@
 
   html.dark {
     color-scheme: dark;
-    --color-app-canvas: #1A1A1A;
-    --color-app-surface: #1c1c1c;
+    --color-app-canvas: #181A1F;
+    --color-app-surface: #1a1c21;
     background-color: var(--color-app-canvas);
     --btn-accent: #6366f1;
     --btn-accent-highlight: #818cf8;
@@ -287,7 +287,7 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #1A1A1A;
+  background: var(--color-app-canvas);
 }
 
 .app-shell {
@@ -296,7 +296,7 @@ body,
   display: flex;
   flex-direction: column;
   position: relative;
-  background: #1A1A1A;
+  background: var(--color-app-canvas);
   overflow: hidden;
 }
 

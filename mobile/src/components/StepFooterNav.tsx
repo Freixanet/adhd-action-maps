@@ -1,50 +1,55 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowRight, Check } from 'lucide-react-native';
 import StepFooterGlassButton from './StepFooterGlassButton';
+import { GenerationProgressBar } from './loadingGenerationUi';
 import { useAppSession } from '../context/AppSessionContext';
-import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
+
+/** CTA icon over the solid step-footer primary fill (SPEC §3.3). */
+const CTA_ICON_COLOR = '#FFFFFF';
 
 type StepFooterNavProps = {
   completeLabel?: string;
 };
 
-export default function StepFooterNav({ completeLabel = 'Completar mapa' }: StepFooterNavProps) {
+export default function StepFooterNav({ completeLabel = 'Completar Núcleo' }: StepFooterNavProps) {
   const session = useAppSession();
+  const insets = useSafeAreaInsets();
   const showStepFooter = !session.viewAll && !session.isComplete;
-  const streamDimmed = session.isStreamGenerating;
-  const containerAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: withTiming(streamDimmed ? 0.5 : 1, { duration: 250 }),
-      transform: [
-        {
-          translateY: withTiming(streamDimmed ? 12 : 0, { duration: 250 }),
-        },
-      ],
-    };
-  }, [streamDimmed]);
-
 
   if (!showStepFooter) return null;
 
   return (
-    <SafeAreaView
-      edges={['bottom']}
-      className="border-t border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-neutral-900"
-    >
-      <Animated.View
-        className="py-4 px-7"
-        style={containerAnimatedStyle}
-        pointerEvents={streamDimmed ? 'none' : 'auto'}
+    <View className="border-t border-neutral-200 border-white/10 bg-base">
+      <View
+        className="px-7"
+        style={{ paddingTop: 16, paddingBottom: insets.bottom + 16 }}
       >
         {session.currentStep === 0 ? (
-          <StepFooterGlassButton
-            variant="primary"
-            label="Empezar a leer"
-            onPress={() => session.goToStep(1)}
-            icon={<ArrowRight size={20} color="#fff" />}
-          />
+          session.isStreamGenerating ? (
+            <View>
+              <GenerationProgressBar
+                progress={session.streamProgress}
+                fullWidth
+                height={2}
+                style={styles.footerProgress}
+              />
+              <StepFooterGlassButton
+                variant="primary"
+                label="Generando pasos…"
+                disabled
+                onPress={() => undefined}
+              />
+            </View>
+          ) : (
+            <StepFooterGlassButton
+              variant="primary"
+              label="Empezar a leer"
+              onPress={() => session.goToStep(1)}
+              icon={<ArrowRight size={20} color={CTA_ICON_COLOR} />}
+            />
+          )
         ) : (
           <View className="flex-row gap-3" style={styles.row}>
             <View style={styles.backSlot}>
@@ -60,22 +65,22 @@ export default function StepFooterNav({ completeLabel = 'Completar mapa' }: Step
                   variant="primary"
                   label="Siguiente"
                   onPress={() => session.goToStep(session.currentStep + 1)}
-                  icon={<ArrowRight size={20} color="#fff" />}
+                  icon={<ArrowRight size={20} color={CTA_ICON_COLOR} />}
                 />
               ) : (
                 <StepFooterGlassButton
                   variant="primary"
                   label={completeLabel}
                   onPress={session.handleCompleteMap}
-                  icon={<Check size={20} color="#fff" />}
+                  icon={<Check size={20} color={CTA_ICON_COLOR} />}
                   iconPlacement="leading"
                 />
               )}
             </View>
           </View>
         )}
-      </Animated.View>
-    </SafeAreaView>
+      </View>
+    </View>
   );
 }
 
@@ -90,5 +95,9 @@ const styles = StyleSheet.create({
   forwardSlot: {
     flex: 2,
     minWidth: 0,
+  },
+  footerProgress: {
+    width: '100%',
+    marginBottom: 8,
   },
 });

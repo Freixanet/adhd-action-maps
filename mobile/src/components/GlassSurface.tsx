@@ -1,10 +1,21 @@
-import React from 'react';
-import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import {
+  GestureResponderEvent,
+  LayoutChangeEvent,
+  Platform,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
 import { BlurView } from 'expo-blur';
 import { BLUR_INTENSITY, COMPOSER_DARK_SURFACE, liquidGlassShellClasses } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
 import { useDeferredGlassMount } from '../hooks/useDeferredGlassMount';
-import GlassPerimeterRing from './GlassPerimeterRing';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { useGlassTouchGlow, type GlassTouchGlowState } from '../hooks/useGlassTouchGlow';
+import GlassPerimeterHighlight from './GlassPerimeterRing';
+import GlassTouchGlow from './GlassTouchGlow';
 import LiquidGlassSurface, { type LiquidGlassVariant } from './LiquidGlassSurface';
 
 type GlassSurfaceProps = {
@@ -16,18 +27,18 @@ type GlassSurfaceProps = {
   variant?: 'default' | 'composer';
   solid?: boolean;
   contentClassName?: string;
-  onShellLayout?: (event: import('react-native').LayoutChangeEvent) => void;
+  onShellLayout?: (event: LayoutChangeEvent) => void;
   /** Native iOS 26 Liquid Glass (floating UI only). */
   liquid?: boolean;
   borderRadius?: number;
-  /** Perimeter border in light mode only; `bottom` for sheet headers; `none` to opt out. */
+  /** Perimeter highlight via SVG; `bottom` for sheet headers; `none` to opt out. */
   liquidBorder?: 'perimeter' | 'bottom' | 'none';
+  /** Radial touch glow at press location (internal hook when true). */
+  interactive?: boolean;
+  /** External touch-glow state (e.g. when gestures own press handling). */
+  touchGlow?: GlassTouchGlowState;
   /** Overrides default liquid-glass material tint. */
   tintColor?: string;
-  /** Hairline ring drawn over the glass (avoids layout border gaps on rounded rects). */
-  perimeterStrokeColor?: string;
-  /** When set, draws a vector ring (best for small circles). */
-  perimeterRingDiameter?: number;
   /** Pull native glass slightly inward so its edge does not fight the outer ring. */
   glassInset?: number;
   /** Native liquid-glass material (`clear` is softer on small controls). */
@@ -42,21 +53,6 @@ function mapLiquidVariant(
 ): LiquidGlassVariant {
   if (liquidMaterial === 'clear') return 'clear';
   return variant === 'composer' ? 'composer' : 'regular';
-}
-
-function perimeterStrokeStyle(borderRadius: number, color: string): ViewStyle {
-  const strokeWidth = 1;
-  const inset = strokeWidth / 2;
-  return {
-    position: 'absolute',
-    top: inset,
-    left: inset,
-    right: inset,
-    bottom: inset,
-    borderRadius: Math.max(0, borderRadius - inset),
-    borderWidth: strokeWidth,
-    borderColor: color,
-  };
 }
 
 function glassInsetStyle(inset: number): ViewStyle {
@@ -82,15 +78,44 @@ export default function GlassSurface({
   liquid = false,
   borderRadius = 20,
   liquidBorder = 'perimeter',
+  interactive = false,
+  touchGlow: touchGlowProp,
   tintColor,
-  perimeterStrokeColor,
-  perimeterRingDiameter,
   glassInset = 0,
   liquidMaterial = 'regular',
   glassRefreshKey,
 }: GlassSurfaceProps) {
   const { isDark } = useTheme();
+  const { reduceMotion } = useGlassAccessibility();
+  const internalTouchGlow = useGlassTouchGlow(reduceMotion, isDark);
+  const touchGlow = touchGlowProp ?? internalTouchGlow;
+  const touchGlowActive = Boolean(interactive || touchGlowProp);
   const deferredGlass = useDeferredGlassMount(glassRefreshKey);
+  const [shellSize, setShellSize] = useState({ width: 0, height: 0 });
+
+  const handleShellLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { width, height } = event.nativeEvent.layout;
+      setShellSize({ width, height });
+      deferredGlass.onShellLayout(event);
+      onShellLayout?.(event);
+    },
+    [deferredGlass, onShellLayout]
+  );
+
+  const handleTouchStart = useCallback(
+    (event: GestureResponderEvent) => {
+      if (!interactive || touchGlowProp) return;
+      const { locationX, locationY } = event.nativeEvent;
+      touchGlow.onPressIn(locationX, locationY);
+    },
+    [interactive, touchGlow, touchGlowProp]
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    if (!interactive || touchGlowProp) return;
+    touchGlow.onPressOut();
+  }, [interactive, touchGlow, touchGlowProp]);
 
   if (liquid) {
     const resolvedTint =
@@ -102,20 +127,23 @@ export default function GlassSurface({
         : undefined);
 
     const innerRadius = Math.max(0, borderRadius - glassInset);
+    const showPerimeterHighlight = liquidBorder === 'perimeter';
+    const highlightWidth = shellSize.width;
+    const highlightHeight = shellSize.height;
 
     return (
       <View
-        className={liquidGlassShellClasses(isDark, className, liquidBorder)}
+        className={liquidGlassShellClasses(className, liquidBorder)}
         style={[
           { borderRadius, overflow: 'hidden' },
           Platform.OS === 'ios' ? { borderCurve: 'continuous' } : null,
           style,
         ]}
         collapsable={false}
-        onLayout={(event) => {
-          deferredGlass.onShellLayout(event);
-          onShellLayout?.(event);
-        }}
+        onLayout={handleShellLayout}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
       >
         <LiquidGlassSurface
           style={glassInset > 0 ? glassInsetStyle(glassInset) : StyleSheet.absoluteFill}
@@ -134,15 +162,26 @@ export default function GlassSurface({
             style={{ borderRadius, overflow: 'hidden' }}
           />
         ) : null}
-        {perimeterStrokeColor && perimeterRingDiameter ? (
-          <GlassPerimeterRing diameter={perimeterRingDiameter} color={perimeterStrokeColor} />
-        ) : perimeterStrokeColor ? (
-          <View
-            pointerEvents="none"
-            style={perimeterStrokeStyle(borderRadius, perimeterStrokeColor)}
+        {touchGlowActive && highlightWidth > 0 && highlightHeight > 0 ? (
+          <GlassTouchGlow
+            width={highlightWidth}
+            height={highlightHeight}
+            borderRadius={borderRadius}
+            isDark={isDark}
+            glowOpacity={touchGlow.glowOpacity}
+            touchPoint={touchGlow.touchPoint}
           />
         ) : null}
-        <View className={`relative z-10 ${contentClassName}`.trim()}>{children}</View>
+        {showPerimeterHighlight ? (
+          <GlassPerimeterHighlight
+            width={highlightWidth}
+            height={highlightHeight}
+            borderRadius={borderRadius}
+            isDark={isDark}
+            inset={glassInset ?? 0}
+          />
+        ) : null}
+        <View className={`relative z-20 ${contentClassName}`.trim()}>{children}</View>
       </View>
     );
   }
@@ -154,9 +193,9 @@ export default function GlassSurface({
     (variant === 'composer'
       ? isDark
         ? 'bg-[#3E4041]'
-        : 'bg-neutral-50'
+        : 'bg-base'
       : isDark
-        ? 'bg-neutral-900/80'
+        ? 'bg-base'
         : 'bg-white/80');
 
   return (

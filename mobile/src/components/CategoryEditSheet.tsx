@@ -37,13 +37,13 @@ function CategoryRow({
   return (
     <Pressable
       onPress={onPress}
-      className="flex-row items-center justify-between border-b border-neutral-200/80 py-3.5 dark:border-white/10 active:opacity-70"
+      className="flex-row items-center justify-between border-b border-neutral-200/80 py-3.5 border-white/10 active:opacity-70"
     >
       <Text
         className={`text-base ${
           selected
-            ? 'font-semibold text-neutral-900 dark:text-neutral-100'
-            : 'text-neutral-700 dark:text-neutral-300'
+            ? 'font-semibold text-primary'
+            : 'text-body'
         }`}
       >
         {category}
@@ -91,11 +91,11 @@ export default function CategoryEditSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/30" onPress={onClose} />
       <View
-        className="rounded-t-[24px] bg-neutral-50 px-4 pt-4 dark:bg-neutral-900"
+        className="rounded-t-[24px] bg-base px-4 pt-4 dark:bg-base"
         style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       >
         <View className="mb-1 flex-row items-center justify-between">
-          <Text className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          <Text className="text-lg font-semibold text-primary">
             Categoría
           </Text>
           <Pressable
@@ -108,7 +108,7 @@ export default function CategoryEditSheet({
           </Pressable>
         </View>
         {mapTitle ? (
-          <Text className="mb-4 text-sm text-neutral-500 dark:text-neutral-400" numberOfLines={2}>
+          <Text className="mb-4 text-sm text-secondary" numberOfLines={2}>
             {mapTitle}
           </Text>
         ) : (
@@ -118,8 +118,8 @@ export default function CategoryEditSheet({
         <ScrollView className="max-h-80" keyboardShouldPersistTaps="handled">
           {used.length ? (
             <View className="mb-2">
-              <Text className="pb-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-                En tus mapas
+              <Text className="pb-2 text-[11px] font-bold uppercase tracking-widest text-secondary">
+                En tus Núcleos
               </Text>
               {used.map((category) => (
                 <CategoryRow
@@ -134,7 +134,7 @@ export default function CategoryEditSheet({
 
           {suggested.length ? (
             <View>
-              <Text className="pb-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+              <Text className="pb-2 text-[11px] font-bold uppercase tracking-widest text-secondary">
                 {used.length ? 'Otras sugeridas' : 'Sugeridas'}
               </Text>
               {suggested.map((category) => (
@@ -150,13 +150,13 @@ export default function CategoryEditSheet({
         </ScrollView>
 
         {allowCreate ? (
-          <View className="mt-4 flex-row items-center gap-2 border-t border-neutral-200/80 pt-4 dark:border-white/10">
+          <View className="mt-4 flex-row items-center gap-2 border-t border-neutral-200/80 pt-4 border-white/10">
             <TextInput
               value={customValue}
               onChangeText={setCustomValue}
               placeholder="Nueva categoría"
               placeholderTextColor="#a3a3a3"
-              className="flex-1 border-b border-neutral-300 py-2 text-base text-neutral-900 dark:border-white/15 dark:text-neutral-100"
+              className="flex-1 border-b border-neutral-300 py-2 text-base text-primary dark:border-white/15 text-primary"
               onSubmitEditing={handleCreate}
             />
             <Pressable
@@ -164,11 +164,11 @@ export default function CategoryEditSheet({
               disabled={!sanitizeUserCategory(customValue)}
               className="px-2 py-2 active:opacity-70 disabled:opacity-40"
             >
-              <Text className="font-semibold text-neutral-900 dark:text-neutral-100">Crear</Text>
+              <Text className="font-semibold text-primary">Crear</Text>
             </Pressable>
           </View>
         ) : (
-          <Text className="mt-4 border-t border-neutral-200/80 pt-4 text-xs text-neutral-500 dark:border-white/10 dark:text-neutral-400">
+          <Text className="mt-4 border-t border-neutral-200/80 pt-4 text-xs text-secondary border-white/10 text-secondary">
             Las categorías personalizadas estarán disponibles en el plan Pro.
           </Text>
         )}

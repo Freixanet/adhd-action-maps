@@ -1636,6 +1636,11 @@ async function handleTransformStream(
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders?.();
 
+  const t0 = Date.now();
+  let t1: number | null = null;
+  let t2: number | null = null;
+  let timingLogged = false;
+
   let usedModel = context.modelChain[0];
   let fullText = "";
   let lastPartialAt = 0;
@@ -1666,6 +1671,15 @@ async function handleTransformStream(
     lastPartialAt = now;
     lastStepCount = stepCount;
     lastSnapshot = normalized;
+    if (t2 === null) {
+      t2 = now;
+      if (t1 !== null && !timingLogged) {
+        timingLogged = true;
+        console.log(
+          `[stream-timing] ttfb=${t1 - t0}ms first_partial=${t2 - t0}ms`
+        );
+      }
+    }
     writeStreamEvent(res, { type: "partial", map: normalized });
   };
 
@@ -1687,6 +1701,7 @@ async function handleTransformStream(
       for await (const chunk of stream) {
         const chunkText = chunk.text || "";
         if (!chunkText) continue;
+        if (t1 === null) t1 = Date.now();
         fullText += chunkText;
         maybeEmitPartial();
       }
@@ -1732,6 +1747,16 @@ const schema = {
   type: Type.OBJECT,
   properties: {
     title: { type: Type.STRING },
+    coreIdea: {
+      type: Type.STRING,
+      description:
+        "La idea central del contenido. Una sola frase muy breve (idealmente 12-18 palabras y como máximo 120 caracteres), precisa y adulta, pensada para leerse de un vistazo.",
+    },
+    coreSupport: {
+      type: Type.STRING,
+      description:
+        "Una frase de apoyo breve que expande la idea central sin repetirla. Máximo 160 caracteres.",
+    },
     suggestedCategory: {
       type: Type.STRING,
       description:
@@ -1783,16 +1808,6 @@ const schema = {
         },
       },
       required: ["summary", "notes"],
-    },
-    coreIdea: {
-      type: Type.STRING,
-      description:
-        "La idea central del contenido. Una sola frase muy breve (idealmente 12-18 palabras y como máximo 120 caracteres), precisa y adulta, pensada para leerse de un vistazo.",
-    },
-    coreSupport: {
-      type: Type.STRING,
-      description:
-        "Una frase de apoyo breve que expande la idea central sin repetirla. Máximo 160 caracteres.",
     },
     tldr: {
       type: Type.ARRAY,
@@ -1890,11 +1905,11 @@ const schema = {
   },
   required: [
     "title",
+    "coreIdea",
+    "coreSupport",
     "intent",
     "sourceMetadata",
     "coverage",
-    "coreIdea",
-    "coreSupport",
     "tldr",
     "steps",
     "completionCard",
@@ -1917,7 +1932,8 @@ Reglas obligatorias:
 9. Los bloques callout deben usar labels editoriales sobrios acordes al intent activo: 'Idea clave', 'Matiz', 'Ejemplo', 'Precaución' o 'Para aplicarlo'.
 10. Devuelve solo JSON válido compatible con el esquema pedido.
 11. Filtra el ruido y cubre las ideas relevantes según el contrato de profundidad activo. La cobertura completa tiene prioridad salvo cuando depth activo sea rapido; en rapido debes sintetizar y agrupar, declarando omisiones en coverage.limitations si procede.
-12. El campo "intent" en el JSON debe coincidir exactamente con el intent activo del contrato (understand, study o apply).`;
+12. El campo "intent" en el JSON debe coincidir exactamente con el intent activo del contrato (understand, study o apply).
+13. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).`;
 
 function getRepairGenerationConfig(maxOutputTokens: number) {
   return {
@@ -2283,6 +2299,7 @@ function buildTransformPrompt({
     `Intent activo confirmado: ${intentLabel(intent)} (${intent}).`,
     `Profundidad activa confirmada: ${resolvedDepth}.`,
     `El campo JSON "intent" debe ser exactamente "${intent}".`,
+    "ORDEN DE EMISIÓN JSON: genera title, coreIdea y coreSupport primero; solo después el resto de campos (sourceMetadata, coverage, tldr, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).",
     `Idioma de salida: ${outputLanguage}.`,
     outputLanguage === "es"
       ? "Debes escribir TODO el mapa en español: title, coreIdea, coreSupport, tldr, knowledgeSections, shortNav, steps, completionCard y labels editoriales. Solo puedes dejar una cita textual en otro idioma si es imprescindible y debe ir claramente marcada como cita."

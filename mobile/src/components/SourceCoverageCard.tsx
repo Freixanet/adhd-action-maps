@@ -42,15 +42,15 @@ export default function SourceCoverageCard({
         glassRefreshKey={isStreamGenerating ? 'streaming' : 'ready'}
       >
         <View className="px-5 py-6">
-          <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400 mb-4">
+          <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary mb-4">
             Cobertura de la fuente
           </Text>
 
           {/* Señal estructurada info label */}
           {hasSections ? (
             <View className="flex-row items-center gap-2 mb-4 bg-neutral-100/60 dark:bg-white/[0.03] px-3 py-1.5 rounded-full self-start">
-              <Layers size={13} color="#6366f1" />
-              <Text className="text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+              <Layers size={13} color="#8B8FF5" />
+              <Text className="text-xs font-semibold text-body">
                 Señal estructurada: {knowledgeSectionsCount} secciones
               </Text>
             </View>
@@ -58,7 +58,7 @@ export default function SourceCoverageCard({
 
           {/* Summary / Alcance */}
           {coverage?.summary ? (
-            <Text className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300 mb-2">
+            <Text className="text-sm leading-relaxed text-body mb-2">
               {coverage.summary}
             </Text>
           ) : null}
@@ -73,8 +73,8 @@ export default function SourceCoverageCard({
                     color={note.tone === 'warning' ? '#d97706' : '#737373'}
                     style={{ marginTop: 2.5 }}
                   />
-                  <Text className="flex-1 text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
-                    <Text className="font-semibold text-neutral-800 dark:text-neutral-100">
+                  <Text className="flex-1 text-sm leading-relaxed text-body">
+                    <Text className="font-semibold text-primary text-primary">
                       {note.label}.{' '}
                     </Text>
                     {note.detail}
@@ -86,14 +86,14 @@ export default function SourceCoverageCard({
 
           {/* Limitations / Límites detectados */}
           {hasLimitations ? (
-            <View className="mt-5 pt-4 border-t border-neutral-200/60 dark:border-white/10">
-              <Text className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-2">
+            <View className="mt-5 pt-4 border-t border-white/10">
+              <Text className="text-[10px] font-bold uppercase tracking-wider text-secondary mb-2">
                 Límites detectados
               </Text>
               {limitations.slice(0, 3).map((limitation, index) => (
                 <View key={`${limitation}-${index}`} className="flex-row gap-2 mt-2">
-                  <View className="mt-2 h-1 w-1 rounded-full bg-neutral-400 dark:bg-neutral-500" style={{ opacity: 0.5 }} />
-                  <Text className="flex-1 text-xs leading-5 text-neutral-500 dark:text-neutral-400">
+                  <View className="mt-2 h-1 w-1 rounded-full bg-neutral-400 dark:bg-base0" style={{ opacity: 0.5 }} />
+                  <Text className="flex-1 text-xs leading-5 text-secondary">
                     {limitation}
                   </Text>
                 </View>

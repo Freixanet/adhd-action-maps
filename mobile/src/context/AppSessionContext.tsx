@@ -1,4 +1,6 @@
+import NetInfo from '@react-native-community/netinfo';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, AppState, AccessibilityInfo } from 'react-native';
 import {
   cacheDirectory,
   deleteAsync,
@@ -48,7 +50,29 @@ import {
   pickImageFromLibrary,
   type UploadedFile,
 } from '../logic/attachments';
-import { detectUrlInput, friendlyTransformError, type TransformSourceKind } from '../logic/urlInput';
+import { detectUrlInput, type TransformSourceKind } from '../logic/urlInput';
+import {
+  buildComposerSourceKey,
+  suggestIntentFromSource,
+} from '../logic/intentPreselection';
+import {
+  clearComposerDraft,
+  loadComposerDraft,
+  saveComposerDraft,
+} from '../logic/composerDraft';
+import { shouldCollapsePastedText } from '../logic/composerText';
+import { DEMO_NUCLEO_DATA, DEMO_NUCLEO_ID } from '../data/demoNucleo';
+import {
+  isIntroReadyForTransition,
+  resolveStreamLoadPhase,
+  STREAM_PROGRESS_MILESTONES,
+  type StreamLoadPhase,
+} from '../logic/streamGenerationProgress';
+import {
+  hideHistoryForDev,
+  isDevHistoryHidden,
+  restoreHistoryFromDev,
+} from '../logic/devHistoryBackup';
 import {
   fetchTransformWithProgress,
   TRANSFORM_IDLE_TIMEOUT_MESSAGE,
@@ -60,6 +84,13 @@ import { fetchWithTimeout } from '../logic/network';
 export type AppPhase = 'input' | 'loading' | 'result';
 
 const MAX_SYNCED_ENTRIES = 30;
+const OFFLINE_TRANSFORM_MESSAGE = 'Sin conexión. Comprueba tu red y vuelve a intentarlo.';
+const GENERIC_TRANSFORM_ERROR = 'No se pudo procesar la fuente.';
+
+async function isDeviceOffline(): Promise<boolean> {
+  const state = await NetInfo.fetch();
+  return state.isConnected === false || state.isInternetReachable === false;
+}
 
 function mergeHistory(localEntries: HistoryEntry[], cloudEntries: HistoryEntry[]): HistoryEntry[] {
   const entries = new Map<string, HistoryEntry>();
@@ -106,6 +137,9 @@ type AppSessionContextValue = {
   setPhase: (phase: AppPhase) => void;
   inputText: string;
   setInputText: (text: string) => void;
+  pastedText: string | null;
+  handleComposerTextChange: (text: string) => void;
+  removePastedText: () => void;
   intent: MapIntent;
   setIntent: (intent: MapIntent) => void;
   error: string | null;
@@ -125,6 +159,9 @@ type AppSessionContextValue = {
   authOpen: boolean;
   setAuthOpen: (open: boolean) => void;
   openAuthSheet: () => void;
+  paywallOpen: boolean;
+  setPaywallOpen: (open: boolean) => void;
+  openPaywall: () => void;
   cloudUserEmail: string | null;
   cloudUserAvatarUrl: string | null;
   cloudSignedIn: boolean;
@@ -140,18 +177,24 @@ type AppSessionContextValue = {
   canSubmit: boolean;
   hideTextInput: boolean;
   composerPlaceholder: string;
+  hasAnyNucleo: boolean;
+  continueEntry: HistoryEntry | null;
+  dismissContinueChip: () => void;
   progressLabel: string;
   stepProgress: number;
   goToStep: (idx: number, fromViewAll?: boolean) => void;
   syncReadingStep: (step: number) => void;
   toggleViewMode: () => void;
   handleCancelLoading: () => void;
-  previewLoadingScreen: () => void;
   handlePickImage: () => Promise<void>;
   handlePickCamera: () => Promise<void>;
   handlePickFile: () => Promise<void>;
   removeUploadedFile: () => void;
   handleTransform: () => Promise<void>;
+  handleOpenDemoNucleo: () => void;
+  devHistoryHidden?: boolean;
+  devHideHistory?: () => void;
+  devRestoreHistory?: () => void;
   handleNewMap: () => void;
   handleSelectHistory: (id: string) => void;
   handleDeleteHistory: (id: string) => void;
@@ -164,9 +207,14 @@ type AppSessionContextValue = {
   setEssentialsReview: (value: boolean) => void;
   handleDownloadPdf: () => Promise<void>;
   isStreamGenerating: boolean;
+  streamLoadPhase: StreamLoadPhase;
+  streamProgress: number;
+  loadingFadeOverlayActive: boolean;
+  completeLoadingFadeOverlay: () => void;
   isPdfGenerating: boolean;
   transformIncomplete: boolean;
   dismissTransformIncomplete: () => void;
+  persistComposerDraft: () => void;
   handleSignOut: () => Promise<void>;
 };
 
@@ -182,7 +230,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
   const [phase, setPhase] = useState<AppPhase>(initialActiveData ? 'result' : 'input');
   const [inputText, setInputText] = useState('');
-  const [intent, setIntent] = useState<MapIntent>(initialActiveData?.intent ?? 'understand');
+  const [pastedText, setPastedText] = useState<string | null>(null);
+  const inputTextRef = useRef('');
+  const [intent, setIntentState] = useState<MapIntent>(initialActiveData?.intent ?? 'understand');
   const [error, setError] = useState<string | null>(null);
   const [transformIncomplete, setTransformIncomplete] = useState(false);
   const [data, setData] = useState<ActionMapData | null>(initialActiveData);
@@ -191,6 +241,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [isComplete, setIsComplete] = useState(initialActive?.session.isComplete ?? false);
   const [viewAll, setViewAll] = useState(initialActive?.session.viewAll ?? false);
   const [historyOpen, setHistoryOpenState] = useState(false);
+  const [dismissedContinueId, setDismissedContinueId] = useState<string | null>(null);
+  const [devHistoryHidden, setDevHistoryHidden] = useState(() =>
+    __DEV__ ? isDevHistoryHidden() : false
+  );
   const historyOpenRef = useRef(false);
 
   const openHistoryDrawer = useCallback(() => {
@@ -221,6 +275,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   );
   const [chatOpen, setChatOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [cloudUserEmail, setCloudUserEmail] = useState<string | null>(null);
   const [cloudUserAvatarUrl, setCloudUserAvatarUrl] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
@@ -233,16 +288,68 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   );
   const [essentialsReview, setEssentialsReview] = useState(false);
   const [isStreamGenerating, setIsStreamGenerating] = useState(false);
+  const [streamLoadPhase, setStreamLoadPhase] = useState<StreamLoadPhase>(0);
+  const [streamProgress, setStreamProgress] = useState(0);
+  const [loadingFadeOverlayActive, setLoadingFadeOverlayActive] = useState(false);
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
+
+  const streamProgressCapRef = useRef(0);
+  const reduceMotionRef = useRef(false);
+  const phaseRef = useRef(phase);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const transformCancelledRef = useRef(false);
   const partialShownRef = useRef(false);
-  const loadingPreviewRef = useRef(false);
   const historyStoreRef = useRef(historyStore);
   const isPdfGeneratingRef = useRef(false);
+  const sourceKeyRef = useRef('');
+  const intentUserOverrideRef = useRef(false);
+  const draftRestoredRef = useRef(false);
 
   const pendingDeletesRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  useEffect(() => {
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      reduceMotionRef.current = enabled;
+    });
+  }, []);
+
+  const resetStreamGenerationUi = useCallback(() => {
+    streamProgressCapRef.current = 0;
+    setStreamLoadPhase(0);
+    setStreamProgress(0);
+    setLoadingFadeOverlayActive(false);
+  }, []);
+
+  const bumpStreamProgressCap = useCallback((cap: number) => {
+    streamProgressCapRef.current = Math.max(streamProgressCapRef.current, cap);
+    if (reduceMotionRef.current) {
+      setStreamProgress(streamProgressCapRef.current);
+    }
+  }, []);
+
+  const completeLoadingFadeOverlay = useCallback(() => {
+    setLoadingFadeOverlayActive(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isStreamGenerating && phase !== 'loading' && !loadingFadeOverlayActive) return;
+
+    const interval = setInterval(() => {
+      if (reduceMotionRef.current) return;
+      setStreamProgress((current) => {
+        const cap = streamProgressCapRef.current;
+        if (current >= cap) return current;
+        return Math.min(cap, current + 0.35);
+      });
+    }, 80);
+
+    return () => clearInterval(interval);
+  }, [isStreamGenerating, loadingFadeOverlayActive, phase]);
 
   const getPendingDeletes = useCallback((email: string): string[] => {
     try {
@@ -299,7 +406,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const cloudSignedIn = Boolean(cloudUserEmail);
 
   const totalSteps = data?.steps.length ?? 0;
-  const canSubmit = Boolean(inputText.trim() || uploadedFile);
+  const composerBodyText = pastedText?.trim() ?? inputText.trim();
+  const canSubmit = Boolean(composerBodyText || uploadedFile);
   const hideTextInput = Boolean(uploadedFile?.isPdf || uploadedFile?.isVideo);
   const composerPlaceholder = uploadedFile?.isImage
     ? 'Añade una indicación (opcional)…'
@@ -307,11 +415,72 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       ? 'Añade una indicación sobre el video (opcional)…'
       : uploadedFile
         ? 'Archivo adjunto listo para convertir'
-        : 'Convierte texto, enlace o PDF en un mapa…';
+        : 'Pega texto, un enlace, un vídeo o un PDF';
+
+  const hasAnyNucleo = historyStore.entries.length > 0;
+
+  const continueEntry = useMemo(
+    () => historyStore.entries.find((entry) => !entry.session.isComplete) ?? null,
+    [historyStore.entries]
+  );
+
+  useEffect(() => {
+    if (!continueEntry) {
+      setDismissedContinueId(null);
+      return;
+    }
+    if (dismissedContinueId && dismissedContinueId !== continueEntry.id) {
+      setDismissedContinueId(null);
+    }
+  }, [continueEntry, dismissedContinueId]);
+
+  const dismissContinueChip = useCallback(() => {
+    if (continueEntry) setDismissedContinueId(continueEntry.id);
+  }, [continueEntry]);
+
+  const visibleContinueEntry = useMemo(() => {
+    if (!continueEntry) return null;
+    if (dismissedContinueId === continueEntry.id) return null;
+    return continueEntry;
+  }, [continueEntry, dismissedContinueId]);
+
+  const setIntent = useCallback((value: MapIntent) => {
+    intentUserOverrideRef.current = true;
+    setIntentState(value);
+    stepHaptic();
+  }, []);
+
+  const persistComposerDraft = useCallback(() => {
+    if (!inputText.trim() && !uploadedFile && !pastedText) {
+      clearComposerDraft();
+      return;
+    }
+    saveComposerDraft({ inputText, uploadedFile, pastedText });
+  }, [inputText, pastedText, uploadedFile]);
+
+  const handleComposerTextChange = useCallback((text: string) => {
+    const prev = inputTextRef.current;
+    if (shouldCollapsePastedText(prev, text)) {
+      setPastedText(text.trim());
+      setInputText('');
+      inputTextRef.current = '';
+      return;
+    }
+    setInputText(text);
+    inputTextRef.current = text;
+  }, []);
+
+  const removePastedText = useCallback(() => {
+    setPastedText(null);
+  }, []);
+
+  useEffect(() => {
+    inputTextRef.current = inputText;
+  }, [inputText]);
 
   const progressLabel = useMemo(() => {
-    if (isComplete) return 'Mapa completado';
-    if (viewAll) return 'Mapa completo';
+    if (isComplete) return 'Núcleo completado';
+    if (viewAll) return 'Vista completa';
     if (currentStep === 0) return 'Introducción';
     return `Paso ${currentStep} de ${totalSteps}`;
   }, [currentStep, isComplete, totalSteps, viewAll]);
@@ -444,9 +613,56 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     historyStoreRef.current = historyStore;
   }, [historyStore]);
 
+  useEffect(() => {
+    if (draftRestoredRef.current || initialActiveData) return;
+    draftRestoredRef.current = true;
+    const draft = loadComposerDraft();
+    if (!draft) return;
+    setInputText(draft.inputText);
+    inputTextRef.current = draft.inputText;
+    setPastedText(draft.pastedText ?? null);
+    if (draft.uploadedFile) setUploadedFile(draft.uploadedFile);
+    sourceKeyRef.current = buildComposerSourceKey(
+      draft.inputText,
+      draft.uploadedFile,
+      draft.pastedText ?? null
+    );
+  }, [initialActiveData]);
+
+  useEffect(() => {
+    const key = buildComposerSourceKey(inputText, uploadedFile, pastedText);
+    if (!key || key === 'text:') return;
+    if (key !== sourceKeyRef.current) {
+      sourceKeyRef.current = key;
+      intentUserOverrideRef.current = false;
+    }
+    if (intentUserOverrideRef.current) return;
+    const detection =
+      !uploadedFile && composerBodyText ? detectUrlInput(composerBodyText) : null;
+    const suggested = suggestIntentFromSource(composerBodyText, uploadedFile, detection);
+    setIntentState(suggested);
+  }, [composerBodyText, inputText, pastedText, uploadedFile]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        persistComposerDraft();
+      }
+    });
+    return () => subscription.remove();
+  }, [persistComposerDraft]);
+
   const openAuthSheet = useCallback(() => {
     pendingAuthRef.current = true;
     setHistoryOpen(false);
+  }, []);
+
+  const openPaywall = useCallback(() => {
+    setPaywallOpen(true);
+    Alert.alert(
+      'Profundo llega con Pro',
+      'La profundidad Profundo estará disponible con el plan Pro. Por ahora puedes usar Rápido y Estándar.'
+    );
   }, []);
 
   const revealPendingAuth = useCallback(() => {
@@ -468,7 +684,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       const email = profile?.email ?? null;
       setCloudUserEmail(email);
       setCloudUserAvatarUrl(profile?.avatarUrl ?? null);
-      if (!email) return;
+      if (!email || (__DEV__ && isDevHistoryHidden())) return;
       try {
         pendingDeletesRef.current = getPendingDeletes(email);
         await flushPendingDeletes(email);
@@ -485,7 +701,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         commitHistoryStore(merged);
       } catch (err) {
         console.error('No se pudo sincronizar el historial.', err);
-        setError('No se pudo sincronizar el historial. Tus mapas locales siguen disponibles.');
+        setError('No se pudo sincronizar el historial. Tus Núcleos locales siguen disponibles.');
       }
     };
 
@@ -530,13 +746,13 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const failTransform = useCallback(
-    (message: string, partialShown: boolean, sourceKind: TransformSourceKind) => {
+    (message: string, partialShown: boolean, sourceKind: TransformSourceKind, offline = false) => {
+      console.error('Transform failed:', { message, sourceKind, offline });
       if (partialShown) {
         setTransformIncomplete(true);
         setPhase('result');
       } else {
-        const friendly = friendlyTransformError(message, sourceKind);
-        setError(friendly);
+        setError(offline ? OFFLINE_TRANSFORM_MESSAGE : GENERIC_TRANSFORM_ERROR);
         setTransformIncomplete(false);
         setPhase('input');
       }
@@ -551,13 +767,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setIsStreamGenerating(false);
-
-    if (loadingPreviewRef.current) {
-      loadingPreviewRef.current = false;
-      setPhase('input');
-      partialShownRef.current = false;
-      return;
-    }
+    resetStreamGenerationUi();
 
     if (partialShownRef.current) {
       setTransformIncomplete(true);
@@ -569,21 +779,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     }
 
     partialShownRef.current = false;
-  }, []);
-
-  const previewLoadingScreen = useCallback(() => {
-    transformCancelledRef.current = true;
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    setIsStreamGenerating(false);
-    loadingPreviewRef.current = true;
-    partialShownRef.current = false;
-    setError(null);
-    setTransformIncomplete(false);
-    setAttachMenuOpen(false);
-    setPhase('loading');
-    stepHaptic();
-  }, []);
+  }, [resetStreamGenerationUi]);
 
   const handleAttachmentError = useCallback((err: unknown) => {
     const message = err instanceof Error ? err.message : 'No se pudo adjuntar el archivo.';
@@ -644,11 +840,18 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   }, [uploadedFile?.isPdf, uploadedFile?.isVideo]);
 
   const handleTransform = useCallback(async () => {
-    if (!inputText.trim() && !uploadedFile) return;
+    const bodyText = pastedText?.trim() ?? inputText.trim();
+    if (!bodyText && !uploadedFile) return;
+
+    if (await isDeviceOffline()) {
+      setError(OFFLINE_TRANSFORM_MESSAGE);
+      setPhase('input');
+      return;
+    }
 
     let urlDetection: ReturnType<typeof detectUrlInput> | null = null;
-    if (!uploadedFile && inputText.trim()) {
-      urlDetection = detectUrlInput(inputText);
+    if (!uploadedFile && bodyText) {
+      urlDetection = detectUrlInput(bodyText);
       if (urlDetection.kind === 'invalid') {
         setError(urlDetection.message);
         return;
@@ -659,8 +862,13 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setError(null);
     setTransformIncomplete(false);
     setAttachMenuOpen(false);
+    clearComposerDraft();
     transformCancelledRef.current = false;
     partialShownRef.current = false;
+    resetStreamGenerationUi();
+    bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[0]);
+    setStreamLoadPhase(0);
+    setStreamProgress(STREAM_PROGRESS_MILESTONES[0]);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -671,11 +879,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       const mapId = generateMapId();
       const existingCategories = collectUserCategories(historyStoreRef.current.entries);
       const sourceLabel =
-        uploadedFile?.name || inputText.trim().split('\n')[0]?.slice(0, 80) || 'Fuente analizada';
-
-      // Model selection is not user-facing in the current mobile UI, so stale persisted model preferences must not override depth-based routing.
-      const finalPreferredModel =
-        depthPreference === 'profundo' ? 'auto' : 'gemini-3.1-flash-lite';
+        uploadedFile?.name || bodyText.split('\n')[0]?.slice(0, 80) || 'Fuente analizada';
 
       let body: TransformRequest;
       if (uploadedFile?.isPdf && uploadedFile.fileData) {
@@ -683,7 +887,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           type: 'pdf',
           fileData: uploadedFile.fileData,
           mimeType: uploadedFile.mimeType || 'application/pdf',
-          preferredModel: finalPreferredModel,
+          preferredModel: 'auto',
           intent,
           depth: depthPreference,
           outputLanguage: 'es',
@@ -695,7 +899,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           type: 'video',
           fileData: uploadedFile.fileData,
           mimeType: uploadedFile.mimeType || 'video/mp4',
-          preferredModel: finalPreferredModel,
+          preferredModel: 'auto',
           intent,
           depth: depthPreference,
           outputLanguage: 'es',
@@ -708,7 +912,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           type: 'image',
           fileData: uploadedFile.fileData,
           mimeType: uploadedFile.mimeType || 'image/jpeg',
-          preferredModel: finalPreferredModel,
+          preferredModel: 'auto',
           intent,
           depth: depthPreference,
           outputLanguage: 'es',
@@ -720,7 +924,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         body = {
           text: urlDetection.url,
           type: 'youtube',
-          preferredModel: finalPreferredModel,
+          preferredModel: 'auto',
           intent,
           depth: depthPreference,
           outputLanguage: 'es',
@@ -731,7 +935,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         body = {
           text: urlDetection.url,
           type: 'link',
-          preferredModel: finalPreferredModel,
+          preferredModel: 'auto',
           intent,
           depth: depthPreference,
           outputLanguage: 'es',
@@ -740,9 +944,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         };
       } else {
         body = {
-          text: inputText.trim(),
+          text: bodyText,
           type: 'text',
-          preferredModel: finalPreferredModel,
+          preferredModel: 'auto',
           intent,
           depth: depthPreference,
           outputLanguage: 'es',
@@ -782,10 +986,37 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setIsComplete(false);
         setViewAll(false);
         setUploadedFile(null);
+        setPastedText(null);
         setInputText('');
-        setPhase('result');
+        inputTextRef.current = '';
+        if (phaseRef.current !== 'result') {
+          setPhase('result');
+        }
         setTransformIncomplete(false);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      };
+
+      const applyPartialMap = (partialMap: ActionMapData) => {
+        setData(partialMap);
+        setStreamLoadPhase(resolveStreamLoadPhase(partialMap));
+
+        if (partialMap.coreIdea?.trim()) {
+          bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[2]);
+        }
+        if ((partialMap.steps?.length ?? 0) > 0) {
+          bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[3]);
+        }
+
+        if (!isIntroReadyForTransition(partialMap) || phaseRef.current !== 'loading') {
+          return;
+        }
+
+        hasShownPartial = true;
+        partialShownRef.current = true;
+        setCurrentStep(0);
+        setIsComplete(false);
+        setViewAll(false);
+        setLoadingFadeOverlayActive(true);
+        setPhase('result');
       };
 
       await fetchTransformWithProgress({
@@ -796,19 +1027,25 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         signal: controller.signal,
         depth: depthPreference,
         handlers: {
+          onFirstStreamByte: () => {
+            bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[1]);
+          },
           onPartial: (partialMap) => {
-            if (!hasShownPartial) {
+            applyPartialMap(partialMap);
+          },
+          onDone: (finalMap) => {
+            bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[4]);
+            setStreamProgress(STREAM_PROGRESS_MILESTONES[4]);
+            if (phaseRef.current === 'loading') {
               hasShownPartial = true;
               partialShownRef.current = true;
-              setPhase('result');
               setCurrentStep(0);
               setIsComplete(false);
               setViewAll(false);
+              setPhase('result');
             }
-            setData(partialMap);
-          },
-          onDone: (finalMap) => {
             saveCompletedMap(finalMap);
+            stepHaptic();
           },
           onError: (message) => {
             throw new Error(message);
@@ -826,12 +1063,13 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
       const rawMessage =
         err instanceof Error ? err.message : 'No se pudo procesar el contenido.';
-      failTransform(rawMessage, hasShownPartial, sourceKind);
+      const offline = await isDeviceOffline();
+      failTransform(rawMessage, hasShownPartial, sourceKind, offline);
     } finally {
       setIsStreamGenerating(false);
       abortControllerRef.current = null;
     }
-  }, [depthPreference, failTransform, inputText, intent, modelPreference, uploadedFile, syncCloudEntry, commitHistoryStore]);
+  }, [bumpStreamProgressCap, commitHistoryStore, depthPreference, failTransform, inputText, intent, modelPreference, pastedText, resetStreamGenerationUi, uploadedFile, syncCloudEntry]);
 
   const handleNewMap = useCallback(() => {
     flushPendingSessionPersist();
@@ -839,7 +1077,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     const updatedStore = setActiveId(currentStore, null);
     commitHistoryStore(updatedStore);
     setInputText('');
+    inputTextRef.current = '';
+    setPastedText(null);
     setUploadedFile(null);
+    clearComposerDraft();
     setAttachMenuOpen(false);
     setData(null);
     setError(null);
@@ -853,6 +1094,53 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setPhase('input');
   }, [commitHistoryStore, flushPendingSessionPersist]);
 
+  const handleOpenDemoNucleo = useCallback(() => {
+    flushPendingSessionPersist();
+    const currentStore = historyStoreRef.current;
+    const existing = currentStore.entries.find((entry) => entry.id === DEMO_NUCLEO_ID);
+
+    if (existing) {
+      const normalized = normalizeMapData(existing.session.data);
+      if (!normalized) return;
+      const updatedStore = setActiveId(currentStore, DEMO_NUCLEO_ID);
+      commitHistoryStore(updatedStore);
+      setData(normalized);
+      setIntentState(normalized.intent ?? 'understand');
+      setCurrentStep(existing.session.currentStep);
+      setIsComplete(existing.session.isComplete ?? false);
+      setViewAll(existing.session.viewAll ?? false);
+      setHistoryOpen(false);
+      setChatOpen(false);
+      setEssentialsReview(false);
+      setPhase('result');
+      setError(null);
+      setTransformIncomplete(false);
+      stepHaptic();
+      return;
+    }
+
+    const demoSession = {
+      data: DEMO_NUCLEO_DATA,
+      currentStep: 0,
+      isComplete: false,
+      viewAll: false,
+    };
+    const updatedStore = createEntry(currentStore, demoSession, 'text', DEMO_NUCLEO_ID);
+    commitHistoryStore(updatedStore);
+    setData(DEMO_NUCLEO_DATA);
+    setIntentState('understand');
+    setCurrentStep(0);
+    setIsComplete(false);
+    setViewAll(false);
+    setHistoryOpen(false);
+    setChatOpen(false);
+    setEssentialsReview(false);
+    setPhase('result');
+    setError(null);
+    setTransformIncomplete(false);
+    stepHaptic();
+  }, [commitHistoryStore, flushPendingSessionPersist]);
+
   const handleSignOut = useCallback(async () => {
     flushPendingSessionPersist();
     // 1. Cerrar drawers y overlays
@@ -863,6 +1151,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     // 2. Limpiar estados del mapa y UI
     setData(null);
     setInputText('');
+    inputTextRef.current = '';
+    setPastedText(null);
     setUploadedFile(null);
     setPhase('input');
     setError(null);
@@ -888,6 +1178,47 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     }
   }, [commitHistoryStore, flushPendingSessionPersist]);
 
+  const resetToEmptyInput = useCallback(() => {
+    setDismissedContinueId(null);
+    setInputText('');
+    inputTextRef.current = '';
+    setPastedText(null);
+    setUploadedFile(null);
+    clearComposerDraft();
+    setAttachMenuOpen(false);
+    setData(null);
+    setError(null);
+    setTransformIncomplete(false);
+    setCurrentStep(0);
+    setIsComplete(false);
+    setViewAll(false);
+    setHistoryOpen(false);
+    setChatOpen(false);
+    setEssentialsReview(false);
+    setPhase('input');
+  }, []);
+
+  const devHideHistory = useCallback(() => {
+    flushPendingSessionPersist();
+    const currentStore = historyStoreRef.current;
+    const emptyStore = hideHistoryForDev(currentStore);
+    commitHistoryStore(emptyStore);
+    setDevHistoryHidden(true);
+    resetToEmptyInput();
+  }, [commitHistoryStore, flushPendingSessionPersist, resetToEmptyInput]);
+
+  const devRestoreHistory = useCallback(() => {
+    flushPendingSessionPersist();
+    const restored = restoreHistoryFromDev();
+    if (!restored) {
+      setDevHistoryHidden(false);
+      return;
+    }
+    commitHistoryStore(restored);
+    setDevHistoryHidden(false);
+    resetToEmptyInput();
+  }, [commitHistoryStore, flushPendingSessionPersist, resetToEmptyInput]);
+
   const handleSelectHistory = useCallback(
     (id: string) => {
       flushPendingSessionPersist();
@@ -902,7 +1233,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       commitHistoryStore(updatedStore);
 
       setData(normalized);
-      setIntent(normalized.intent ?? 'understand');
+      intentUserOverrideRef.current = false;
+      setIntentState(normalized.intent ?? 'understand');
       setCurrentStep(entry.session.currentStep);
       setIsComplete(entry.session.isComplete ?? false);
       setViewAll(entry.session.viewAll ?? false);
@@ -1107,6 +1439,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setPhase,
       inputText,
       setInputText,
+      pastedText,
+      handleComposerTextChange,
+      removePastedText,
       intent,
       setIntent,
       error,
@@ -1126,6 +1461,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       authOpen,
       setAuthOpen,
       openAuthSheet,
+      paywallOpen,
+      setPaywallOpen,
+      openPaywall,
       cloudUserEmail,
       cloudUserAvatarUrl,
       cloudSignedIn,
@@ -1141,18 +1479,22 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       canSubmit,
       hideTextInput,
       composerPlaceholder,
+      hasAnyNucleo,
+      continueEntry: visibleContinueEntry,
+      dismissContinueChip,
       progressLabel,
       stepProgress,
       goToStep,
       syncReadingStep,
       toggleViewMode,
       handleCancelLoading,
-      previewLoadingScreen,
       handlePickImage,
       handlePickCamera,
       handlePickFile,
       removeUploadedFile,
       handleTransform,
+      handleOpenDemoNucleo,
+      ...(__DEV__ ? { devHistoryHidden, devHideHistory, devRestoreHistory } : {}),
       handleNewMap,
       handleSelectHistory,
       handleDeleteHistory,
@@ -1165,15 +1507,24 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setEssentialsReview,
       handleDownloadPdf,
       isStreamGenerating,
+      streamLoadPhase,
+      streamProgress,
+      loadingFadeOverlayActive,
+      completeLoadingFadeOverlay,
       isPdfGenerating,
       transformIncomplete,
       dismissTransformIncomplete,
+      persistComposerDraft,
       handleSignOut,
     }),
     [
       phase,
       inputText,
+      pastedText,
+      handleComposerTextChange,
+      removePastedText,
       intent,
+      setIntent,
       error,
       data,
       historyStore,
@@ -1188,6 +1539,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       chatOpen,
       authOpen,
       openAuthSheet,
+      paywallOpen,
+      openPaywall,
       cloudUserEmail,
       cloudUserAvatarUrl,
       cloudSignedIn,
@@ -1200,18 +1553,24 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       canSubmit,
       hideTextInput,
       composerPlaceholder,
+      hasAnyNucleo,
+      visibleContinueEntry,
+      dismissContinueChip,
       progressLabel,
       stepProgress,
       goToStep,
       syncReadingStep,
       toggleViewMode,
       handleCancelLoading,
-      previewLoadingScreen,
       handlePickImage,
       handlePickCamera,
       handlePickFile,
       removeUploadedFile,
       handleTransform,
+      handleOpenDemoNucleo,
+      devHistoryHidden,
+      devHideHistory,
+      devRestoreHistory,
       handleNewMap,
       handleSelectHistory,
       handleDeleteHistory,
@@ -1223,9 +1582,14 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       essentialsReview,
       handleDownloadPdf,
       isStreamGenerating,
+      streamLoadPhase,
+      streamProgress,
+      loadingFadeOverlayActive,
+      completeLoadingFadeOverlay,
       isPdfGenerating,
       transformIncomplete,
       dismissTransformIncomplete,
+      persistComposerDraft,
       handleSignOut,
     ]
   );

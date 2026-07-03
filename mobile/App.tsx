@@ -1,5 +1,5 @@
 import './global.css';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -7,13 +7,11 @@ import { StatusBar } from 'expo-status-bar';
 import AuthSheet from './src/components/AuthSheet';
 import OAuthRedirectListener from './src/components/OAuthRedirectListener';
 import { AppSessionProvider, useAppSession } from './src/context/AppSessionContext';
-import { AppVariantProvider } from './src/context/AppVariantContext';
-import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { ThemeProvider } from './src/context/ThemeContext';
 import { NetworkStatusProvider } from './src/context/NetworkStatusContext';
 import { bootstrapStorage } from './src/shims/localStorage';
-import { getAppVariant, switchAppVariant, type AppVariant } from './src/logic/appVariant';
 import ComprensionApp from './src/screens/ComprensionApp';
-import ClassicShell from './src/screens/classic/ClassicShell';
+import { ACCENT } from '@shared/uiTokens';
 
 function AuthHost() {
   const session = useAppSession();
@@ -28,25 +26,16 @@ function AuthHost() {
 }
 
 function AppShell() {
-  const { isDark } = useTheme();
-  const [appVariant, setAppVariant] = useState<AppVariant>(() => getAppVariant());
-
-  const handleVariantChange = useCallback((next: AppVariant) => {
-    switchAppVariant(next, () => setAppVariant(next));
-  }, []);
-
   return (
-    <View className={isDark ? 'dark flex-1' : 'flex-1'} style={{ flex: 1 }}>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
-      <AppVariantProvider onVariantChange={handleVariantChange}>
-        <AppSessionProvider key={appVariant}>
-          <View style={{ flex: 1 }}>
-            {appVariant === 'classic' ? <ClassicShell /> : <ComprensionApp />}
-            <AuthHost />
-            <OAuthRedirectListener />
-          </View>
-        </AppSessionProvider>
-      </AppVariantProvider>
+    <View className="dark flex-1" style={{ flex: 1 }}>
+      <StatusBar style="light" />
+      <AppSessionProvider>
+        <View style={{ flex: 1 }}>
+          <ComprensionApp />
+          <AuthHost />
+          <OAuthRedirectListener />
+        </View>
+      </AppSessionProvider>
     </View>
   );
 }
@@ -67,8 +56,8 @@ export default function App() {
 
   if (!ready) {
     return (
-      <View className="flex-1 bg-neutral-50 dark:bg-neutral-900 items-center justify-center">
-        <ActivityIndicator size="large" color="#4f46e5" />
+      <View className="flex-1 bg-base items-center justify-center">
+        <ActivityIndicator size="large" color={ACCENT} />
       </View>
     );
   }
@@ -77,8 +66,8 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         {bootError ? (
-          <View className="flex-1 items-center justify-center px-6 bg-neutral-50 dark:bg-neutral-900">
-            <Text className="text-center text-neutral-700 dark:text-neutral-200">{bootError}</Text>
+          <View className="flex-1 items-center justify-center px-6 bg-base">
+            <Text className="text-center text-body">{bootError}</Text>
           </View>
         ) : (
           <ThemeProvider>

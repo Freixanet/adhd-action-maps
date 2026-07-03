@@ -33,13 +33,13 @@ export default function TakeawaysGlassCard({
         glassRefreshKey={isStreamGenerating ? 'streaming' : 'ready'}
       >
         <View className="px-5 py-6">
-          <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+          <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
             {title}
           </Text>
           {items.slice(0, 7).map((item, index) => (
             <View key={`${item}-${index}`} className="flex-row gap-3 mt-4">
-              <View className="mt-2 h-1.5 w-1.5 rounded-full bg-indigo-500" />
-              <Text className="flex-1 text-base leading-6 text-neutral-700 dark:text-neutral-200">{item}</Text>
+              <View className="mt-2 h-1.5 w-1.5 rounded-full bg-accent/100" />
+              <Text className="flex-1 text-base leading-6 text-body">{item}</Text>
             </View>
           ))}
         </View>

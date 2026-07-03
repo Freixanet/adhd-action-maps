@@ -32,10 +32,10 @@ export default function SourceMetadataGlassCard({
       >
         <View className="px-5 py-4">
           <View className="flex-row flex-wrap items-center gap-2">
-            <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+            <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
               Señal extraída
             </Text>
-            <Text className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+            <Text className="text-sm font-semibold text-primary text-primary">
               {sourceMetadata.label}
             </Text>
           </View>
@@ -46,13 +46,13 @@ export default function SourceMetadataGlassCard({
                   key={`${item}-${index}`}
                   className="rounded-full bg-neutral-100 dark:bg-white/[0.05] px-2.5 py-1"
                 >
-                  <Text className="text-xs text-neutral-600 dark:text-neutral-300">{item}</Text>
+                  <Text className="text-xs text-body">{item}</Text>
                 </View>
               ))}
             </View>
           ) : null}
           {coverage?.summary ? (
-            <Text className="mt-3 text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
+            <Text className="mt-3 text-sm leading-relaxed text-body">
               {coverage.summary}
             </Text>
           ) : null}
@@ -65,8 +65,8 @@ export default function SourceMetadataGlassCard({
                     color={note.tone === 'warning' ? '#d97706' : '#a3a3a3'}
                     style={{ marginTop: 2 }}
                   />
-                  <Text className="flex-1 text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
-                    <Text className="font-semibold text-neutral-800 dark:text-neutral-100">
+                  <Text className="flex-1 text-sm leading-relaxed text-body">
+                    <Text className="font-semibold text-primary text-primary">
                       {note.label}.{' '}
                     </Text>
                     {note.detail}

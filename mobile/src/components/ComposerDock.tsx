@@ -1,6 +1,6 @@
 import React from 'react';
 import Animated, { useAnimatedKeyboard, useAnimatedStyle, type AnimatedStyle } from 'react-native-reanimated';
-import { StyleProp, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const COMPOSER_DOCK_GAP = 12;
@@ -42,10 +42,16 @@ export default function ComposerDock({
   return (
     <Animated.View
       className="absolute left-0 right-0 px-4"
-      style={animatedStyle}
+      style={[animatedStyle, styles.dock]}
       onLayout={(event) => onHeightChange?.(event.nativeEvent.layout.height)}
     >
       {children}
     </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  dock: {
+    overflow: 'visible',
+  },
+});

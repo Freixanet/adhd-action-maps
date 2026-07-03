@@ -168,6 +168,17 @@ export function saveHistory(store: HistoryStore): boolean {
   return persist(store);
 }
 
+export function clearAllHistory(): HistoryStore {
+  const empty: HistoryStore = { activeId: null, entries: [] };
+  try {
+    getStorage().removeItem(HISTORY_KEY);
+    getStorage().removeItem(LEGACY_SESSION_KEY);
+  } catch {
+    // ignore storage errors during dev wipe
+  }
+  return empty;
+}
+
 export function getActiveEntry(store: HistoryStore): HistoryEntry | null {
   if (!store.activeId) return null;
   return store.entries.find((e) => e.id === store.activeId) ?? null;

@@ -9,7 +9,7 @@ export function isNativeShell(): boolean {
 
 function syncNativeChromeTheme(): void {
   const isDark = document.documentElement.classList.contains('dark');
-  const backgroundColor = isDark ? '#1A1A1A' : '#FAFAFA';
+  const backgroundColor = isDark ? '#181A1F' : '#FAFAFA';
   document.documentElement.style.backgroundColor = backgroundColor;
   document.body.style.backgroundColor = backgroundColor;
   document.getElementById('root')?.style.setProperty('background-color', backgroundColor);

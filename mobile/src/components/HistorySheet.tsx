@@ -139,9 +139,9 @@ export default function HistorySheet({
   );
   const listData = useMemo(
     () => [
-      ...(pinnedEntries.length ? [{ type: 'header' as const, id: 'pinned-header', title: 'Mapas fijados' }] : []),
+      ...(pinnedEntries.length ? [{ type: 'header' as const, id: 'pinned-header', title: 'Núcleos fijados' }] : []),
       ...pinnedEntries.map((entry) => ({ type: 'entry' as const, entry })),
-      ...(regularEntries.length ? [{ type: 'header' as const, id: 'recent-header', title: 'Mapas recientes' }] : []),
+      ...(regularEntries.length ? [{ type: 'header' as const, id: 'recent-header', title: 'Núcleos recientes' }] : []),
       ...regularEntries.map((entry) => ({ type: 'entry' as const, entry })),
     ],
     [pinnedEntries, regularEntries]
@@ -188,7 +188,7 @@ export default function HistorySheet({
 
   const handleDeleteEntry = useCallback(
     (entry: HistoryEntry) => {
-      Alert.alert('Eliminar mapa', '¿Seguro que quieres eliminar este mapa?', [
+      Alert.alert('Eliminar Núcleo', '¿Seguro que quieres eliminar este Núcleo?', [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Eliminar',
@@ -209,7 +209,7 @@ export default function HistorySheet({
           isPinnedHeader && showIndex && data && !searchActive ? 'pt-8' : isPinnedHeader ? 'pt-1' : 'pt-1';
         return (
           <Text
-            className={`px-1 pb-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400 ${
+            className={`px-1 pb-2 text-[11px] font-bold uppercase tracking-widest text-secondary ${
               isRecentHeader ? 'pt-8' : pinTopPadding
             }`}
           >
@@ -269,7 +269,7 @@ export default function HistorySheet({
               <ChevronRight size={16} color="#a3a3a3" />
             )}
           </View>
-          <Text className="text-xs font-bold tracking-widest uppercase text-neutral-400">Índice</Text>
+          <Text className="text-xs font-bold tracking-widest uppercase text-secondary">Índice</Text>
         </Pressable>
 
         {indexExpanded ? (
@@ -280,17 +280,17 @@ export default function HistorySheet({
                 onClose();
               }}
               className={`px-4 py-3 rounded-lg mb-1 ${
-                currentStep === 0 && !isComplete ? 'bg-indigo-100/50 dark:bg-indigo-500/10' : ''
+                currentStep === 0 && !isComplete ? 'bg-accent/10 dark:bg-accent/100/10' : ''
               }`}
             >
               <Text
                 className={`font-semibold ${
                   currentStep === 0 && !isComplete
-                    ? 'text-indigo-700 dark:text-indigo-400'
-                    : 'text-neutral-600 dark:text-neutral-300'
+                    ? 'text-accent'
+                    : 'text-body'
                 }`}
               >
-                Núcleo del mapa
+                Índice del Núcleo
               </Text>
             </Pressable>
 
@@ -306,27 +306,27 @@ export default function HistorySheet({
                     onClose();
                   }}
                   className={`px-4 py-3 rounded-lg mb-1 flex-row items-center justify-between ${
-                    isActive ? 'bg-indigo-100/50 dark:bg-indigo-500/10' : ''
+                    isActive ? 'bg-accent/10 dark:bg-accent/100/10' : ''
                   }`}
                 >
                   <View className="flex-row items-center gap-3 flex-1 pr-2">
                     <View className="w-6 h-6 rounded-full bg-neutral-200 dark:bg-white/10 items-center justify-center">
-                      <Text className="text-xs font-bold text-neutral-500 dark:text-neutral-400">
+                      <Text className="text-xs font-bold text-secondary">
                         {stepNum}
                       </Text>
                     </View>
                     <Text
                       className={`flex-1 font-semibold ${
                         isActive
-                          ? 'text-indigo-700 dark:text-indigo-400'
-                          : 'text-neutral-600 dark:text-neutral-300'
+                          ? 'text-accent'
+                          : 'text-body'
                       }`}
                       numberOfLines={1}
                     >
                       {step.shortNav || step.title}
                     </Text>
                   </View>
-                  <CheckCircle2 size={16} color={isPast ? '#4f46e5' : '#a3a3a3'} />
+                  <CheckCircle2 size={16} color={isPast ? '#8B8FF5' : '#a3a3a3'} />
                 </Pressable>
               );
             })}
@@ -351,10 +351,10 @@ export default function HistorySheet({
     if (searchActive && (searchQuery.trim() || categoryFilter)) {
       return (
         <View className="py-8 px-2">
-          <Text className="text-center text-neutral-600 dark:text-neutral-300 leading-6">
+          <Text className="text-center text-body leading-6">
             {searchQuery.trim()
               ? `No hay resultados para «${searchQuery.trim()}».`
-              : 'No hay mapas en esta categoría.'}
+              : 'No hay Núcleos en esta categoría.'}
           </Text>
         </View>
       );
@@ -362,8 +362,8 @@ export default function HistorySheet({
 
     return (
       <View className="py-8 px-2">
-        <Text className="text-center text-neutral-600 dark:text-neutral-300 leading-6">
-          Aún no hay mapas guardados. Genera una lectura y aparecerá aquí.
+        <Text className="text-center text-body leading-6">
+          Aún no hay Núcleos guardados. Genera una lectura y aparecerá aquí.
         </Text>
       </View>
     );
@@ -424,13 +424,13 @@ export default function HistorySheet({
             onNewMap?.();
             onClose();
           }}
-          accessibilityLabel="Crear mapa"
+          accessibilityLabel="Nuevo Núcleo"
           shape="pill"
           tone="accent"
           compact
         >
           <SquarePen size={17} color="#ffffff" />
-          <Text className="text-[15px] font-bold text-white">Crear mapa</Text>
+          <Text className="text-[15px] font-bold text-white">Nuevo Núcleo</Text>
         </FloatingGlassButton>
       </View>
 

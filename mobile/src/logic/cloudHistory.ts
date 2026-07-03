@@ -201,3 +201,9 @@ export async function deleteCloudHistoryEntry(id: string) {
   const { error } = await supabase.from('maps').delete().eq('id', id);
   if (error) throw error;
 }
+
+export async function deleteAllCloudHistory(): Promise<void> {
+  if (!supabase) return;
+  const entries = await pullCloudHistory();
+  await Promise.all(entries.map((entry) => deleteCloudHistoryEntry(entry.id)));
+}

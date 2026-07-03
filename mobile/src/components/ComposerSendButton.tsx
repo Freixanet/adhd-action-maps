@@ -29,8 +29,6 @@ export default function ComposerSendButton({
       ? '#e8eaff'
       : '#3730a3';
 
-  const strokeColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
-
   return (
     <Pressable
       onPress={onPress}
@@ -51,13 +49,13 @@ export default function ComposerSendButton({
       ) : (
         <GlassSurface
           liquid
-          liquidBorder="none"
+          interactive
+          liquidBorder="perimeter"
+          glassInset={1}
           borderRadius={SIZE / 2}
           style={styles.shell}
-          tintColor={isDark ? 'rgba(99, 102, 241, 0.52)' : 'rgba(79, 70, 229, 0.46)'}
-          overlayClassName={isDark ? 'bg-indigo-500/32' : 'bg-indigo-600/28'}
-          perimeterStrokeColor={strokeColor}
-          perimeterRingDiameter={SIZE}
+          tintColor={isDark ? 'rgba(139, 143, 245, 0.62)' : 'rgba(139, 143, 245, 0.54)'}
+          overlayClassName={isDark ? 'bg-accent/100/32' : 'bg-accent/28'}
           contentClassName="h-full w-full items-center justify-center"
         >
           <ArrowUp size={ICON_SIZE} color={iconColor} strokeWidth={2.25} />

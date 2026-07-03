@@ -9,8 +9,8 @@ type MapCategoryLabelProps = {
 export default function MapCategoryLabel({ category, size = 'sm' }: MapCategoryLabelProps) {
   const textClass =
     size === 'md'
-      ? 'text-[13px] font-medium tracking-wide text-neutral-600 dark:text-neutral-300'
-      : 'text-[11px] font-medium uppercase tracking-[0.14em] text-neutral-500 dark:text-neutral-400';
+      ? 'text-[13px] font-medium tracking-wide text-body'
+      : 'text-[11px] font-medium uppercase tracking-[0.14em] text-secondary';
 
   return (
     <Text className={textClass} numberOfLines={1}>

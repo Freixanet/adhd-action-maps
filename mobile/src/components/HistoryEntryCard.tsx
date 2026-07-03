@@ -53,7 +53,7 @@ export default function HistoryEntryCard({
       ref={cardRef}
       collapsable={false}
       className={`mb-2 rounded-2xl px-3 py-3 justify-center ${
-        isActive ? 'bg-indigo-50 dark:bg-indigo-500/10' : ''
+        isActive ? 'bg-accent/10' : ''
       }`}
       style={{ height: HISTORY_ENTRY_CARD_HEIGHT }}
     >
@@ -63,11 +63,11 @@ export default function HistoryEntryCard({
             value={renameValue}
             onChangeText={onRenameValueChange}
             autoFocus
-            className="flex-1 text-base text-neutral-900 dark:text-neutral-100 border border-neutral-200 dark:border-white/10 rounded-xl px-3 py-2"
+            className="flex-1 text-base text-primary border border-neutral-200 border-white/10 rounded-xl px-3 py-2"
             onSubmitEditing={onCommitRename}
           />
           <Pressable onPress={onCommitRename} className="px-3 py-2">
-            <Text className="font-semibold text-indigo-600">OK</Text>
+            <Text className="font-semibold text-accent">OK</Text>
           </Pressable>
         </View>
       ) : (
@@ -87,12 +87,12 @@ export default function HistoryEntryCard({
         >
           <MapCategoryLabel category={category} />
           <Text
-            className="mt-1 text-base font-semibold leading-5 text-neutral-900 dark:text-neutral-100"
+            className="mt-1 text-base font-semibold leading-5 text-primary"
             numberOfLines={2}
           >
             {entry.title}
           </Text>
-          <Text className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400" numberOfLines={1}>
+          <Text className="mt-1.5 text-xs text-secondary" numberOfLines={1}>
             {metaParts.join(' · ')}
           </Text>
         </Pressable>

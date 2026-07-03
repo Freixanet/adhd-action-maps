@@ -39,6 +39,8 @@ type ReadingProgressBarProps = {
   headerVisibleShared?: SharedValue<boolean>;
   /** Intro step-by-step only — progress line omitted entirely. */
   hideProgressLine?: boolean;
+  /** "~N min restantes" beside the step label; omitted on last step / when unknown. */
+  remainingLabel?: string;
 };
 
 export default function ReadingProgressBar({
@@ -51,6 +53,7 @@ export default function ReadingProgressBar({
   scrollProgressShared,
   headerVisibleShared,
   hideProgressLine,
+  remainingLabel,
 }: ReadingProgressBarProps) {
   const { isDark } = useTheme();
   const navIconColor = isDark ? '#d4d4d4' : '#525252';
@@ -133,10 +136,10 @@ export default function ReadingProgressBar({
     };
   });
 
-  const viewModeIconColor = viewAll ? (isDark ? '#a5b4fc' : '#4f46e5') : isDark ? '#a3a3a3' : '#737373';
+  const viewModeIconColor = viewAll ? (isDark ? '#a5b4fc' : '#8B8FF5') : isDark ? '#a3a3a3' : '#737373';
   const viewModeLabelClass = viewAll
-    ? 'text-indigo-700 dark:text-indigo-300'
-    : 'text-neutral-600 dark:text-neutral-300';
+    ? 'text-accent'
+    : 'text-body';
 
   return (
     <Animated.View
@@ -146,7 +149,7 @@ export default function ReadingProgressBar({
       <Animated.View
         animatedProps={navAnimatedProps}
         style={navAnimatedStyle}
-        className="bg-neutral-50 dark:bg-neutral-900"
+        className="bg-base"
       >
         <View className="flex-row items-center justify-between gap-3 px-3 py-2.5">
           <View className="min-w-0 flex-1 flex-row items-center gap-4">
@@ -158,22 +161,29 @@ export default function ReadingProgressBar({
             >
               <MenuTwoLines size={17} color={navIconColor} />
             </FloatingGlassButton>
-            <Text
-              className="flex-1 text-sm font-bold text-neutral-800 dark:text-neutral-100"
-              numberOfLines={1}
-            >
-              {progressLabel}
-            </Text>
+            <View className="min-w-0 flex-1">
+              <Text
+                className="text-sm font-bold text-primary"
+                numberOfLines={1}
+              >
+                {progressLabel}
+              </Text>
+              {remainingLabel ? (
+                <Text className="text-[13px] text-secondary" numberOfLines={1}>
+                  {remainingLabel}
+                </Text>
+              ) : null}
+            </View>
           </View>
           {!isComplete && onToggleViewMode ? (
             <FloatingGlassButton
               onPress={onToggleViewMode}
-              accessibilityLabel={viewAll ? 'Cambiar a paso a paso' : 'Cambiar a mapa completo'}
+              accessibilityLabel={viewAll ? 'Cambiar a paso a paso' : 'Cambiar a vista completa'}
               shape="rounded"
             >
               {viewAll ? <List size={14} color={viewModeIconColor} /> : <Layers size={14} color={viewModeIconColor} />}
               <Text className={`text-[11px] font-semibold ${viewModeLabelClass}`}>
-                {viewAll ? 'Paso a paso' : 'Mapa completo'}
+                {viewAll ? 'Paso a paso' : 'Vista completa'}
               </Text>
             </FloatingGlassButton>
           ) : null}
@@ -182,10 +192,10 @@ export default function ReadingProgressBar({
 
       {!hideProgressLine ? (
         <Animated.View style={[{ position: 'absolute', left: 0, right: 0 }, progressPositionStyle]}>
-          <View className="h-2 bg-neutral-200 dark:bg-neutral-800">
+          <View className="h-2 bg-neutral-200 bg-surface-2">
             <Animated.View
               style={barStyle}
-              className="h-full bg-indigo-600 dark:bg-indigo-500 rounded-r-full"
+              className="h-full bg-accent dark:bg-accent/100 rounded-r-full"
               accessibilityRole="progressbar"
             />
           </View>

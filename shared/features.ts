@@ -2,4 +2,6 @@
 export const FEATURES = {
   /** Custom category names beyond defaults. Set false to gate behind Pro. */
   customCategories: true,
+  /** "Profundo" depth tier. Set true once the user has the Pro entitlement. */
+  deepDepth: false,
 } as const;

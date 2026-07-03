@@ -20,7 +20,7 @@ type FloatingGlassButtonProps = {
   fullWidth?: boolean;
 };
 
-/** Profile circle diameter and paired bar height (e.g. Nuevo mapa in history). */
+/** Profile circle diameter and paired bar height (e.g. Nuevo Núcleo in history). */
 export const FLOATING_CIRCLE_SIZE = 52;
 export const FLOATING_BAR_HEIGHT = FLOATING_CIRCLE_SIZE;
 export const FLOATING_PILL_MIN_HEIGHT = 48;
@@ -48,8 +48,8 @@ export function FloatingGlassShell({
     height: size,
   };
 
-  const accentTint = isDark ? 'rgba(99, 102, 241, 0.52)' : 'rgba(79, 70, 229, 0.46)';
-  const accentOverlay = isDark ? 'bg-indigo-500/32' : 'bg-indigo-600/28';
+  const accentTint = isDark ? 'rgba(139, 143, 245, 0.52)' : 'rgba(139, 143, 245, 0.46)';
+  const accentOverlay = isDark ? 'bg-accent/100/32' : 'bg-accent/28';
 
   if (isAccent) {
     if (isCircle) {
@@ -92,17 +92,11 @@ export function FloatingGlassShell({
 
   if (isCircle) {
     const radius = size / 2;
-    const strokeColor = prominent
-      ? isDark
-        ? 'rgba(255,255,255,0.18)'
-        : 'rgba(0,0,0,0.10)'
-      : isDark
-        ? 'rgba(255,255,255,0.12)'
-        : 'rgba(0,0,0,0.07)';
     const circleGlass = (
       <GlassSurface
         liquid
-        liquidBorder="none"
+        interactive
+        liquidBorder="perimeter"
         liquidMaterial={prominent ? 'regular' : 'clear'}
         glassInset={prominent ? 0 : 1}
         borderRadius={radius}
@@ -123,8 +117,6 @@ export function FloatingGlassShell({
               : 'rgba(245, 245, 245, 0.72)'
             : undefined
         }
-        perimeterStrokeColor={strokeColor}
-        perimeterRingDiameter={size}
         contentClassName="h-full w-full items-center justify-center"
       >
         <View style={styles.circleContent}>{children}</View>
@@ -150,16 +142,14 @@ export function FloatingGlassShell({
     );
   }
 
-  const strokeColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
-
   return (
     <View style={[styles.shadow, compact ? styles.shadowCompact : null]}>
       <GlassSurface
         liquid
-        liquidBorder="none"
+        interactive
+        liquidBorder="perimeter"
         borderRadius={FLOATING_PILL_RADIUS}
         style={styles.neutralPill}
-        perimeterStrokeColor={strokeColor}
         contentClassName="h-full w-full items-center justify-center"
       >
         <View style={compact ? styles.pillContentCompact : styles.pillContent}>{children}</View>
@@ -219,7 +209,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.97 }],
   },
   accentShadow: {
-    shadowColor: '#4f46e5',
+    shadowColor: '#8B8FF5',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.16,
     shadowRadius: 10,

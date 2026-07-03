@@ -24,10 +24,15 @@ function resolveDepthFromBody(body: unknown): MapDepth {
   return 'estandar';
 }
 
-async function localFetchWithTimeout(
-  input: any,
-  init: any = {},
-  options: { timeoutMs?: number; timeoutMessage?: string } = {}
+export type FetchWithTimeoutOptions = {
+  timeoutMs?: number;
+  timeoutMessage?: string;
+};
+
+export async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  options: FetchWithTimeoutOptions = {}
 ): Promise<Response> {
   const {
     timeoutMs = 20000,
@@ -91,6 +96,7 @@ export function isRenderablePartialMap(map: ActionMapData | null): boolean {
 
 export type TransformStreamHandlers = {
   onPartial?: (map: ActionMapData) => void;
+  onFirstStreamByte?: () => void;
   onDone: (map: ActionMapData, model?: string) => void;
   onError: (message: string) => void;
 };
@@ -124,6 +130,7 @@ export async function consumeTransformStream(
   let buffer = '';
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let idleAborted = false;
+  let firstStreamByteEmitted = false;
 
   const clearIdle = () => {
     if (idleTimer) {
@@ -155,6 +162,11 @@ export async function consumeTransformStream(
       if (done) break;
       if (idleAborted) {
         return options.signal?.aborted ? 'aborted' : 'idle';
+      }
+
+      if (value?.byteLength && !firstStreamByteEmitted) {
+        firstStreamByteEmitted = true;
+        handlers.onFirstStreamByte?.();
       }
 
       resetIdle();
@@ -267,6 +279,7 @@ export async function fetchTransformWithProgress({
       receivedRenderablePartial = true;
       handlers.onPartial?.(map);
     },
+    onFirstStreamByte: handlers.onFirstStreamByte,
     onDone: handlers.onDone,
     onError: handlers.onError,
   };
@@ -275,7 +288,7 @@ export async function fetchTransformWithProgress({
     !signal?.aborted && !streamEstablished && !receivedRenderablePartial;
 
   try {
-    const response = await localFetchWithTimeout(
+    const response = await fetchWithTimeout(
       streamUrl,
       {
         method: 'POST',
@@ -320,7 +333,7 @@ export async function fetchTransformWithProgress({
     if (signal?.aborted) throw err;
     if (!shouldAllowRestFallback()) throw err;
 
-    const fallbackResponse = await localFetchWithTimeout(
+    const fallbackResponse = await fetchWithTimeout(
       fallbackUrl,
       {
         method: 'POST',

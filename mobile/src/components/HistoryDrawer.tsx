@@ -163,7 +163,28 @@ export default function HistoryDrawer({
       runOnJS(onClose)();
     });
 
-  const mainGesture = Gesture.Exclusive(panGesture, tapGesture);
+  // Open by swiping right from anywhere on the main sheet. Disabled on the
+  // result phase, where a horizontal swipe navigates between steps instead.
+  const allowFullOpenSwipe = enableEdgeSwipe && phase !== 'result';
+  const openPanGesture = Gesture.Pan()
+    .enabled(!open && allowFullOpenSwipe)
+    .activeOffsetX(20)
+    .failOffsetY([-16, 16])
+    .onBegin(() => {
+      dragStartX.value = 0;
+    })
+    .onUpdate((event) => {
+      offsetX.value = Math.max(0, Math.min(DRAWER_WIDTH, event.translationX));
+    })
+    .onEnd((event) => {
+      const shouldOpen = offsetX.value > DRAWER_WIDTH * 0.35 || event.velocityX > 650;
+      offsetX.value = withSpring(shouldOpen ? DRAWER_WIDTH : 0, SPRING);
+      if (shouldOpen) {
+        runOnJS(onOpen)();
+      }
+    });
+
+  const mainGesture = Gesture.Exclusive(panGesture, tapGesture, openPanGesture);
 
   const edgeOpenGesture = Gesture.Pan()
     .activeOffsetX(12)

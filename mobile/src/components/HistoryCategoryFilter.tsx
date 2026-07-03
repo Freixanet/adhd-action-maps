@@ -27,14 +27,14 @@ function FilterItem({
       <Text
         className={`text-sm ${
           selected
-            ? 'font-semibold text-neutral-900 dark:text-neutral-100'
-            : 'font-medium text-neutral-500 dark:text-neutral-400'
+            ? 'font-semibold text-primary'
+            : 'font-medium text-secondary'
         }`}
       >
         {label}
       </Text>
       {selected ? (
-        <View className="mt-1.5 h-px bg-neutral-900 dark:bg-neutral-100" />
+        <View className="mt-1.5 h-px bg-base dark:bg-neutral-100" />
       ) : (
         <View className="mt-1.5 h-px bg-transparent" />
       )}
@@ -51,7 +51,7 @@ export default function HistoryCategoryFilter({
 
   return (
     <View className="px-1 pb-4">
-      <Text className="pb-3 text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+      <Text className="pb-3 text-[11px] font-bold uppercase tracking-widest text-secondary">
         Categorías
       </Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>

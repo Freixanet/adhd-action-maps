@@ -29,7 +29,6 @@ import {
   Download,
   MessageSquareText,
   BookOpen,
-  GraduationCap,
   ListChecks,
   Sparkles,
   ChevronLeft,
@@ -133,22 +132,16 @@ const DEFAULT_CALLOUT_LABELS: Record<string, CalloutLabel> = {
   alert: 'Precaución',
 };
 const INTENT_OPTIONS: Array<{
-  id: MapIntent;
+  id: Extract<MapIntent, 'understand' | 'apply'>;
   title: string;
   description: string;
   icon: typeof BookOpen;
 }> = [
   {
     id: 'understand',
-    title: 'Comprender',
+    title: 'Entender',
     description: 'Idea central, contexto, argumentos y matices.',
     icon: BookOpen,
-  },
-  {
-    id: 'study',
-    title: 'Estudiar',
-    description: 'Conceptos, relaciones y repaso para retener.',
-    icon: GraduationCap,
   },
   {
     id: 'apply',
@@ -238,7 +231,7 @@ function generateMapId() {
 function getIntentLabel(intent: MapIntent | undefined) {
   if (intent === 'study') return 'Estudiar';
   if (intent === 'apply') return 'Aplicar';
-  return 'Comprender';
+  return 'Entender';
 }
 
 function getResolvedOutputLanguage() {
@@ -368,6 +361,8 @@ export default function ComprensionApp() {
   const [profileMenuView, setProfileMenuView] = useState<'root' | 'settings'>('root');
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelPickerLeft, setModelPickerLeft] = useState(56);
+  const [depthPickerOpen, setDepthPickerOpen] = useState(false);
+  const [depthPickerLeft, setDepthPickerLeft] = useState(56);
   const [showStepFooter, setShowStepFooter] = useState(false);
   const [isStreamGenerating, setIsStreamGenerating] = useState(false);
   const reduceMotion = useReducedMotion();
@@ -390,6 +385,7 @@ export default function ComprensionApp() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const attachMenuRef = useRef<HTMLDivElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
+  const depthPickerRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const scrollSpyLockRef = useRef(false);
   const sidebarTouchStartRef = useRef<{ x: number; y: number; dragging: boolean; opening: boolean } | null>(null);
@@ -585,18 +581,26 @@ export default function ComprensionApp() {
     setModelPickerLeft(Math.max(8, anchor.left - group.left));
   }, [modelPickerOpen]);
 
+  React.useLayoutEffect(() => {
+    if (!depthPickerOpen || !depthPickerRef.current || !attachMenuRef.current) return;
+    const anchor = depthPickerRef.current.getBoundingClientRect();
+    const group = attachMenuRef.current.getBoundingClientRect();
+    setDepthPickerLeft(Math.max(8, anchor.left - group.left));
+  }, [depthPickerOpen]);
+
   React.useEffect(() => {
-    if (!attachMenuOpen && !modelPickerOpen) return;
+    if (!attachMenuOpen && !modelPickerOpen && !depthPickerOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
       if (attachMenuRef.current && !attachMenuRef.current.contains(target)) {
         setAttachMenuOpen(false);
         setModelPickerOpen(false);
+        setDepthPickerOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [attachMenuOpen, modelPickerOpen]);
+  }, [attachMenuOpen, modelPickerOpen, depthPickerOpen]);
 
   React.useEffect(() => {
     if (appState !== 'result') return;
@@ -933,7 +937,7 @@ export default function ComprensionApp() {
     } else {
       document.documentElement.classList.remove('dark');
     }
-    const themeColor = theme === 'dark' ? '#1A1A1A' : '#FAFAFA';
+    const themeColor = theme === 'dark' ? '#181A1F' : '#FAFAFA';
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor);
     document
       .querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
@@ -2798,12 +2802,12 @@ export default function ComprensionApp() {
               <AtomCanvasIcon />
             </div>
             <h1 className="text-3xl sm:text-5xl font-black tracking-tighter text-[#1A1A1A] dark:text-[#EDEDED] leading-[1.1]">
-              ¿Qué quieres entender?
+              Separa la señal del ruido.
             </h1>
             <p className="mx-auto max-w-xl text-sm sm:text-lg text-neutral-600 dark:text-neutral-300 leading-relaxed">
-              Pega, adjunta o enlaza una fuente. La convertiré en una lectura clara, completa y hecha para tu objetivo.
+              Convierte cualquier texto, enlace o PDF en un mapa cognitivo.
             </p>
-            <div className="mx-auto mt-6 grid max-w-3xl gap-3 sm:grid-cols-3">
+            <div className="mx-auto mt-6 grid max-w-3xl gap-3 sm:grid-cols-2">
               {INTENT_OPTIONS.map((option) => {
                 const Icon = option.icon;
                 const isActive = intent === option.id;
@@ -2829,30 +2833,6 @@ export default function ComprensionApp() {
                     <p className="relative z-10 mt-3 text-[13px] leading-relaxed text-current/70 font-medium">
                       {option.description}
                     </p>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mx-auto mt-4 flex max-w-md gap-1 rounded-xl bg-neutral-100/80 p-1 dark:bg-white/5">
-              {DEPTH_OPTIONS.map((option) => {
-                const isActive = depthPreference === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => {
-                      setDepthPreference(option.id);
-                      saveDepthPreference(option.id);
-                    }}
-                    disabled={appState === 'loading'}
-                    className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${
-                      isActive
-                        ? 'bg-white text-indigo-700 shadow-sm dark:bg-neutral-800 dark:text-indigo-300'
-                        : 'text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200'
-                    }`}
-                    title={option.hint}
-                  >
-                    {option.label}
                   </button>
                 );
               })}
@@ -2946,11 +2926,28 @@ export default function ComprensionApp() {
                     />
                   </button>
 
+                  <div ref={depthPickerRef}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        setModelPickerOpen(false);
+                        setDepthPickerOpen((open) => !open);
+                      }}
+                      disabled={appState === 'loading'}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-neutral-500/10 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {DEPTH_OPTIONS.find((o) => o.id === depthPreference)?.label ?? 'Estándar'}
+                    </button>
+                  </div>
+
                   <div ref={modelPickerRef}>
                     <button
                       type="button"
                       onClick={() => {
                         setAttachMenuOpen(false);
+                        setDepthPickerOpen(false);
                         setModelPickerOpen((open) => !open);
                       }}
                       disabled={appState === 'loading'}
@@ -2982,6 +2979,37 @@ export default function ComprensionApp() {
                 </div>
                 </div>
               </div>
+
+              {depthPickerOpen && (
+                <div
+                  className="absolute bottom-full mb-2 z-[80] w-56 rounded-[20px] border border-neutral-200 dark:border-white/10 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-2xl shadow-xl py-1 overflow-hidden animate-fade-in"
+                  style={{ left: depthPickerLeft }}
+                >
+                  {DEPTH_OPTIONS.map((option) => {
+                    const isActive = depthPreference === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => {
+                          setDepthPreference(option.id);
+                          saveDepthPreference(option.id);
+                          setDepthPickerOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2.5 flex items-start gap-2 ${
+                          isActive ? 'bg-indigo-50 dark:bg-indigo-500/10' : 'hover:bg-neutral-50 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-semibold text-neutral-800 dark:text-neutral-200">{option.label}</span>
+                          <span className="block text-xs text-neutral-500 dark:text-neutral-400">{option.hint}</span>
+                        </span>
+                        {isActive && <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {modelPickerOpen && (
                 <div

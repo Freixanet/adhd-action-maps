@@ -41,7 +41,7 @@ export default function HistoryEntryGlassMenu({
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Cerrar menú" />
         <View pointerEvents="box-none" style={[styles.menuHost, { top, left, width: MENU_WIDTH }]}>
-          <GlassSurface liquid borderRadius={20} className="rounded-[20px] shadow-xl">
+          <GlassSurface liquid borderRadius={20} className="rounded-card shadow-xl">
             <Pressable
               onPress={() => {
                 onRename(menu.entry);
@@ -50,7 +50,7 @@ export default function HistoryEntryGlassMenu({
               className="flex-row items-center gap-3 px-4 py-3.5 active:opacity-70"
             >
               <SquarePen size={16} color="#737373" />
-              <Text className="text-sm font-medium text-neutral-800 dark:text-neutral-100">Renombrar</Text>
+              <Text className="text-sm font-medium text-primary text-primary">Renombrar</Text>
             </Pressable>
             <View className="h-px bg-neutral-200/80 dark:bg-white/10" />
             <Pressable
@@ -61,7 +61,7 @@ export default function HistoryEntryGlassMenu({
               className="flex-row items-center gap-3 px-4 py-3.5 active:opacity-70"
             >
               <Tag size={16} color="#737373" />
-              <Text className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+              <Text className="text-sm font-medium text-primary text-primary">
                 Cambiar categoría
               </Text>
             </Pressable>
@@ -73,8 +73,8 @@ export default function HistoryEntryGlassMenu({
               }}
               className="flex-row items-center gap-3 px-4 py-3.5 active:opacity-70"
             >
-              <Pin size={16} color={menu.entry.pinned ? '#4f46e5' : '#737373'} />
-              <Text className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+              <Pin size={16} color={menu.entry.pinned ? '#8B8FF5' : '#737373'} />
+              <Text className="text-sm font-medium text-primary text-primary">
                 {menu.entry.pinned ? 'Desfijar' : 'Fijar'}
               </Text>
             </Pressable>

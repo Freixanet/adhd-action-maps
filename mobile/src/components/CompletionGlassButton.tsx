@@ -28,8 +28,8 @@ export default function CompletionGlassButton({
   const { isDark } = useTheme();
   const isAccent = variant === 'accent';
 
-  const accentTint = isDark ? 'rgba(99, 102, 241, 0.52)' : 'rgba(79, 70, 229, 0.46)';
-  const accentOverlay = isDark ? 'bg-indigo-500/32' : 'bg-indigo-600/28';
+  const accentTint = isDark ? 'rgba(139, 143, 245, 0.52)' : 'rgba(139, 143, 245, 0.46)';
+  const accentOverlay = isDark ? 'bg-accent/100/32' : 'bg-accent/28';
   const neutralOverlay = isDark ? 'bg-white/[0.05]' : 'bg-white/45';
 
   const showLoading = loading;
@@ -72,7 +72,7 @@ export default function CompletionGlassButton({
             className={
               isAccent
                 ? 'text-center font-semibold text-white'
-                : 'text-center font-semibold text-neutral-700 dark:text-neutral-300'
+                : 'text-center font-semibold text-body'
             }
           >
             {showLoading ? (loadingLabel ?? label) : label}

@@ -17,7 +17,7 @@ export default function LoadingPreviewButton({ onPress }: LoadingPreviewButtonPr
       accessibilityLabel="Vista previa de pantalla de carga"
       className="mt-5 opacity-35 active:opacity-55"
     >
-      <Text className="text-[11px] font-medium tracking-wide text-neutral-500 dark:text-neutral-500">
+      <Text className="text-[11px] font-medium tracking-wide text-secondary text-secondary">
         Vista de carga
       </Text>
     </Pressable>

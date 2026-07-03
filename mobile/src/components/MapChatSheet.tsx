@@ -100,23 +100,23 @@ function AssistantBubble({ text }: { text: string }) {
   const parsed = parseStoredAssistantText(text);
 
   return (
-    <View className="self-start max-w-[92%] mb-4 rounded-[20px] px-4 py-3 bg-neutral-100 dark:bg-white/5">
-      <Text className="text-sm leading-relaxed text-neutral-800 dark:text-neutral-200">{parsed.answer}</Text>
+    <View className="self-start max-w-[92%] mb-4 rounded-card px-4 py-3 bg-neutral-100 dark:bg-white/5">
+      <Text className="text-sm leading-relaxed text-primary">{parsed.answer}</Text>
       {parsed.citations?.length ? (
-        <View className="mt-3 pt-3 border-t border-neutral-200/80 dark:border-white/10">
-          <Text className="text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400 mb-2">
+        <View className="mt-3 pt-3 border-t border-neutral-200/80 border-white/10">
+          <Text className="text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
             Fuentes
           </Text>
           {parsed.citations.map((citation, index) => (
             <View
               key={`${citation.label}-${citation.locator}-${index}`}
-              className="mb-2 rounded-[20px] border border-neutral-200 dark:border-white/10 px-3 py-2"
+              className="mb-2 rounded-card border border-neutral-200 border-white/10 px-3 py-2"
             >
-              <Text className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">
+              <Text className="text-xs font-semibold text-body">
                 {citation.label}: {citation.locator}
               </Text>
               {citation.excerpt ? (
-                <Text className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+                <Text className="mt-1 text-xs leading-relaxed text-secondary">
                   {citation.excerpt}
                 </Text>
               ) : null}
@@ -125,12 +125,12 @@ function AssistantBubble({ text }: { text: string }) {
         </View>
       ) : null}
       {parsed.limitations?.length ? (
-        <View className="mt-3 pt-3 border-t border-neutral-200/80 dark:border-white/10">
-          <Text className="text-[11px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400 mb-2">
+        <View className="mt-3 pt-3 border-t border-neutral-200/80 border-white/10">
+          <Text className="text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
             Límites
           </Text>
           {parsed.limitations.map((item, index) => (
-            <Text key={`${item}-${index}`} className="text-xs leading-relaxed text-neutral-600 dark:text-neutral-400 mb-1">
+            <Text key={`${item}-${index}`} className="text-xs leading-relaxed text-secondary mb-1">
               • {item}
             </Text>
           ))}
@@ -237,19 +237,19 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView className="flex-1 bg-neutral-50 dark:bg-neutral-900" edges={['top', 'left', 'right']}>
+      <SafeAreaView className="flex-1 bg-base" edges={['top', 'left', 'right']}>
         <KeyboardAvoidingView
           className="flex-1"
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
         >
           {/* Header Superior Ligero */}
-          <View className="flex-row items-center justify-between px-6 pt-5 pb-3.5 border-b border-neutral-200 dark:border-white/5 bg-neutral-50 dark:bg-neutral-900">
+          <View className="flex-row items-center justify-between px-6 pt-5 pb-3.5 border-b border-neutral-200 dark:border-white/5 bg-base">
             <View className="flex-1 pr-4">
-              <Text className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                Preguntar al mapa
+              <Text className="text-base font-bold text-primary">
+                Preguntar sobre la fuente
               </Text>
-              <Text className="mt-1 text-[11px] text-neutral-400 dark:text-neutral-500 leading-normal">
+              <Text className="mt-1 text-[11px] text-secondary leading-normal">
                 Responde solo con el contenido de esta lectura y sus referencias.
               </Text>
             </View>
@@ -271,11 +271,11 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
           >
             {chatHistory.length === 0 ? (
               <View className="items-center justify-center py-6 px-4">
-                <MessageSquareText size={24} color="#6366f1" className="mb-3 opacity-60" />
-                <Text className="text-sm font-bold text-neutral-800 dark:text-neutral-200 text-center mb-1">
-                  Preguntar al mapa
+                <MessageSquareText size={24} color="#8B8FF5" className="mb-3 opacity-60" />
+                <Text className="text-sm font-bold text-primary text-center mb-1">
+                  Preguntar sobre la fuente
                 </Text>
-                <Text className="text-xs text-neutral-400 dark:text-neutral-500 text-center max-w-[260px] leading-relaxed mb-6">
+                <Text className="text-xs text-secondary text-center max-w-[260px] leading-relaxed mb-6">
                   Pide aclaraciones, ejemplos o partes concretas de esta lectura.
                 </Text>
 
@@ -286,9 +286,9 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
                         key={question}
                         onPress={() => void handleSubmit(question)}
                         disabled={chatBusy}
-                        className="rounded-xl border border-neutral-200 dark:border-white/10 px-4 py-2.5 bg-white dark:bg-neutral-800/40 active:bg-neutral-100 dark:active:bg-neutral-800/80"
+                        className="rounded-xl border border-neutral-200 border-white/10 px-4 py-2.5 bg-white bg-surface-2 active:bg-neutral-100 dark:active:bg-surface-2"
                       >
-                        <Text className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 text-center">
+                        <Text className="text-xs font-semibold text-body text-center">
                           {question}
                         </Text>
                       </Pressable>
@@ -301,7 +301,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
                 turn.role === 'user' ? (
                   <View
                     key={`${turn.role}-${index}`}
-                    className="mb-4 self-end max-w-[85%] rounded-[20px] px-4 py-3 bg-indigo-600"
+                    className="mb-4 self-end max-w-[85%] rounded-card px-4 py-3 bg-accent"
                   >
                     <Text className="text-sm leading-relaxed text-white">{turn.text}</Text>
                   </View>
@@ -312,33 +312,33 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
             )}
 
             {chatBusy ? (
-              <View className="self-start max-w-[92%] mb-4 rounded-[20px] px-4 py-3 bg-neutral-100 dark:bg-white/5 flex-row items-center gap-2">
-                <ActivityIndicator size="small" color="#4f46e5" />
-                <Text className="text-sm text-neutral-600 dark:text-neutral-300">Consultando el mapa…</Text>
+              <View className="self-start max-w-[92%] mb-4 rounded-card px-4 py-3 bg-neutral-100 dark:bg-white/5 flex-row items-center gap-2">
+                <ActivityIndicator size="small" color="#8B8FF5" />
+                <Text className="text-sm text-body">Consultando el Núcleo…</Text>
               </View>
             ) : null}
           </ScrollView>
 
           {/* Composer Inferior Rediseñado */}
-          <View className="px-5 pt-3 pb-6 bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-200 dark:border-white/5">
-            <View className="flex-row gap-2 items-center px-4 py-2.5 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-white/10 rounded-full min-h-[44px] max-h-32">
+          <View className="px-5 pt-3 pb-6 bg-base border-t border-neutral-200 dark:border-white/5">
+            <View className="flex-row gap-2 items-center px-4 py-2.5 bg-white bg-base border border-neutral-200 border-white/10 rounded-full min-h-[44px] max-h-32">
               <TextInput
                 value={chatInput}
                 onChangeText={setChatInput}
-                placeholder="Pregunta sobre este mapa…"
+                placeholder="Pregunta sobre esta fuente…"
                 placeholderTextColor="#a3a3a3"
                 multiline
                 textAlignVertical="center"
                 editable={!chatBusy}
-                className="flex-1 py-1 px-1 text-sm text-neutral-900 dark:text-neutral-100"
+                className="flex-1 py-1 px-1 text-sm text-primary"
               />
               <Pressable
                 onPress={() => void handleSubmit()}
                 disabled={chatBusy || !chatInput.trim()}
                 className={`w-8 h-8 rounded-full items-center justify-center ${
                   chatBusy || !chatInput.trim()
-                    ? 'bg-neutral-200 dark:bg-neutral-900'
-                    : 'bg-indigo-600 active:bg-indigo-700'
+                    ? 'bg-neutral-200 dark:bg-base'
+                    : 'bg-accent active:bg-accent-pressed'
                 }`}
                 accessibilityLabel="Enviar pregunta"
               >

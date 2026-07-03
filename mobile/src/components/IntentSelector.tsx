@@ -13,6 +13,8 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import GlassSurface from './GlassSurface';
 import LiquidGlassSurface from './LiquidGlassSurface';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { useGlassTouchGlow } from '../hooks/useGlassTouchGlow';
 import { SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
 import { useTheme } from '../context/ThemeContext';
 import type { MapIntent } from '../logic/contracts';
@@ -52,6 +54,8 @@ function triggerHaptic() {
 
 function IntentSelector({ value, onChange, disabled = false }: IntentSelectorProps) {
   const { isDark } = useTheme();
+  const { reduceMotion } = useGlassAccessibility();
+  const touchGlow = useGlassTouchGlow(reduceMotion, isDark);
   const activeIndex = selectedIndex(value);
   const [segmentWidth, setSegmentWidth] = useState(0);
 
@@ -103,18 +107,36 @@ function IntentSelector({ value, onChange, disabled = false }: IntentSelectorPro
     thumbX.value = withSpring(activeIndex * nextWidth, SPRING);
   };
 
+  const glowAt = useCallback(
+    (x: number, y: number) => {
+      touchGlow.onPressIn(x, y);
+    },
+    [touchGlow]
+  );
+
+  const releaseGlow = useCallback(() => {
+    touchGlow.onPressOut();
+  }, [touchGlow]);
+
   const segmentTapGestures = OPTIONS.map((_, index) =>
     Gesture.Tap()
       .enabled(!disabled)
+      .onBegin((event) => {
+        runOnJS(glowAt)(event.x, event.y);
+      })
       .onEnd(() => {
         runOnJS(selectSegment)(index);
+      })
+      .onFinalize(() => {
+        runOnJS(releaseGlow)();
       })
   );
 
   const panGesture = Gesture.Pan()
     .enabled(!disabled)
     .minDistance(8)
-    .onBegin(() => {
+    .onBegin((event) => {
+      runOnJS(glowAt)(event.x, event.y);
       dragStartX.value = thumbX.value;
       thumbScale.value = withSpring(1.08, PRESS_SPRING);
       runOnJS(triggerHaptic)();
@@ -156,6 +178,7 @@ function IntentSelector({ value, onChange, disabled = false }: IntentSelectorPro
     .onFinalize(() => {
       thumbScale.value = withSpring(1, SPRING);
       thumbStretch.value = withSpring(1, SPRING);
+      runOnJS(releaseGlow)();
     });
 
   const thumbStyle = useAnimatedStyle(() => ({
@@ -196,6 +219,7 @@ function IntentSelector({ value, onChange, disabled = false }: IntentSelectorPro
       >
         <GlassSurface
           liquid
+          touchGlow={touchGlow}
           borderRadius={SIDEBAR_HEADER_BUTTON_SIZE / 2}
           className="rounded-full"
           style={styles.glass}
@@ -212,7 +236,7 @@ function IntentSelector({ value, onChange, disabled = false }: IntentSelectorPro
                 </LiquidGlassSurface>
                 <View
                   pointerEvents="none"
-                  className="absolute inset-0 bg-indigo-500/10 dark:bg-indigo-400/15"
+                  className="absolute inset-0 bg-indigo-400/15"
                 />
               </Animated.View>
 

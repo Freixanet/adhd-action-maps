@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { X } from 'lucide-react-native';
 import { useAppSession } from '../context/AppSessionContext';
 
 export default function IncompleteTransformBanner() {
@@ -11,12 +12,24 @@ export default function IncompleteTransformBanner() {
 
   return (
     <View className="mx-5 mb-3 rounded-2xl border border-amber-300/70 dark:border-amber-500/30 bg-amber-50/90 dark:bg-amber-500/10 px-4 py-3">
-      <Text className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-        Mapa incompleto
-      </Text>
-      <Text className="mt-1 text-sm leading-5 text-amber-800/90 dark:text-amber-200/90">
-        La generación se interrumpió. Puedes reintentar o volver al inicio.
-      </Text>
+      <View className="flex-row items-start gap-3">
+        <View className="flex-1">
+          <Text className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+            Núcleo incompleto
+          </Text>
+          <Text className="mt-1 text-sm leading-5 text-amber-800/90 dark:text-amber-200/90">
+            La generación se interrumpió. Puedes reintentar o volver al inicio.
+          </Text>
+        </View>
+        <Pressable
+          onPress={session.dismissTransformIncomplete}
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar aviso"
+          className="min-h-[44px] min-w-[44px] items-center justify-center rounded-full active:opacity-70"
+        >
+          <X size={16} color="#b45309" />
+        </Pressable>
+      </View>
       <View className="mt-3 flex-row gap-2">
         <Pressable
           onPress={() => {
@@ -40,7 +53,7 @@ export default function IncompleteTransformBanner() {
           accessibilityLabel="Volver al inicio"
         >
           <Text className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-            Nuevo mapa
+            Nuevo Núcleo
           </Text>
         </Pressable>
       </View>

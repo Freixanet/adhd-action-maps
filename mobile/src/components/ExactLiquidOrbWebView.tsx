@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { useColorScheme } from 'nativewind';
 import { WebView } from 'react-native-webview';
+import { BG_BASE } from '@shared/uiTokens';
 
 type ExactLiquidOrbWebViewProps = {
   size?: number;
@@ -74,7 +74,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       position: absolute;
       inset: -15%;
       border-radius: 50%;
-      background: rgba(79, 70, 229, 0.4);
+      background: rgba(139, 143, 245, 0.4);
       filter: blur(16px);
       -webkit-filter: blur(16px);
       animation: ambient-glow 4s ease-in-out infinite;
@@ -95,13 +95,13 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       background: radial-gradient(
         circle at 30% 30%,
         rgba(255, 255, 255, 0.12) 0%,
-        rgba(79, 70, 229, 0.15) 50%,
+        rgba(139, 143, 245, 0.15) 50%,
         rgba(0, 0, 0, 0.65) 100%
       );
       box-shadow:
         inset 4px 4px 12px rgba(255, 255, 255, 0.4),
         inset -8px -8px 24px rgba(0, 0, 0, 0.8),
-        inset 0 0 24px rgba(79, 70, 229, 0.5),
+        inset 0 0 24px rgba(139, 143, 245, 0.5),
         0 10px 30px rgba(0, 0, 0, 0.5);
     }
     .specular {
@@ -127,7 +127,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       filter: blur(6px);
       -webkit-filter: blur(6px);
       z-index: 10;
-      background: conic-gradient(from 0deg, transparent, rgba(129, 140, 248, 0.6) 40%, transparent 60%);
+      background: conic-gradient(from 0deg, transparent, rgba(139, 143, 245, 0.6) 40%, transparent 60%);
       animation: swirl-rotate 4s linear infinite;
       will-change: transform;
       pointer-events: none;
@@ -161,7 +161,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       width: ${Math.round((orbSize / 96) * 112)}px;
       height: ${Math.round((orbSize / 96) * 112)}px;
       border-radius: 50%;
-      background: rgba(165, 180, 252, 0.3);
+      background: rgba(139, 143, 245, 0.3);
       filter: blur(24px);
       -webkit-filter: blur(24px);
       mix-blend-mode: screen;
@@ -174,10 +174,10 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       position: absolute;
       inset: 35%;
       z-index: 10;
-      background: linear-gradient(to top right, #c7d2fe, #6366f1, #1e1a4b);
+      background: linear-gradient(to top right, #c7d2fe, #8B8FF5, #1e1a4b);
       filter: blur(5px);
       -webkit-filter: blur(5px);
-      box-shadow: 0 0 24px rgba(129, 140, 248, 0.6);
+      box-shadow: 0 0 24px rgba(139, 143, 245, 0.6);
       animation: nucleus-morph 3.5s ease-in-out infinite;
       will-change: transform, opacity, border-radius;
       pointer-events: none;
@@ -304,7 +304,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
               class="orbit-1"
               cx="50" cy="50" rx="38" ry="14"
               fill="none"
-              stroke="rgba(165,180,252,0.8)"
+              stroke="rgba(139, 143, 245, 0.8)"
               stroke-width="4"
               stroke-dasharray="60 80"
               stroke-linecap="round"
@@ -315,7 +315,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
               class="orbit-2"
               cx="50" cy="50" rx="38" ry="14"
               fill="none"
-              stroke="rgba(165,180,252,0.8)"
+              stroke="rgba(139, 143, 245, 0.8)"
               stroke-width="4"
               stroke-dasharray="60 80"
               stroke-linecap="round"
@@ -326,7 +326,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
               class="orbit-3"
               cx="50" cy="50" rx="38" ry="14"
               fill="none"
-              stroke="rgba(165,180,252,0.8)"
+              stroke="rgba(139, 143, 245, 0.8)"
               stroke-width="4"
               stroke-dasharray="60 80"
               stroke-linecap="round"
@@ -352,8 +352,7 @@ export default function ExactLiquidOrbWebView({
   reduceMotion = false,
 }: ExactLiquidOrbWebViewProps) {
   const canvas = canvasDimension(size);
-  const { colorScheme } = useColorScheme();
-  const pageBg = colorScheme === 'dark' ? '#181A1F' : '#FAFAFA';
+  const pageBg = BG_BASE;
   const html = useMemo(() => buildOrbHtml(size, reduceMotion, pageBg), [reduceMotion, size, pageBg]);
 
   const commonWebViewProps = {

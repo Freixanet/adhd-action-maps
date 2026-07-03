@@ -1,6 +1,6 @@
 import React from 'react';
-import Svg, { Ellipse, Circle } from 'react-native-svg';
-import { useTheme } from '../context/ThemeContext';
+import Svg, { Circle } from 'react-native-svg';
+import { ACCENT, TEXT_PRIMARY } from '@shared/uiTokens';
 
 type AppIconProps = {
   className?: string;
@@ -9,47 +9,13 @@ type AppIconProps = {
 };
 
 export default function AppIcon({ size = 24, color }: AppIconProps) {
-  const { isDark } = useTheme();
-  const resolvedColor = color ?? (isDark ? '#EDEDED' : '#1A1A1A');
+  const strokeColor = color ?? TEXT_PRIMARY;
+  const fillColor = color ?? ACCENT;
 
   return (
-    <Svg
-      viewBox="0 0 24 24"
-      fill="none"
-      width={size}
-      height={size}
-      aria-hidden={true}
-    >
-      <Ellipse
-        cx="12"
-        cy="12"
-        rx="9.2"
-        ry="3.7"
-        stroke={resolvedColor}
-        strokeWidth="0.95"
-        strokeLinecap="round"
-      />
-      <Ellipse
-        cx="12"
-        cy="12"
-        rx="9.2"
-        ry="3.7"
-        stroke={resolvedColor}
-        strokeWidth="0.95"
-        strokeLinecap="round"
-        transform="rotate(60 12 12)"
-      />
-      <Ellipse
-        cx="12"
-        cy="12"
-        rx="9.2"
-        ry="3.7"
-        stroke={resolvedColor}
-        strokeWidth="0.95"
-        strokeLinecap="round"
-        transform="rotate(120 12 12)"
-      />
-      <Circle cx="12" cy="12" r="2.35" fill={resolvedColor} />
+    <Svg viewBox="0 0 24 24" fill="none" width={size} height={size} aria-hidden={true}>
+      <Circle cx="12" cy="12" r="8.5" stroke={strokeColor} strokeWidth="1.5" />
+      <Circle cx="14.5" cy="10.5" r="2.2" fill={fillColor} />
     </Svg>
   );
 }

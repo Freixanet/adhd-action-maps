@@ -1,0 +1,44 @@
+# Aesthetics audit capture script — Comprensión mobile
+# Run: python3 scripts/ui-audit/idb_helper.py script scripts/ui-audit/aesthetics_capture.txt
+
+# --- Close drawer if open (tap main sheet center-right) ---
+tap-xy:320,400
+wait:1
+
+# --- INPUT: empty light (baseline) ---
+screenshot:/tmp/aest_input_empty_light.png
+wait:0.5
+
+# --- INPUT: attach menu ---
+tap-label~:Adjuntar
+wait:1
+screenshot:/tmp/aest_attach_menu_light.png
+tap-xy:320,400
+wait:0.8
+
+# --- INPUT: model/depth chip sheet ---
+tap-label~:Modo:
+wait:1
+screenshot:/tmp/aest_model_chip_light.png
+tap-xy:201,100
+wait:0.8
+
+# --- INPUT: intent Aplicar ---
+tap-label:Aplicar
+wait:0.8
+screenshot:/tmp/aest_input_aplicar_light.png
+tap-label:Entender
+wait:0.5
+
+# --- LOADING preview (dev button) ---
+tap-label~:Vista previa
+wait:2
+screenshot:/tmp/aest_loading_light.png
+wait:1
+
+# --- Go back to input via drawer history or new map ---
+tap-label~:Abrir navegación
+wait:1.5
+tap-label~:El Ciclo
+wait:2
+screenshot:/tmp/aest_result_intro_light_check.png

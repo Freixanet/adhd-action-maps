@@ -1,11 +1,12 @@
 import React from 'react';
 import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
-import GlassBarShell, { GLASS_BAR_BUTTON_RADIUS } from './GlassBarShell';
+import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
-import { useTheme } from '../context/ThemeContext';
 
 /** Fixed height — Atrás and Siguiente must match without flex growth. */
 export const STEP_FOOTER_BUTTON_HEIGHT = 52;
+const STEP_FOOTER_PRIMARY_BG = '#6A6FE0';
+const STEP_FOOTER_PRIMARY_TEXT = '#FFFFFF';
 
 type StepFooterGlassButtonProps = {
   onPress: () => void;
@@ -15,6 +16,7 @@ type StepFooterGlassButtonProps = {
   iconPlacement?: 'leading' | 'trailing';
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
+  disabled?: boolean;
 };
 
 export default function StepFooterGlassButton({
@@ -25,19 +27,16 @@ export default function StepFooterGlassButton({
   iconPlacement = 'trailing',
   style,
   accessibilityLabel,
+  disabled = false,
 }: StepFooterGlassButtonProps) {
-  const { isDark } = useTheme();
   const isPrimary = variant === 'primary';
 
   const content = (
     <View style={styles.content}>
       {iconPlacement === 'leading' ? icon : null}
       <Text
-        className={
-          isPrimary
-            ? 'text-lg font-bold text-white'
-            : 'text-lg font-bold text-neutral-700 dark:text-neutral-300'
-        }
+        className={isPrimary ? 'text-[17px] font-semibold' : 'text-[17px] font-semibold text-body'}
+        style={isPrimary ? styles.primaryLabel : undefined}
       >
         {label}
       </Text>
@@ -48,24 +47,24 @@ export default function StepFooterGlassButton({
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      style={({ pressed }) => [styles.pressable, style, pressed ? styles.pressed : null]}
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => [
+        styles.pressable,
+        style,
+        disabled ? styles.disabled : null,
+        pressed && !disabled ? styles.pressed : null,
+      ]}
     >
       {isPrimary ? (
-        <GlassBarShell
-          style={styles.shell}
-          tintColor={isDark ? 'rgba(99, 102, 241, 0.52)' : 'rgba(79, 70, 229, 0.46)'}
-          overlayClassName={isDark ? 'bg-indigo-500/32' : 'bg-indigo-600/28'}
-          contentClassName="h-full w-full items-center justify-center"
-        >
-          {content}
-        </GlassBarShell>
+        <View style={[styles.shell, styles.primaryShell]}>{content}</View>
       ) : (
         <GlassSurface
           liquid
           liquidBorder="perimeter"
-          borderRadius={GLASS_BAR_BUTTON_RADIUS}
+          borderRadius={RADII.lg}
           style={[styles.shell, styles.secondaryShell]}
           contentClassName="h-full w-full items-center justify-center"
         >
@@ -84,6 +83,16 @@ const styles = StyleSheet.create({
     width: '100%',
     height: STEP_FOOTER_BUTTON_HEIGHT,
   },
+  primaryShell: {
+    backgroundColor: STEP_FOOTER_PRIMARY_BG,
+    borderRadius: RADII.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryLabel: {
+    color: STEP_FOOTER_PRIMARY_TEXT,
+  },
   content: {
     height: STEP_FOOTER_BUTTON_HEIGHT,
     width: '100%',
@@ -94,11 +103,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   secondaryShell: {
-    borderRadius: GLASS_BAR_BUTTON_RADIUS,
+    borderRadius: RADII.lg,
     overflow: 'hidden',
   },
   pressed: {
     opacity: 0.88,
     transform: [{ scale: 0.98 }],
+  },
+  disabled: {
+    opacity: 0.55,
   },
 });
