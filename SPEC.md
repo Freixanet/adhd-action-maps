@@ -207,18 +207,25 @@ Layout de arriba a abajo:
 
 ### 5.2 Generación inline (home)
 
-Flujo normal en la home (sin pantalla de carga aparte). Un intercambio por generación — no es chat persistente; al abrir el Núcleo o volver a home, la home se limpia.
+Flujo normal en `InputScreen` (sin pantalla de carga aparte). Layout **efímero**: como máximo una burbuja de usuario + un bloque nucleo; al abrir el Núcleo o volver a home queda la home limpia (wordmark + tagline + composer habilitado).
 
-1. **Al enviar:** el composer se oculta/contrae; el contenido enviado aparece como burbuja compacta del usuario (estilo chat, alineada derecha, glass sutil): texto truncado a 2 líneas, o chip de fuente (icono + `PDF · nombre` / dominio del enlace). El teclado se cierra.
-2. **Bloque nucleo (izquierda):** wordmark pequeño `nucleo` como label; línea de fase actual con crossfade 200ms y la misma lógica de fases reales del stream: `Analizando la fuente…` → `Leyendo la fuente…` → `Destilando la idea central…` → `Construyendo tu Núcleo…`; barra de hitos fina (`GenerationProgressBar` + `streamProgressShared`, sin timers).
-3. **Al done:** la línea de fase y la barra se disuelven (fade 200ms) y en su lugar aparece el orbe a 72px (`ExactLiquidOrbWebView`) con entrada scale 0.6→1 spring d26 s300 + haptic light, junto al título del Núcleo y meta `~N min · X pasos`. El orbe pulsa sutilmente (asset).
-4. **Tap** en orbe o título → abre Introducción (`ResultScreen`) con `ContinueExpandTransition`, midiendo el rect del bloque orbe.
-5. **Auto-open:** si el usuario no toca nada en 4s tras el done **y** la app está en foreground, se abre solo con la misma transición. Si la app estaba en background al terminar, no auto-abre (notificación local futura P7).
-6. **Error:** el bloque nucleo muestra `SessionErrorBanner` inline con Reintentar.
-7. **Reduced motion:** fades 150ms, sin springs; auto-open igual.
-8. **Colecciones (fuentes largas):** mantienen pantalla de carga dedicada (`LoadingScreen` / `LoadingState`) con orbe centrado y progreso por parte — ver §6.7.
+**Al enviar:** `Keyboard.dismiss()`. Wordmark + tagline centrales desaparecen (fade 150ms). El composer permanece abajo, vacío y deshabilitado (opacity 0.5, no editable).
 
-Transición a Introducción (5.3): los pasos siguen generándose en background hasta `done`; el CTA inferior de la intro sigue la regla de §5.3 (barra integrada mientras genera, luego habilitado).
+**Área central (ScrollView), de arriba a abajo:**
+
+**Elemento A — Burbuja usuario:** alineada derecha, `maxWidth` 75%, `bg-surface-2`, radius 16, padding 12×16. Contenido: texto → 2 líneas ellipsis `text-body` 15px; link/YouTube → icono 16px `text-secondary` + dominio o «YouTube» + título si existe, 1 línea; PDF/imagen → icono + nombre truncado 24 chars + tamaño (`PDF · guia.pdf · 5,9 MB`). Entrada fade + translateY(8→0) timing 200ms ease-out (sin spring).
+
+**Elemento B — Bloque nucleo** (250ms después de A): alineado izquierda, sin fondo. Fila 1: label `nucleo` (`label` 13px mayúsculas, `text-secondary`). Fila 2: mensaje conversacional aleatorio fijo al montar («Voy con ello.» / «Dame un momento.» / «A ello.»), `text-body` 17px `text-primary`, fade + translateY(6→0) 200ms; no cambia hasta el final. Fila 3 (600ms tras Fila 2 **o** primer evento del stream, lo que ocurra antes): fase actual reutilizando `LoadingPhaseLabel` + lógica real de `loadingGenerationUi` (`Analizando…` → `Leyendo…` → `Destilando…` → `Construyendo…`), crossfade 200ms, `meta` 14px `text-secondary`. Fila 4: `GenerationProgressBar` existente (200px, `streamProgressShared`), 8px bajo Fila 3.
+
+**Al `done` del stream:** Filas 3–4 fade-out 200ms y se desmontan. En el mismo hueco: orbe `ExactLiquidOrbWebView` 72px (scale 0.6→1 + fade, spring d26/s300) + haptic light al montar; a la derecha (gap 12) título `title` 17px semibold máx 2 líneas + meta `~N min · X pasos`. Fila orbe+título = `Pressable` único → `measureInWindow` → `ContinueExpandTransition` hacia `ResultScreen` (igual que chip Continuar).
+
+**Auto-open:** timer 4000ms al montar el orbe. Si expira con `AppState === 'active'` y sin interacción → misma apertura. Si `AppState !== 'active'` al expirar → cancelar definitivamente. Cualquier tap cancela el auto-open.
+
+**Error:** Filas 3–4 sustituidas por `SessionErrorBanner` inline con Reintentar (restaura Filas 3–4). La burbuja no se toca.
+
+**Reduced motion:** entradas fade 150ms sin translate ni spring; auto-open igual.
+
+**Colecciones:** si el analyze propone división y el usuario acepta, usar `LoadingScreen` actual (§6.7). El Alert de división puede aparecer sobre este layout durante «Analizando la fuente…».
 
 
 

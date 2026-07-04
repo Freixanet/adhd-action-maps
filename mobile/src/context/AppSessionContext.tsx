@@ -109,18 +109,27 @@ export type InlineUserTurnSnapshot = {
   pastedText: string | null;
   uploadedFile: {
     name: string;
+    size?: number;
     isPdf?: boolean;
     isImage?: boolean;
     isVideo?: boolean;
   } | null;
   sourceLabel: string;
   urlKind: 'youtube' | 'link' | null;
+  linkTitle: string | null;
+  conversationalMessage: string;
 };
+
+const INLINE_ACK_MESSAGES = ['Voy con ello.', 'Dame un momento.', 'A ello.'] as const;
+
+function pickInlineConversationalMessage(): string {
+  const index = Math.floor(Math.random() * INLINE_ACK_MESSAGES.length);
+  return INLINE_ACK_MESSAGES[index] ?? INLINE_ACK_MESSAGES[0];
+}
 
 const MAX_SYNCED_ENTRIES = 30;
 /** The loading bar animates to 100% (400ms fill) before inline ready / legacy overlay swap. */
 const INTRO_TRANSITION_BAR_MS = 520;
-const INLINE_AUTO_OPEN_MS = 4000;
 const OFFLINE_TRANSFORM_MESSAGE = 'Sin conexión. Comprueba tu red y vuelve a intentarlo.';
 const GENERIC_TRANSFORM_ERROR = 'No se pudo procesar la fuente.';
 
@@ -275,7 +284,8 @@ type AppSessionContextValue = {
   handleSignOut: () => Promise<void>;
   inlineGenerationStatus: InlineGenerationStatus;
   inlineUserTurn: InlineUserTurnSnapshot | null;
-  registerInlineOrbOpenHandler: (handler: (() => void) | null) => void;
+  cancelInlineAutoOpen: () => void;
+  registerInlineAutoOpenCancel: (handler: (() => void) | null) => void;
   openInlineResult: (chipRect: ContinueChipRect) => void;
 };
 
@@ -379,8 +389,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const phaseRef = useRef(phase);
   const inlineGenerationStatusRef = useRef(inlineGenerationStatus);
   const inlineResultEntryIdRef = useRef<string | null>(null);
-  const inlineOrbOpenHandlerRef = useRef<(() => void) | null>(null);
-  const inlineAutoOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inlineAutoOpenCancelRef = useRef<(() => void) | null>(null);
   const inlineReadyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inlineRetryPayloadRef = useRef<{
     body: TransformRequest;
@@ -413,10 +422,15 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   }, [inlineGenerationStatus]);
 
   const clearInlineAutoOpen = useCallback(() => {
-    if (inlineAutoOpenTimeoutRef.current) {
-      clearTimeout(inlineAutoOpenTimeoutRef.current);
-      inlineAutoOpenTimeoutRef.current = null;
-    }
+    inlineAutoOpenCancelRef.current?.();
+  }, []);
+
+  const cancelInlineAutoOpen = useCallback(() => {
+    inlineAutoOpenCancelRef.current?.();
+  }, []);
+
+  const registerInlineAutoOpenCancel = useCallback((handler: (() => void) | null) => {
+    inlineAutoOpenCancelRef.current = handler;
   }, []);
 
   const clearInlineReadyTimeout = useCallback(() => {
@@ -434,20 +448,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     inlineResultEntryIdRef.current = null;
     inlineRetryPayloadRef.current = null;
   }, [clearInlineAutoOpen, clearInlineReadyTimeout]);
-
-  const registerInlineOrbOpenHandler = useCallback((handler: (() => void) | null) => {
-    inlineOrbOpenHandlerRef.current = handler;
-  }, []);
-
-  const scheduleInlineAutoOpen = useCallback(() => {
-    clearInlineAutoOpen();
-    if (AppState.currentState !== 'active') return;
-    inlineAutoOpenTimeoutRef.current = setTimeout(() => {
-      inlineAutoOpenTimeoutRef.current = null;
-      if (inlineGenerationStatusRef.current !== 'ready' || phaseRef.current !== 'input') return;
-      inlineOrbOpenHandlerRef.current?.();
-    }, INLINE_AUTO_OPEN_MS);
-  }, [clearInlineAutoOpen]);
 
   useEffect(() => {
     void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
@@ -1149,6 +1149,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         uploadedFile: uploadedFile
           ? {
               name: uploadedFile.name,
+              size: uploadedFile.size,
               isPdf: uploadedFile.isPdf,
               isImage: uploadedFile.isImage,
               isVideo: uploadedFile.isVideo,
@@ -1161,6 +1162,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
             : urlDetection?.kind === 'link'
               ? 'link'
               : null,
+        linkTitle: null,
+        conversationalMessage: pickInlineConversationalMessage(),
       });
       setInlineGenerationStatus('generating');
       inlineRetryPayloadRef.current = { body, headers, sourceKind };
@@ -1311,7 +1314,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           inlineReadyTimeoutRef.current = null;
           if (inlineGenerationStatusRef.current !== 'generating') return;
           setInlineGenerationStatus('ready');
-          scheduleInlineAutoOpen();
         }, INTRO_TRANSITION_BAR_MS);
       };
 
@@ -1418,8 +1420,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     modelPreference,
     pastedText,
     resetStreamGenerationUi,
-    scheduleInlineAutoOpen,
-    uploadedFile,
     syncCloudEntry,
   ]);
 
@@ -2160,7 +2160,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       handleSignOut,
       inlineGenerationStatus,
       inlineUserTurn,
-      registerInlineOrbOpenHandler,
+      cancelInlineAutoOpen,
+      registerInlineAutoOpenCancel,
       openInlineResult,
     }),
     [
@@ -2258,7 +2259,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       handleSignOut,
       inlineGenerationStatus,
       inlineUserTurn,
-      registerInlineOrbOpenHandler,
+      cancelInlineAutoOpen,
+      registerInlineAutoOpenCancel,
       openInlineResult,
     ]
   );

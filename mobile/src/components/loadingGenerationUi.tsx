@@ -119,18 +119,25 @@ type PhaseLabelProps = {
   text: string;
   reduceMotion: boolean;
   align?: 'left' | 'center';
+  variant?: 'body' | 'meta';
 };
 
-export function LoadingPhaseLabel({ text, reduceMotion, align = 'center' }: PhaseLabelProps) {
+export function LoadingPhaseLabel({
+  text,
+  reduceMotion,
+  align = 'center',
+  variant = 'body',
+}: PhaseLabelProps) {
   const duration = reduceMotion ? 0 : 200;
   const alignClass = align === 'left' ? 'text-left' : 'text-center';
+  const toneClass = variant === 'meta' ? 'text-[14px] text-secondary' : 'text-[15px] text-body';
 
   return (
     <Animated.Text
       key={text}
       entering={duration ? FadeIn.duration(duration) : undefined}
       exiting={duration ? FadeOut.duration(duration) : undefined}
-      className={`text-[15px] text-body ${alignClass}`}
+      className={`${toneClass} ${alignClass}`}
     >
       {text}
     </Animated.Text>
