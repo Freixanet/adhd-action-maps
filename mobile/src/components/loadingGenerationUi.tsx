@@ -107,6 +107,8 @@ const styles = StyleSheet.create({
   },
 });
 
+export const ANALYZING_SOURCE_LABEL = 'Analizando la fuente…';
+
 export const LOADING_PHASE_LABELS = [
   'Leyendo la fuente…',
   'Destilando la idea central…',
@@ -116,17 +118,19 @@ export const LOADING_PHASE_LABELS = [
 type PhaseLabelProps = {
   text: string;
   reduceMotion: boolean;
+  align?: 'left' | 'center';
 };
 
-export function LoadingPhaseLabel({ text, reduceMotion }: PhaseLabelProps) {
+export function LoadingPhaseLabel({ text, reduceMotion, align = 'center' }: PhaseLabelProps) {
   const duration = reduceMotion ? 0 : 200;
+  const alignClass = align === 'left' ? 'text-left' : 'text-center';
 
   return (
     <Animated.Text
       key={text}
       entering={duration ? FadeIn.duration(duration) : undefined}
       exiting={duration ? FadeOut.duration(duration) : undefined}
-      className="text-[15px] text-center text-body"
+      className={`text-[15px] text-body ${alignClass}`}
     >
       {text}
     </Animated.Text>

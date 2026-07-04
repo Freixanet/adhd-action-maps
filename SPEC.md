@@ -2,8 +2,6 @@
 
 Versión 1.1 · Este documento es la única fuente de verdad. Si el código contradice este documento, el código está mal.
 
-
-
 ---
 
 ## CÓMO USAR ESTE DOCUMENTO (instrucciones para Marc, no para el agente)
@@ -27,15 +25,17 @@ Versión 1.1 · Este documento es la única fuente de verdad. Si el código cont
 7. **Verificación:** al terminar, ejecuta build/compilación (`npm run lint` en `mobile/` y en la raíz; build de web si la fase toca `src/`). Si falla, corrige antes de reportar. Reporta: archivos tocados + qué criterio de aceptación cumple cada cambio. Nada más.
 8. **Todos los strings de UI en español de España.** Tono: directo, sin exclamaciones, sin emojis en la UI.
 
+
+
 ### 1.5 Dependencias aprobadas (excepciones al punto 5)
 
 El punto 5 prohíbe dependencias nuevas no listadas en la fase. Las siguientes están aprobadas explícitamente como excepción y pueden usarse en cualquier fase:
 
-- **Menús nativos (`@react-native-menu/menu`):** para selectores que abren menú contextual/desplegable nativo anclado al disparador (estilo Grok/Gemini), con blur del sistema, títulos + subtítulos (iOS 15+) e indicador de selección nativo (`state`). Usa `UIMenu` de UIKit (sin SwiftUI). Uso actual: chip de profundidad en el composer (`DepthMenu.tsx`). Requiere dev client (no Expo Go) y rebuild nativo tras instalar. <!-- adaptado: se descartó zeego + react-native-ios-context-menu porque react-native-ios-utilities fuerza enlace directo con SwiftUICore, rechazado por el SDK de iOS 26 en simulador x86_64 (Mac Intel). -->
-
-
+- **Menús nativos (**`@react-native-menu/menu`**):** para selectores que abren menú contextual/desplegable nativo anclado al disparador (estilo Grok/Gemini), con blur del sistema, títulos + subtítulos (iOS 15+) e indicador de selección nativo (`state`). Usa `UIMenu` de UIKit (sin SwiftUI). Uso actual: chip de profundidad en el composer (`DepthMenu.tsx`). Requiere dev client (no Expo Go) y rebuild nativo tras instalar. 
 
 ---
+
+
 
 ## 2. CONTEXTO DE PRODUCTO (leer, no implementar)
 
@@ -51,13 +51,15 @@ Principios de producto que gobiernan toda decisión:
 
 Renombrado global: el término "mapa" se sustituye por **"Núcleo"** (plural "Núcleos") en TODA la UI, notificaciones y exports. "Nuevo mapa" → "Nuevo Núcleo". "Mapa completado" → "Núcleo completado". "Completar mapa" → "Completar".
 
-
-
 La variante **Clásica** (`mobile/src/screens/classic/`, `src/ClassicApp.tsx`) está descatalogada: se retira del selector de Ajustes y no recibe ningún trabajo de este backlog.
 
 ---
 
+
+
 ## 3. DESIGN SYSTEM (valores exactos, sin desviación)
+
+
 
 ### 3.1 Color
 
@@ -79,8 +81,6 @@ La variante **Clásica** (`mobile/src/screens/classic/`, `src/ClassicApp.tsx`) e
 
 
 Reglas: los acentos semánticos SOLO se usan en (a) el label del bloque y (b) un tinte de fondo del 5%. El fondo base del bloque es siempre `bg-surface`. Ningún color fuera de esta tabla en toda la app. Contraste mínimo: `text-secondary` sobre `bg-base` debe pasar WCAG AA (4.5:1) — los valores dados ya lo cumplen, no los oscurezcas.
-
-
 
 ### 3.2 Tipografía
 
@@ -125,9 +125,9 @@ Toda la escala tipográfica escala con Dynamic Type hasta XL.
 - Respetar `prefers-reduced-motion`: si activo, sustituir todo por fades de 150ms.
 - Nada más se anima. Prohibidas animaciones decorativas adicionales.
 
-
-
 ---
+
+
 
 ## 4. MODELO DE DATOS (referencia para todas las fases)
 
@@ -174,9 +174,9 @@ enum Categoria: DesarrolloPersonal | IATecnologia | Negocio | Productividad |
 
 Categorías: taxonomía CERRADA de 8. El usuario no puede crear categorías. La clasificación la hace el LLM en generación (ver 6.2). Override manual permitido (ver 5.6).
 
-
-
 ---
+
+
 
 ## 5. ESPECIFICACIÓN POR PANTALLA
 
@@ -205,15 +205,20 @@ Layout de arriba a abajo:
 
 
 
-### 5.2 Generación (loading)
+### 5.2 Generación inline (home)
 
-Layout centrado vertical (una columna):
-1. Orbe animado a 72px (`ExactLiquidOrbWebView`, glifo según 3.4), centrado.
-2. A 24px bajo el orbe: label de fase en `text-body` 15px, crossfade 200ms entre fases reales del stream: "Leyendo la fuente…" (request enviado) → "Destilando la idea central…" (primer partial con `coreIdea`) → "Construyendo tu Núcleo…" (partials con `steps`). Sin timers ni puntos estilo Apple.
-3. A 16px: barra de progreso fina (4px, radius 2, ancho 200px, track `surface-2`, fill `accent`) ligada a hitos reales: 15% al enviar, 45% al primer chunk del LLM, 70% con `coreIdea` parseada, 90% con primer `step`, 100% solo al `done`. Entre hitos avanza lentamente hacia el siguiente tope (nunca lo cruza ni retrocede). Con `prefers-reduced-motion`: saltos discretos sin animación.
-4. Transición a Introducción (5.3): cuando la barra alcanza el 100% (intro lista: `coreIdea`, `sourceMetadata`, `tldr` ≥3), crossfade 300ms de la pantalla de carga a la Introducción. Los pasos siguen generándose en background.
-5. Mientras el stream no haya terminado, el CTA inferior de la intro muestra "Generando pasos…" deshabilitado con la misma barra de progreso fina integrada encima del botón (2px); al `done` pasa a "Empezar a leer →" habilitado con haptic light.
-6. Si la generación falla: banner de error según §7.3 / `SessionErrorBanner` + botón "Reintentar". Nunca pantalla en blanco.
+Flujo normal en la home (sin pantalla de carga aparte). Un intercambio por generación — no es chat persistente; al abrir el Núcleo o volver a home, la home se limpia.
+
+1. **Al enviar:** el composer se oculta/contrae; el contenido enviado aparece como burbuja compacta del usuario (estilo chat, alineada derecha, glass sutil): texto truncado a 2 líneas, o chip de fuente (icono + `PDF · nombre` / dominio del enlace). El teclado se cierra.
+2. **Bloque nucleo (izquierda):** wordmark pequeño `nucleo` como label; línea de fase actual con crossfade 200ms y la misma lógica de fases reales del stream: `Analizando la fuente…` → `Leyendo la fuente…` → `Destilando la idea central…` → `Construyendo tu Núcleo…`; barra de hitos fina (`GenerationProgressBar` + `streamProgressShared`, sin timers).
+3. **Al done:** la línea de fase y la barra se disuelven (fade 200ms) y en su lugar aparece el orbe a 72px (`ExactLiquidOrbWebView`) con entrada scale 0.6→1 spring d26 s300 + haptic light, junto al título del Núcleo y meta `~N min · X pasos`. El orbe pulsa sutilmente (asset).
+4. **Tap** en orbe o título → abre Introducción (`ResultScreen`) con `ContinueExpandTransition`, midiendo el rect del bloque orbe.
+5. **Auto-open:** si el usuario no toca nada en 4s tras el done **y** la app está en foreground, se abre solo con la misma transición. Si la app estaba en background al terminar, no auto-abre (notificación local futura P7).
+6. **Error:** el bloque nucleo muestra `SessionErrorBanner` inline con Reintentar.
+7. **Reduced motion:** fades 150ms, sin springs; auto-open igual.
+8. **Colecciones (fuentes largas):** mantienen pantalla de carga dedicada (`LoadingScreen` / `LoadingState`) con orbe centrado y progreso por parte — ver §6.7.
+
+Transición a Introducción (5.3): los pasos siguen generándose en background hasta `done`; el CTA inferior de la intro sigue la regla de §5.3 (barra integrada mientras genera, luego habilitado).
 
 
 
@@ -271,23 +276,21 @@ Como el diseño actual (correcto), con cambios:
 
 Pantalla modal: título "nucleo pro" → 4 beneficios en lista con check `accent` (Núcleos ilimitados / Profundidad Profunda / Preguntar sobre la fuente / Ficha PDF sin marca de agua + export HTML) → precio mensual y anual (anual destacado con "2 meses gratis"; referencia de producto: 6,99 €/mes y 59,99 €/año — los IDs se crean en App Store Connect en la fase de monetización; la app lee importes de RevenueCat, nunca hardcodea) → CTA "Probar 7 días gratis" → fila `meta` con tres links: "Restaurar compra · Términos · Privacidad" (obligatorio App Store 3.1.2; los dos últimos abren web). Bajo el CTA, texto `meta`: precio, duración y "se renueva automáticamente, cancela cuando quieras". Sin timers falsos ni dark patterns.
 
-
-
 ---
 
+
+
 ## 6. FUNCIONALIDADES TRANSVERSALES
+
+
 
 ### 6.1 Pipeline de generación
 
 Entrada: fuente + modo + profundidad. Salida: objeto `Nucleo` completo (sección 4) vía LLM con salida JSON estricta validada contra el esquema. Si el JSON no valida: 1 reintento con el error incluido en el prompt; si vuelve a fallar, error de 5.2. Reglas del prompt de generación (P1): prohibido añadir información externa a la fuente; los vacíos se declaran en `fuenteDetectada.limites`; `en60segundos` exactamente 3 items; `paraRecordar` 3-4 bullets; nº de pasos según profundidad: rápido 3, estándar 4-6, profundo 7-9. **Máximo absoluto 9 pasos en toda profundidad.** Si el Núcleo resultante tiene ≥6 pasos, el LLM devuelve además `secciones` (2-3 grupos con título) para el mini-completado de 5.4.8. Fuentes que pidan más de 9 pasos: ver Colecciones (6.7).
 
-
-
 ### 6.2 Categorización automática
 
 En la misma llamada de generación, el LLM asigna `categoria` eligiendo OBLIGATORIAMENTE una de las 8 del enum (incluir el enum literal en el prompt). Si devuelve otra cosa, mapear a `Otros`.
-
-
 
 ### 6.3 Export ficha PDF — GRATIS
 
@@ -301,8 +304,6 @@ Una página. Contenido: wordmark nucleo (esquina sup.) → título → idea cent
 ### 6.4 Share Extension (captura externa)
 
 Target de Share Extension iOS que acepta URL, texto y PDF desde cualquier app. Flujo: usuario comparte → extensión guarda la fuente en cola compartida (App Group) con modo/profundidad por defecto → la app procesa al abrirse o en background si es posible → notificación local "Tu Núcleo sobre [título] está listo". La extensión muestra solo confirmación mínima: "Añadido a nucleo ✓" y se cierra. Cero configuración dentro de la extensión.
-
-
 
 ### 6.5 Monetización (RevenueCat)
 
@@ -330,6 +331,8 @@ Target de Share Extension iOS que acepta URL, texto y PDF desde cualquier app. F
 
 ---
 
+
+
 ## 7. REGLAS DE CALIDAD GLOBALES
 
 1. Contraste AA en todo texto (verificar `text-secondary` en cada fondo).
@@ -341,9 +344,9 @@ Target de Share Extension iOS que acepta URL, texto y PDF desde cualquier app. F
 7. **Toda la escala tipográfica escala con Dynamic Type hasta XL.**
 8. **Privacidad y residencia de datos:** almacenamiento en UE (Supabase, AWS eu-west). Las fuentes se envían a Google Gemini API únicamente para generar el Núcleo; la política de privacidad declara que no se usan para entrenamiento (condición garantizada con tier de API de pago en producción — bloqueante pre-lanzamiento en PLAN.md P10).
 
-
-
 ---
+
+
 
 ## 8. FUERA DE ALCANCE (prohibido implementar aunque parezca buena idea)
 
@@ -353,9 +356,9 @@ Reservado para **v1.1** (no implementar ahora): export HTML autocontenido (solo 
 
 Widget iOS, App Intents/Siri, universal links con dominio, layout iPad: descartados para v1 por coste/impacto (auditoría jul 2026). Localización EN ya estaba fuera; se reafirma.
 
-
-
 ---
+
+
 
 ## 9. BACKLOG POR FASES (una fase = una sesión)
 
@@ -460,6 +463,8 @@ Alcance: `prefers-reduced-motion` en todas las animaciones de 3.5; Dynamic Type 
 Aceptación: checklist de sección 7 completa al 100%, verificada pantalla por pantalla — *[PARCIAL] reduced-motion ya cubre el glass (useGlassAccessibility); offline parcial (@react-native-community/netinfo instalado); Dynamic Type pendiente (tamaños px fijos hoy)*.
 
 ---
+
+
 
 ## 10. PLANTILLAS DE INSTRUCCIÓN PARA SESIONES (copiar/pegar)
 

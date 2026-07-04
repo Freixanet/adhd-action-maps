@@ -15,6 +15,7 @@ import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { File, X } from 'lucide-react-native';
+import InlineGenerationThread from '../components/InlineGenerationThread';
 import AttachMenu from '../components/AttachMenu';
 import ComposerDismissScroll from '../components/ComposerDismissScroll';
 import ComposerSendButton from '../components/ComposerSendButton';
@@ -60,6 +61,7 @@ export default function InputScreen() {
   const { height: windowHeight } = useWindowDimensions();
   const maxComposerInputHeight = Math.round(windowHeight * COMPOSER_MAX_VIEWPORT_RATIO);
   const canSend = session.canSubmit && session.phase !== 'loading';
+  const inlineActive = session.inlineGenerationStatus !== 'idle';
   const navIconColor = isDark ? '#d4d4d4' : '#525252';
   const mutedIcon = isDark ? '#a3a3a3' : '#737373';
   const [composerHeight, setComposerHeight] = useState(176);
@@ -74,7 +76,11 @@ export default function InputScreen() {
 
   const isFirstUse = !session.hasAnyNucleo;
   const showHero =
-    !session.canSubmit && !composerFocused && !session.uploadedFile && !session.pastedText;
+    !inlineActive &&
+    !session.canSubmit &&
+    !composerFocused &&
+    !session.uploadedFile &&
+    !session.pastedText;
 
   const inputPlaceholder =
     session.uploadedFile || session.hasAnyNucleo || examplesFinished
@@ -170,12 +176,12 @@ export default function InputScreen() {
           <IntentSelector
             value={session.intent}
             onChange={session.setIntent}
-            disabled={session.phase === 'loading'}
+            disabled={session.phase === 'loading' || inlineActive}
           />
           <View className="w-9" />
         </View>
 
-        <SessionErrorBanner />
+        {session.inlineGenerationStatus === 'idle' ? <SessionErrorBanner /> : null}
 
         <Animated.View style={[{ flex: 1 }, keyboardLiftStyle]}>
           <ScrollView
@@ -185,8 +191,16 @@ export default function InputScreen() {
             scrollEnabled={!menusBlockScroll}
             alwaysBounceVertical={Platform.OS === 'ios' && keyboardVisible}
             contentContainerClassName="px-1"
-            contentContainerStyle={{ flexGrow: 1, paddingBottom: composerHeight + 16 }}
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingBottom: inlineActive ? 24 : composerHeight + 16,
+            }}
           >
+            {inlineActive ? (
+              <View className="w-full pt-2">
+                <InlineGenerationThread />
+              </View>
+            ) : null}
             <KeyboardDismissBackdrop className="w-full flex-1 items-center justify-center">
               <View className="w-full items-center px-2" style={{ marginTop: showHero ? -24 : 0 }}>
                 {showHero ? (
@@ -261,6 +275,7 @@ export default function InputScreen() {
           </ScrollView>
         </Animated.View>
 
+        {inlineActive ? null : (
         <ComposerDock onHeightChange={setComposerHeight}>
           {session.continueEntry ? (
             <Animated.View style={continueChipFadeStyle} className="mb-3 w-full items-center">
@@ -354,18 +369,19 @@ export default function InputScreen() {
                     onPickCamera={() => void session.handlePickCamera()}
                     onPickImage={() => void session.handlePickImage()}
                     onPickFile={() => void session.handlePickFile()}
-                    disabled={session.phase === 'loading'}
+                    disabled={session.phase === 'loading' || inlineActive}
                     darkSurface={isDark}
                   />
                   <ModelChip
                     value={session.depthPreference}
                     onChange={session.setDepthPreference}
                     onOpenPaywall={session.openPaywall}
-                    disabled={session.phase === 'loading'}
+                    disabled={session.phase === 'loading' || inlineActive}
                   />
                 </View>
                 <ComposerSendButton
                   onPress={() => {
+                    Keyboard.dismiss();
                     void session.handleTransform();
                   }}
                   disabled={!canSend}
@@ -375,6 +391,7 @@ export default function InputScreen() {
             </GestureDetector>
           </ComposerDismissScroll>
         </ComposerDock>
+        )}
       </View>
     </SafeAreaView>
     </ComposerKeyboardProvider>

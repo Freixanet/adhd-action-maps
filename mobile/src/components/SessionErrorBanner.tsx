@@ -16,9 +16,10 @@ const OFFLINE_MESSAGE = 'Sin conexión. Comprueba tu red y vuelve a intentarlo.'
 
 type SessionErrorBannerProps = {
   className?: string;
+  inline?: boolean;
 };
 
-export default function SessionErrorBanner({ className = '' }: SessionErrorBannerProps) {
+export default function SessionErrorBanner({ className = '', inline = false }: SessionErrorBannerProps) {
   const session = useAppSession();
   const { isOffline } = useNetworkStatus();
   const shakeX = useSharedValue(0);
@@ -41,8 +42,14 @@ export default function SessionErrorBanner({ className = '' }: SessionErrorBanne
     return null;
   }
 
+  if (!inline && session.inlineGenerationStatus !== 'idle' && session.inlineGenerationStatus !== 'error') {
+    return null;
+  }
+
   const displayMessage = isOffline ? OFFLINE_MESSAGE : session.error;
-  const canRetry = session.phase === 'input' && session.canSubmit;
+  const canRetry = inline
+    ? session.inlineGenerationStatus === 'error'
+    : session.phase === 'input' && session.canSubmit;
 
   const handleRetry = () => {
     if (isOffline) {

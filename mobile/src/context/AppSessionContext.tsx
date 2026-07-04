@@ -76,7 +76,6 @@ import {
 import { shouldCollapsePastedText } from '../logic/composerText';
 import { DEMO_NUCLEO_DATA, DEMO_NUCLEO_ID } from '../data/demoNucleo';
 import {
-  isIntroReadyForTransition,
   resolveStreamLoadPhase,
   STREAM_PROGRESS_MILESTONES,
   type StreamLoadPhase,
@@ -95,6 +94,7 @@ import { isCloudSyncConfigured, supabase } from '../logic/supabase';
 import { fetchWithTimeout } from '../logic/network';
 import {
   CONTINUE_IMMEDIATE_BACK_MS,
+  buildContinueChipLabel,
   type ContinueChipRect,
   type ContinueTransitionSnapshot,
 } from '../logic/continueTransition';
@@ -102,9 +102,25 @@ import { debugTransitionLog } from '../logic/debugTransitionLog';
 
 export type AppPhase = 'input' | 'loading' | 'result';
 
+export type InlineGenerationStatus = 'idle' | 'generating' | 'ready' | 'error';
+
+export type InlineUserTurnSnapshot = {
+  text: string | null;
+  pastedText: string | null;
+  uploadedFile: {
+    name: string;
+    isPdf?: boolean;
+    isImage?: boolean;
+    isVideo?: boolean;
+  } | null;
+  sourceLabel: string;
+  urlKind: 'youtube' | 'link' | null;
+};
+
 const MAX_SYNCED_ENTRIES = 30;
-/** The loading bar animates to 100% (400ms fill) before the phase swaps. */
+/** The loading bar animates to 100% (400ms fill) before inline ready / legacy overlay swap. */
 const INTRO_TRANSITION_BAR_MS = 520;
+const INLINE_AUTO_OPEN_MS = 4000;
 const OFFLINE_TRANSFORM_MESSAGE = 'Sin conexión. Comprueba tu red y vuelve a intentarlo.';
 const GENERIC_TRANSFORM_ERROR = 'No se pudo procesar la fuente.';
 
@@ -246,6 +262,7 @@ type AppSessionContextValue = {
   handleDownloadPdfForEntry: (entryId: string) => Promise<void>;
   enterCompletedViewAll: () => void;
   isStreamGenerating: boolean;
+  isAnalyzingSource: boolean;
   collectionGenerationProgress: { completed: number; total: number } | null;
   streamLoadPhase: StreamLoadPhase;
   streamProgressShared: SharedValue<number>;
@@ -256,6 +273,10 @@ type AppSessionContextValue = {
   dismissTransformIncomplete: () => void;
   persistComposerDraft: () => void;
   handleSignOut: () => Promise<void>;
+  inlineGenerationStatus: InlineGenerationStatus;
+  inlineUserTurn: InlineUserTurnSnapshot | null;
+  registerInlineOrbOpenHandler: (handler: (() => void) | null) => void;
+  openInlineResult: (chipRect: ContinueChipRect) => void;
 };
 
 const AppSessionContext = createContext<AppSessionContextValue | null>(null);
@@ -341,6 +362,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [essentialsReview, setEssentialsReview] = useState(false);
   const [sectionCompleteCue, setSectionCompleteCue] = useState<number | null>(null);
   const [isStreamGenerating, setIsStreamGenerating] = useState(false);
+  const [isAnalyzingSource, setIsAnalyzingSource] = useState(false);
   const [collectionGenerationProgress, setCollectionGenerationProgress] = useState<{
     completed: number;
     total: number;
@@ -349,10 +371,22 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const streamProgressShared = useSharedValue(0);
   const [loadingFadeOverlayActive, setLoadingFadeOverlayActive] = useState(false);
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
+  const [inlineGenerationStatus, setInlineGenerationStatus] = useState<InlineGenerationStatus>('idle');
+  const [inlineUserTurn, setInlineUserTurn] = useState<InlineUserTurnSnapshot | null>(null);
 
   const streamProgressCapRef = useRef(0);
   const reduceMotionRef = useRef(false);
   const phaseRef = useRef(phase);
+  const inlineGenerationStatusRef = useRef(inlineGenerationStatus);
+  const inlineResultEntryIdRef = useRef<string | null>(null);
+  const inlineOrbOpenHandlerRef = useRef<(() => void) | null>(null);
+  const inlineAutoOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inlineReadyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inlineRetryPayloadRef = useRef<{
+    body: TransformRequest;
+    headers?: Record<string, string>;
+    sourceKind: TransformSourceKind;
+  } | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const transformCancelledRef = useRef(false);
@@ -373,6 +407,47 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       introTransitionTimeoutRef.current = null;
     }
   }, [phase]);
+
+  useEffect(() => {
+    inlineGenerationStatusRef.current = inlineGenerationStatus;
+  }, [inlineGenerationStatus]);
+
+  const clearInlineAutoOpen = useCallback(() => {
+    if (inlineAutoOpenTimeoutRef.current) {
+      clearTimeout(inlineAutoOpenTimeoutRef.current);
+      inlineAutoOpenTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearInlineReadyTimeout = useCallback(() => {
+    if (inlineReadyTimeoutRef.current) {
+      clearTimeout(inlineReadyTimeoutRef.current);
+      inlineReadyTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearInlineGeneration = useCallback(() => {
+    clearInlineAutoOpen();
+    clearInlineReadyTimeout();
+    setInlineGenerationStatus('idle');
+    setInlineUserTurn(null);
+    inlineResultEntryIdRef.current = null;
+    inlineRetryPayloadRef.current = null;
+  }, [clearInlineAutoOpen, clearInlineReadyTimeout]);
+
+  const registerInlineOrbOpenHandler = useCallback((handler: (() => void) | null) => {
+    inlineOrbOpenHandlerRef.current = handler;
+  }, []);
+
+  const scheduleInlineAutoOpen = useCallback(() => {
+    clearInlineAutoOpen();
+    if (AppState.currentState !== 'active') return;
+    inlineAutoOpenTimeoutRef.current = setTimeout(() => {
+      inlineAutoOpenTimeoutRef.current = null;
+      if (inlineGenerationStatusRef.current !== 'ready' || phaseRef.current !== 'input') return;
+      inlineOrbOpenHandlerRef.current?.();
+    }, INLINE_AUTO_OPEN_MS);
+  }, [clearInlineAutoOpen]);
 
   useEffect(() => {
     void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
@@ -399,7 +474,14 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   useEffect(() => {
-    if (!isStreamGenerating && phase !== 'loading' && !loadingFadeOverlayActive) return;
+    if (
+      !isStreamGenerating &&
+      phase !== 'loading' &&
+      !loadingFadeOverlayActive &&
+      inlineGenerationStatus !== 'generating'
+    ) {
+      return;
+    }
 
     const interval = setInterval(() => {
       if (reduceMotionRef.current) return;
@@ -411,7 +493,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     }, 80);
 
     return () => clearInterval(interval);
-  }, [isStreamGenerating, loadingFadeOverlayActive, phase, streamProgressShared]);
+  }, [inlineGenerationStatus, isStreamGenerating, loadingFadeOverlayActive, phase, streamProgressShared]);
 
   const getPendingDeletes = useCallback((email: string): string[] => {
     try {
@@ -470,7 +552,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
   const totalSteps = data?.steps.length ?? 0;
   const composerBodyText = pastedText?.trim() ?? inputText.trim();
-  const canSubmit = Boolean(composerBodyText || uploadedFile);
+  const canSubmit =
+    inlineGenerationStatus === 'idle' && Boolean(composerBodyText || uploadedFile);
   const hideTextInput = Boolean(uploadedFile?.isPdf || uploadedFile?.isVideo);
   const composerPlaceholder = uploadedFile?.isImage
     ? 'Añade una indicación (opcional)…'
@@ -828,18 +911,29 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const failTransform = useCallback(
     (message: string, partialShown: boolean, sourceKind: TransformSourceKind, offline = false) => {
       console.error('Transform failed:', { message, sourceKind, offline });
+      clearInlineReadyTimeout();
+      clearInlineAutoOpen();
       if (partialShown) {
         setTransformIncomplete(true);
+        clearInlineGeneration();
         setPhase('result');
       } else {
-        setError(offline ? OFFLINE_TRANSFORM_MESSAGE : GENERIC_TRANSFORM_ERROR);
+        const userMessage = offline
+          ? OFFLINE_TRANSFORM_MESSAGE
+          : message.trim() &&
+              message !== 'Failed to process content' &&
+              message !== 'No se pudo procesar el contenido.'
+            ? message
+            : GENERIC_TRANSFORM_ERROR;
+        setError(userMessage);
         setTransformIncomplete(false);
+        setInlineGenerationStatus('error');
         setPhase('input');
       }
 
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     },
-    []
+    [clearInlineAutoOpen, clearInlineGeneration, clearInlineReadyTimeout]
   );
 
   const handleCancelLoading = useCallback(() => {
@@ -847,20 +941,25 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setIsStreamGenerating(false);
+    setIsAnalyzingSource(false);
     setCollectionGenerationProgress(null);
     resetStreamGenerationUi();
+    clearInlineAutoOpen();
+    clearInlineReadyTimeout();
 
     if (partialShownRef.current) {
       setTransformIncomplete(true);
+      clearInlineGeneration();
       setPhase('result');
     } else {
       setData(null);
       setTransformIncomplete(false);
+      clearInlineGeneration();
       setPhase('input');
     }
 
     partialShownRef.current = false;
-  }, [resetStreamGenerationUi]);
+  }, [clearInlineAutoOpen, clearInlineGeneration, clearInlineReadyTimeout, resetStreamGenerationUi]);
 
   const handleAttachmentError = useCallback((err: unknown) => {
     const message = err instanceof Error ? err.message : 'No se pudo adjuntar el archivo.';
@@ -1028,24 +1127,81 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       : undefined;
     const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
 
-    let collectionPlan: SourceAnalysisResponse | null = null;
-    try {
-      const analysis = await analyzeTransformSource(body, headers);
-      if (analysis.shouldProposeSplit && analysis.partCount >= 2) {
-        const choice = await promptCollectionSplit(analysis.partCount);
-        if (choice === 'split') {
-          collectionPlan = analysis;
-        } else {
-          body = { ...body, singleNucleoMode: true };
-        }
-      }
-    } catch {
-      // Si el análisis falla, continúa con transform normal.
+    const isInlineRetry =
+      inlineGenerationStatusRef.current === 'error' && inlineRetryPayloadRef.current != null;
+
+    if (isInlineRetry && inlineRetryPayloadRef.current) {
+      setError(null);
+      setInlineGenerationStatus('generating');
+      body = { ...inlineRetryPayloadRef.current.body, mapId: generateMapId() };
+      inlineRetryPayloadRef.current = {
+        ...inlineRetryPayloadRef.current,
+        body,
+      };
+    } else {
+      clearInlineGeneration();
+      clearInlineAutoOpen();
+      clearInlineReadyTimeout();
+
+      setInlineUserTurn({
+        text: inputText.trim() || null,
+        pastedText,
+        uploadedFile: uploadedFile
+          ? {
+              name: uploadedFile.name,
+              isPdf: uploadedFile.isPdf,
+              isImage: uploadedFile.isImage,
+              isVideo: uploadedFile.isVideo,
+            }
+          : null,
+        sourceLabel,
+        urlKind:
+          urlDetection?.kind === 'youtube'
+            ? 'youtube'
+            : urlDetection?.kind === 'link'
+              ? 'link'
+              : null,
+      });
+      setInlineGenerationStatus('generating');
+      inlineRetryPayloadRef.current = { body, headers, sourceKind };
+
+      setInputText('');
+      inputTextRef.current = '';
+      setPastedText(null);
+      setUploadedFile(null);
     }
 
-    setPhase('loading');
     transformCancelledRef.current = false;
     partialShownRef.current = false;
+    setIsAnalyzingSource(true);
+    streamProgressShared.value = 0;
+
+    let collectionPlan: SourceAnalysisResponse | null = null;
+    if (!isInlineRetry) {
+      try {
+        const analysis = await analyzeTransformSource(body, headers);
+        if (analysis.shouldProposeSplit && analysis.partCount >= 2) {
+          const choice = await promptCollectionSplit(analysis.partCount);
+          if (choice === 'split') {
+            collectionPlan = analysis;
+          } else {
+            body = { ...body, singleNucleoMode: true };
+            inlineRetryPayloadRef.current = {
+              body,
+              headers,
+              sourceKind,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('[analyze] failed', err);
+      } finally {
+        setIsAnalyzingSource(false);
+      }
+    } else {
+      setIsAnalyzingSource(false);
+    }
+
     resetStreamGenerationUi();
     bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[0]);
     setStreamLoadPhase(0);
@@ -1054,9 +1210,12 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     const controller = new AbortController();
     abortControllerRef.current = controller;
     let hasShownPartial = false;
+    const activeMapId = body.mapId ?? mapId;
 
     try {
       if (collectionPlan) {
+        clearInlineGeneration();
+        setPhase('loading');
         const collectionId = generateMapId();
         let store = createCollection(historyStoreRef.current, {
           id: collectionId,
@@ -1146,6 +1305,16 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
       setIsStreamGenerating(true);
 
+      const markInlineReady = () => {
+        if (inlineReadyTimeoutRef.current) return;
+        inlineReadyTimeoutRef.current = setTimeout(() => {
+          inlineReadyTimeoutRef.current = null;
+          if (inlineGenerationStatusRef.current !== 'generating') return;
+          setInlineGenerationStatus('ready');
+          scheduleInlineAutoOpen();
+        }, INTRO_TRANSITION_BAR_MS);
+      };
+
       const saveCompletedMap = (normalized: ActionMapData) => {
         const session = {
           data: normalized,
@@ -1155,10 +1324,15 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         };
 
         const currentStore = historyStoreRef.current;
-        const updatedStore = createEntry(currentStore, session, toSourceType(body.type), mapId);
+        const updatedStore = createEntry(
+          currentStore,
+          session,
+          toSourceType(body.type),
+          activeMapId
+        );
         commitHistoryStore(updatedStore);
 
-        const createdEntry = updatedStore.entries.find((item) => item.id === mapId);
+        const createdEntry = updatedStore.entries.find((item) => item.id === activeMapId);
         if (createdEntry) {
           syncCloudEntry(createdEntry);
         }
@@ -1167,15 +1341,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setCurrentStep(0);
         setIsComplete(false);
         setViewAll(false);
-        setUploadedFile(null);
-        setPastedText(null);
-        setInputText('');
-        inputTextRef.current = '';
-        // A pending intro transition owns the phase swap (bar must reach 100%
-        // on screen first) — don't jump ahead of it.
-        if (phaseRef.current !== 'result' && !introTransitionTimeoutRef.current) {
-          setPhase('result');
-        }
+        inlineResultEntryIdRef.current = activeMapId;
         setTransformIncomplete(false);
       };
 
@@ -1189,29 +1355,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         if ((partialMap.steps?.length ?? 0) > 0) {
           bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[3]);
         }
-
-        if (
-          !isIntroReadyForTransition(partialMap) ||
-          phaseRef.current !== 'loading' ||
-          // Already scheduled — later partials must not push the swap back.
-          introTransitionTimeoutRef.current
-        ) {
-          return;
-        }
-
-        hasShownPartial = true;
-        partialShownRef.current = true;
-        setCurrentStep(0);
-        setIsComplete(false);
-        setViewAll(false);
-        bumpStreamProgressCap(100);
-        streamProgressShared.value = 100;
-        introTransitionTimeoutRef.current = setTimeout(() => {
-          introTransitionTimeoutRef.current = null;
-          if (phaseRef.current !== 'loading') return;
-          setLoadingFadeOverlayActive(true);
-          setPhase('result');
-        }, INTRO_TRANSITION_BAR_MS);
       };
 
       await fetchTransformWithProgress({
@@ -1231,23 +1374,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           onDone: (finalMap) => {
             bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[4]);
             streamProgressShared.value = STREAM_PROGRESS_MILESTONES[4];
-            // The result appears only after the bar visually reaches 100%.
-            // If a partial already scheduled the swap, keep that schedule.
-            if (phaseRef.current === 'loading' && !introTransitionTimeoutRef.current) {
-              hasShownPartial = true;
-              partialShownRef.current = true;
-              setCurrentStep(0);
-              setIsComplete(false);
-              setViewAll(false);
-              introTransitionTimeoutRef.current = setTimeout(() => {
-                introTransitionTimeoutRef.current = null;
-                if (phaseRef.current !== 'loading') return;
-                setLoadingFadeOverlayActive(true);
-                setPhase('result');
-              }, INTRO_TRANSITION_BAR_MS);
-            }
             saveCompletedMap(finalMap);
-            stepHaptic();
+            markInlineReady();
           },
           onError: (message) => {
             throw new Error(message);
@@ -1266,13 +1394,34 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       const rawMessage =
         err instanceof Error ? err.message : 'No se pudo procesar el contenido.';
       const offline = await isDeviceOffline();
-      failTransform(rawMessage, hasShownPartial, sourceKind, offline);
+      failTransform(
+        offline ? OFFLINE_TRANSFORM_MESSAGE : rawMessage,
+        hasShownPartial,
+        sourceKind,
+        offline
+      );
     } finally {
       setIsStreamGenerating(false);
       setCollectionGenerationProgress(null);
       abortControllerRef.current = null;
     }
-  }, [bumpStreamProgressCap, commitHistoryStore, depthPreference, failTransform, inputText, intent, modelPreference, pastedText, resetStreamGenerationUi, uploadedFile, syncCloudEntry]);
+  }, [
+    bumpStreamProgressCap,
+    clearInlineAutoOpen,
+    clearInlineGeneration,
+    clearInlineReadyTimeout,
+    commitHistoryStore,
+    depthPreference,
+    failTransform,
+    inputText,
+    intent,
+    modelPreference,
+    pastedText,
+    resetStreamGenerationUi,
+    scheduleInlineAutoOpen,
+    uploadedFile,
+    syncCloudEntry,
+  ]);
 
   const handleNewMap = useCallback(() => {
     flushPendingSessionPersist();
@@ -1300,8 +1449,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     continueEntryIdRef.current = null;
     setContinueTransition(null);
     setContinueTransitionHandoff(false);
+    clearInlineGeneration();
     setPhase('input');
-  }, [commitHistoryStore, flushPendingSessionPersist]);
+  }, [clearInlineGeneration, commitHistoryStore, flushPendingSessionPersist]);
 
   const handleOpenDemoNucleo = useCallback(() => {
     flushPendingSessionPersist();
@@ -1502,6 +1652,21 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     [commitHistoryStore, flushPendingSessionPersist]
   );
 
+  const openInlineResult = useCallback(
+    (chipRect: ContinueChipRect) => {
+      const entryId = inlineResultEntryIdRef.current;
+      if (!entryId || inlineGenerationStatusRef.current !== 'ready') return;
+
+      const entry = historyStoreRef.current.entries.find((item) => item.id === entryId);
+      if (!entry) return;
+
+      clearInlineAutoOpen();
+      clearInlineGeneration();
+      beginContinueTransition(entryId, chipRect, buildContinueChipLabel(entry.title));
+    },
+    [beginContinueTransition, clearInlineAutoOpen, clearInlineGeneration]
+  );
+
   const finishContinueExpandTransition = useCallback(() => {
     // #region agent log
     debugTransitionLog('H3', 'AppSessionContext.tsx:finishExpand', 'phase switching to result', {}, 'post-fix-v7');
@@ -1648,8 +1813,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     continueEntryIdRef.current = null;
     setContinueTransition(null);
     setContinueTransitionHandoff(false);
+    clearInlineGeneration();
     setPhase('input');
-  }, []);
+  }, [clearInlineGeneration]);
 
   const startReverseContinueTransition = useCallback(() => {
     if (!canReverseContinueTransition()) return false;
@@ -1981,6 +2147,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       handleDownloadPdfForEntry,
       enterCompletedViewAll,
       isStreamGenerating,
+      isAnalyzingSource,
       collectionGenerationProgress,
       streamLoadPhase,
       streamProgressShared,
@@ -1991,6 +2158,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       dismissTransformIncomplete,
       persistComposerDraft,
       handleSignOut,
+      inlineGenerationStatus,
+      inlineUserTurn,
+      registerInlineOrbOpenHandler,
+      openInlineResult,
     }),
     [
       phase,
@@ -2074,6 +2245,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       handleDownloadPdfForEntry,
       enterCompletedViewAll,
       isStreamGenerating,
+      isAnalyzingSource,
       collectionGenerationProgress,
       streamLoadPhase,
       streamProgressShared,
@@ -2084,6 +2256,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       dismissTransformIncomplete,
       persistComposerDraft,
       handleSignOut,
+      inlineGenerationStatus,
+      inlineUserTurn,
+      registerInlineOrbOpenHandler,
+      openInlineResult,
     ]
   );
 
