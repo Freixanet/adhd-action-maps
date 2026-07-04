@@ -9,18 +9,44 @@ type TakeawaysGlassCardProps = {
   items: string[];
   title?: string;
   className?: string;
+  plain?: boolean;
 };
+
+function TakeawaysContent({ items, title }: { items: string[]; title: string }) {
+  return (
+    <>
+      <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+        {title}
+      </Text>
+      {items.slice(0, 7).map((item, index) => (
+        <View key={`${item}-${index}`} className="flex-row gap-3 mt-4">
+          <View className="mt-2 h-1.5 w-1.5 rounded-full bg-accent/100" />
+          <Text className="flex-1 text-base leading-6 text-body">{item}</Text>
+        </View>
+      ))}
+    </>
+  );
+}
 
 /** Para recordar — same liquid glass panel as Fuente detectada. */
 export default function TakeawaysGlassCard({
   items,
   title = 'Para recordar',
   className = 'mt-8',
+  plain = false,
 }: TakeawaysGlassCardProps) {
   const { isDark } = useTheme();
   const { isStreamGenerating } = useAppSession();
 
   if (!items.length) return null;
+
+  if (plain) {
+    return (
+      <View className={`border-t border-white/10 pt-8 mt-8 ${className}`.trim()}>
+        <TakeawaysContent items={items} title={title} />
+      </View>
+    );
+  }
 
   return (
     <View className={className}>
@@ -33,15 +59,7 @@ export default function TakeawaysGlassCard({
         glassRefreshKey={isStreamGenerating ? 'streaming' : 'ready'}
       >
         <View className="px-5 py-6">
-          <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
-            {title}
-          </Text>
-          {items.slice(0, 7).map((item, index) => (
-            <View key={`${item}-${index}`} className="flex-row gap-3 mt-4">
-              <View className="mt-2 h-1.5 w-1.5 rounded-full bg-accent/100" />
-              <Text className="flex-1 text-base leading-6 text-body">{item}</Text>
-            </View>
-          ))}
+          <TakeawaysContent items={items} title={title} />
         </View>
       </GlassSurface>
     </View>

@@ -1,10 +1,12 @@
 import type { SavedSession, SourceType, MapIntent, ActionMapData } from './contracts';
 export type { SourceType } from './contracts';
+import type { Coleccion } from './collections';
 import {
   deriveMapStatus,
   FALLBACK_MAP_CATEGORY,
   normalizeHistoryEntry,
   normalizeTags,
+  resolveMapCategory,
   sanitizeUserCategory,
   type MapStatus,
 } from './categories';
@@ -21,6 +23,9 @@ export type HistoryEntry = {
   status?: MapStatus;
   pinned?: boolean;
   pinnedAt?: number;
+  /** M-02: completion haptic + check animation runs once when false/missing. */
+  completionCeremonyShown?: boolean;
+  collectionId?: string;
   createdAt: number;
   updatedAt: number;
   sourceType: SourceType;
@@ -30,6 +35,7 @@ export type HistoryEntry = {
 export type HistoryStore = {
   activeId: string | null;
   entries: HistoryEntry[];
+  collections: Coleccion[];
 };
 
 const HISTORY_KEY = 'tdah-optimizer-history';
@@ -91,7 +97,7 @@ function migrateLegacySession(): HistoryStore | null {
     };
 
     storage.removeItem(LEGACY_SESSION_KEY);
-    return { activeId: entry.id, entries: [entry] };
+    return { activeId: entry.id, entries: [entry], collections: [] };
   } catch {
     try {
       getStorage().removeItem(LEGACY_SESSION_KEY);
@@ -110,6 +116,7 @@ function persist(store: HistoryStore): boolean {
   const trimmed: HistoryStore = {
     activeId: store.activeId,
     entries: trimEntries(store.entries),
+    collections: store.collections ?? [],
   };
 
   try {
@@ -121,6 +128,7 @@ function persist(store: HistoryStore): boolean {
     const reduced: HistoryStore = {
       activeId: trimmed.activeId,
       entries: trimmed.entries.slice(0, Math.max(1, Math.floor(trimmed.entries.length / 2))),
+      collections: trimmed.collections,
     };
 
     try {
@@ -149,7 +157,17 @@ export function loadHistory(): HistoryStore {
       const parsed = JSON.parse(raw) as HistoryStore;
       const entries = (parsed.entries || []).filter(isValidEntry).map(normalizeHistoryEntry);
       const activeId = resolveActiveId(parsed.activeId, entries);
-      return { activeId, entries };
+      const collections = Array.isArray(parsed.collections)
+        ? parsed.collections.filter(
+            (collection) =>
+              collection?.id &&
+              collection?.title &&
+              Array.isArray(collection.nucleoIds) &&
+              typeof collection.createdAt === 'number' &&
+              typeof collection.updatedAt === 'number'
+          )
+        : [];
+      return { activeId, entries, collections };
     }
   } catch {
     // fall through to migration
@@ -161,7 +179,7 @@ export function loadHistory(): HistoryStore {
     return migrated;
   }
 
-  return { activeId: null, entries: [] };
+  return { activeId: null, entries: [], collections: [] };
 }
 
 export function saveHistory(store: HistoryStore): boolean {
@@ -169,7 +187,7 @@ export function saveHistory(store: HistoryStore): boolean {
 }
 
 export function clearAllHistory(): HistoryStore {
-  const empty: HistoryStore = { activeId: null, entries: [] };
+  const empty: HistoryStore = { activeId: null, entries: [], collections: [] };
   try {
     getStorage().removeItem(HISTORY_KEY);
     getStorage().removeItem(LEGACY_SESSION_KEY);
@@ -191,7 +209,7 @@ function metadataFromSession(
   const data = session.data as ActionMapData;
   const intent =
     data.intent === 'apply' || data.intent === 'study' ? data.intent : 'understand';
-  const category = sanitizeUserCategory(data.category) ?? FALLBACK_MAP_CATEGORY;
+  const category = resolveMapCategory(data.category);
   const tags = normalizeTags(data.tags);
   const status = deriveMapStatus(session, intent);
 
@@ -202,7 +220,8 @@ export function createEntry(
   store: HistoryStore,
   session: SavedSession,
   sourceType: SourceType,
-  providedId?: string
+  providedId?: string,
+  collectionId?: string
 ): HistoryStore {
   const now = Date.now();
   const title = (session.data as { title?: string } | undefined)?.title || 'Mapa sin título';
@@ -214,13 +233,55 @@ export function createEntry(
     updatedAt: now,
     sourceType,
     session,
+    ...(collectionId ? { collectionId } : {}),
     ...metadata,
   };
 
   return {
     activeId: entry.id,
     entries: [entry, ...store.entries],
+    collections: store.collections ?? [],
   };
+}
+
+export function createCollection(
+  store: HistoryStore,
+  input: { id?: string; title: string; nucleoIds?: string[] }
+): HistoryStore {
+  const now = Date.now();
+  const collection: Coleccion = {
+    id: input.id || generateId(),
+    title: input.title.trim() || 'Colección',
+    nucleoIds: [...(input.nucleoIds ?? [])],
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  return {
+    ...store,
+    collections: [collection, ...(store.collections ?? [])],
+  };
+}
+
+export function registerNucleoInCollection(
+  store: HistoryStore,
+  collectionId: string,
+  nucleoId: string
+): HistoryStore {
+  const now = Date.now();
+  const collections = (store.collections ?? []).map((collection) => {
+    if (collection.id !== collectionId) return collection;
+    if (collection.nucleoIds.includes(nucleoId)) {
+      return { ...collection, updatedAt: now };
+    }
+    return {
+      ...collection,
+      nucleoIds: [...collection.nucleoIds, nucleoId],
+      updatedAt: now,
+    };
+  });
+
+  return { ...store, collections };
 }
 
 export function updateActiveSession(
@@ -273,8 +334,12 @@ export function setActiveId(store: HistoryStore, id: string | null): HistoryStor
 export function deleteEntry(store: HistoryStore, id: string): HistoryStore {
   const entries = store.entries.filter((e) => e.id !== id);
   const activeId = store.activeId === id ? null : store.activeId;
+  const collections = (store.collections ?? []).map((collection) => ({
+    ...collection,
+    nucleoIds: collection.nucleoIds.filter((nucleoId) => nucleoId !== id),
+  }));
 
-  return { activeId, entries };
+  return { activeId, entries, collections };
 }
 
 export function renameEntry(store: HistoryStore, id: string, title: string): HistoryStore {
@@ -326,6 +391,16 @@ export function updateEntryCategory(
         },
       },
     };
+  });
+
+  return { ...store, entries };
+}
+
+export function markCompletionCeremonyShown(store: HistoryStore, id: string): HistoryStore {
+  const entries = store.entries.map((entry) => {
+    if (entry.id !== id) return entry;
+    if (entry.completionCeremonyShown) return entry;
+    return { ...entry, completionCeremonyShown: true };
   });
 
   return { ...store, entries };

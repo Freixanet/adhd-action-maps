@@ -43,11 +43,13 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "eas-cli": "^20.4.0",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
-    "start:dev-client": "expo start --dev-client",
+    "start:dev-client": "expo start --dev-client --host lan --port 8081",
+    "phone:connect": "../scripts/local-runtime/connect-iphone-dev.sh",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "ios:prebuild": "expo prebuild --platform ios && ./scripts/configure-ios-local-signing.sh",
@@ -55,6 +57,7 @@
     "ios:signing": "./scripts/configure-ios-local-signing.sh",
     "web": "expo start --web",
     "lint": "tsc --noEmit",
+    "postinstall": "patch-package",
     "build:orb": "npm install --prefix orb-web && npm run build --prefix orb-web",
     "release:setup": "../scripts/setup-mobile-release.sh all",
     "release:env": "../scripts/setup-mobile-release.sh env",

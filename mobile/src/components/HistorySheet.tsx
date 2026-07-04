@@ -1,17 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { FlashList } from '@shopify/flash-list';
+import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingGlassButton, { FLOATING_PILL_MIN_HEIGHT } from './FloatingGlassButton';
 import HistoryEntryCard from './HistoryEntryCard';
-import HistoryEntryGlassMenu, { type HistoryEntryActionAnchor } from './HistoryEntryGlassMenu';
 import {
   CheckCircle2,
   ChevronDown,
@@ -22,8 +13,10 @@ import ProfileMenu from './ProfileMenu';
 import {
   SidebarBrandHeader,
   SIDEBAR_OCCLUSION,
+  SIDEBAR_SEARCH_FILTER_LIST_GAP,
   sidebarHeaderSolidHeight,
   sidebarListPaddingTop,
+  sidebarSearchStackHeight,
 } from './SidebarGlassHeader';
 import { APP_DARK_BACKGROUND } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
@@ -31,7 +24,9 @@ import {
   sortPinnedEntries,
   type HistoryEntry,
 } from '../logic/history';
-import { filterHistoryByCategory, filterHistoryEntries } from '../logic/historySearch';
+import { groupHistoryEntries, type Coleccion } from '@shared/collections';
+import HistoryCollectionGroup from './HistoryCollectionGroup';
+import { applyHistoryListFilter, filterHistoryEntries, type HistoryListFilter } from '../logic/historySearch';
 import HistoryCategoryFilter from './HistoryCategoryFilter';
 import CategoryEditSheet from './CategoryEditSheet';
 import { collectUsedCategories, collectUserCategories } from '@shared/categories';
@@ -40,6 +35,7 @@ import type { ActionMapData } from '../logic/contracts';
 type HistorySheetProps = {
   visible: boolean;
   entries: HistoryEntry[];
+  collections?: Coleccion[];
   activeId: string | null;
   onClose: () => void;
   onSelect: (id: string) => void;
@@ -47,6 +43,7 @@ type HistorySheetProps = {
   onRename: (id: string, title: string) => void;
   onUpdateCategory: (id: string, category: string) => void;
   onTogglePin: (id: string) => void;
+  onExportPdf?: (id: string) => void;
   embedded?: boolean;
   canvasColor?: string;
   glassHeaderHeight?: number;
@@ -63,13 +60,17 @@ type HistorySheetProps = {
   onSearchQueryChange?: (value: string) => void;
   /** Header is rendered by HistoryDrawer at clip level when embedded in drawer. */
   hideBrandHeader?: boolean;
+  openMenuEntryId?: string | null;
+  onHistoryMenuOpen?: (entryId: string) => void;
+  onHistoryMenuClose?: () => void;
+  registerSearchFilters?: (node: ReactNode | null) => void;
+  searchStackHeight?: number;
 };
-
-type ActionMenuState = HistoryEntryActionAnchor | null;
 
 export default function HistorySheet({
   visible,
   entries,
+  collections = [],
   activeId,
   onClose,
   onSelect,
@@ -77,6 +78,7 @@ export default function HistorySheet({
   onRename,
   onUpdateCategory,
   onTogglePin,
+  onExportPdf,
   embedded = false,
   canvasColor,
   showIndex = false,
@@ -91,16 +93,36 @@ export default function HistorySheet({
   onSearchClose,
   onSearchQueryChange,
   hideBrandHeader = false,
+  openMenuEntryId = null,
+  onHistoryMenuOpen,
+  onHistoryMenuClose,
+  registerSearchFilters,
+  searchStackHeight: searchStackHeightProp,
 }: HistorySheetProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [expandedCollectionIds, setExpandedCollectionIds] = useState<Record<string, boolean>>({});
   const [categoryEditEntry, setCategoryEditEntry] = useState<HistoryEntry | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [actionMenu, setActionMenu] = useState<ActionMenuState>(null);
   const [indexExpanded, setIndexExpanded] = useState(true);
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [listFilter, setListFilter] = useState<HistoryListFilter>('all');
+  // The list's switch into search mode (filter chips header, re-filtering,
+  // row re-renders) is deferred until the drawer/pill animation has finished —
+  // doing that render work in the same frame as the animation start is what
+  // caused the opening stutter. Exiting search reverts immediately.
+  const [searchMode, setSearchMode] = useState(searchActive);
+  useEffect(() => {
+    if (!searchActive) {
+      setSearchMode(false);
+      return;
+    }
+    const timer = setTimeout(() => setSearchMode(true), 360);
+    return () => clearTimeout(timer);
+  }, [searchActive]);
   const insets = useSafeAreaInsets();
   const floatingActionsBottom = Math.max(insets.bottom, 12);
-  const listBottomInset = floatingActionsBottom + FLOATING_PILL_MIN_HEIGHT + 20;
+  const listBottomInset = searchActive
+    ? floatingActionsBottom + 16
+    : floatingActionsBottom + FLOATING_PILL_MIN_HEIGHT + 20;
   const { isDark } = useTheme();
 
   const usedCategories = useMemo(() => collectUsedCategories(entries), [entries]);
@@ -108,49 +130,83 @@ export default function HistorySheet({
 
   useEffect(() => {
     if (!searchActive) {
-      setCategoryFilter(null);
+      setListFilter('all');
     }
   }, [searchActive]);
 
   useEffect(() => {
     if (
-      categoryFilter &&
+      listFilter !== 'all' &&
+      listFilter !== 'incomplete' &&
       !usedCategories.some(
-        (category) => category.toLowerCase() === categoryFilter.toLowerCase()
+        (category) => category.toLowerCase() === listFilter.toLowerCase()
       )
     ) {
-      setCategoryFilter(null);
+      setListFilter('all');
     }
-  }, [categoryFilter, usedCategories]);
+  }, [listFilter, usedCategories]);
 
   const filteredEntries = useMemo(() => {
-    if (!searchActive) return entries;
+    if (!searchMode) return entries;
     const searched = filterHistoryEntries(entries, searchQuery);
-    return filterHistoryByCategory(searched, categoryFilter);
-  }, [categoryFilter, entries, searchActive, searchQuery]);
+    return applyHistoryListFilter(searched, listFilter);
+  }, [entries, listFilter, searchMode, searchQuery]);
 
-  const pinnedEntries = useMemo(
-    () => sortPinnedEntries(filteredEntries.filter((entry) => entry.pinned)),
+  const pinnedStandalone = useMemo(
+    () => sortPinnedEntries(filteredEntries.filter((entry) => entry.pinned && !entry.collectionId)),
     [filteredEntries]
   );
-  const regularEntries = useMemo(
-    () => filteredEntries.filter((entry) => !entry.pinned),
-    [filteredEntries]
+  const { standalone, groups } = useMemo(
+    () =>
+      groupHistoryEntries(
+        filteredEntries.filter((entry) => !entry.pinned || Boolean(entry.collectionId)),
+        collections
+      ),
+    [collections, filteredEntries]
+  );
+  const regularStandalone = useMemo(
+    () => standalone.filter((entry) => !entry.pinned),
+    [standalone]
   );
   const listData = useMemo(
     () => [
-      ...(pinnedEntries.length ? [{ type: 'header' as const, id: 'pinned-header', title: 'Núcleos fijados' }] : []),
-      ...pinnedEntries.map((entry) => ({ type: 'entry' as const, entry })),
-      ...(regularEntries.length ? [{ type: 'header' as const, id: 'recent-header', title: 'Núcleos recientes' }] : []),
-      ...regularEntries.map((entry) => ({ type: 'entry' as const, entry })),
+      ...(pinnedStandalone.length
+        ? [{ type: 'header' as const, id: 'pinned-header', title: 'Núcleos fijados' }]
+        : []),
+      ...pinnedStandalone.map((entry) => ({ type: 'entry' as const, entry })),
+      ...groups.map((group) => ({ type: 'collection' as const, group })),
+      ...(regularStandalone.length
+        ? [{ type: 'header' as const, id: 'recent-header', title: 'Núcleos recientes' }]
+        : []),
+      ...regularStandalone.map((entry) => ({ type: 'entry' as const, entry })),
     ],
-    [pinnedEntries, regularEntries]
+    [groups, pinnedStandalone, regularStandalone]
   );
+
+  const toggleCollectionExpanded = useCallback((collectionId: string) => {
+    setExpandedCollectionIds((current) => ({
+      ...current,
+      [collectionId]: !current[collectionId],
+    }));
+  }, []);
 
   const openCategoryEditor = useCallback((entry: HistoryEntry) => {
     setCategoryEditEntry(entry);
-    setActionMenu(null);
   }, []);
+
+  const handleExportPdf = useCallback(
+    (entry: HistoryEntry) => {
+      onExportPdf?.(entry.id);
+    },
+    [onExportPdf]
+  );
+
+  const handleExportPdfEntry = useCallback(
+    (entry: HistoryEntry) => {
+      handleExportPdf(entry);
+    },
+    [handleExportPdf]
+  );
 
   const handleSaveCategory = useCallback(
     (category: string) => {
@@ -164,7 +220,6 @@ export default function HistorySheet({
   const startRename = useCallback((entry: HistoryEntry) => {
     setRenamingId(entry.id);
     setRenameValue(entry.title);
-    setActionMenu(null);
   }, []);
 
   const commitRename = useCallback(() => {
@@ -173,18 +228,6 @@ export default function HistorySheet({
     setRenamingId(null);
     setRenameValue('');
   }, [onRename, renameValue, renamingId]);
-
-  const openEntryMenu = useCallback(
-    (entry: HistoryEntry, anchor: { x: number; y: number; width: number; height: number }) => {
-      setActionMenu({
-        entry,
-        top: anchor.y + anchor.height + 8,
-        left: anchor.x,
-        width: anchor.width,
-      });
-    },
-    []
-  );
 
   const handleDeleteEntry = useCallback(
     (entry: HistoryEntry) => {
@@ -201,12 +244,18 @@ export default function HistorySheet({
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: (typeof listData)[number] }) => {
+    ({ item, index }: { item: (typeof listData)[number]; index: number }) => {
       if (item.type === 'header') {
         const isRecentHeader = item.id === 'recent-header';
         const isPinnedHeader = item.id === 'pinned-header';
         const pinTopPadding =
-          isPinnedHeader && showIndex && data && !searchActive ? 'pt-8' : isPinnedHeader ? 'pt-1' : 'pt-1';
+          isPinnedHeader && searchMode
+            ? 'pt-3'
+            : isPinnedHeader && showIndex && data && !searchMode
+              ? 'pt-8'
+              : isPinnedHeader
+                ? 'pt-1'
+                : 'pt-1';
         return (
           <Text
             className={`px-1 pb-2 text-[11px] font-bold uppercase tracking-widest text-secondary ${
@@ -218,6 +267,33 @@ export default function HistorySheet({
         );
       }
 
+      if (item.type === 'collection') {
+        const { collection, members } = item.group;
+        return (
+          <HistoryCollectionGroup
+            collection={collection}
+            members={members}
+            allEntries={entries}
+            activeId={activeId}
+            expanded={Boolean(expandedCollectionIds[collection.id])}
+            onToggle={() => toggleCollectionExpanded(collection.id)}
+            renamingId={renamingId}
+            renameValue={renameValue}
+            onRenameValueChange={setRenameValue}
+            onCommitRename={commitRename}
+            onSelect={onSelect}
+            onRename={startRename}
+            onChangeCategory={openCategoryEditor}
+            onTogglePin={(entry) => onTogglePin(entry.id)}
+            onDelete={handleDeleteEntry}
+            onExportPdf={handleExportPdfEntry}
+            openMenuEntryId={openMenuEntryId}
+            onMenuOpen={onHistoryMenuOpen}
+            onMenuClose={onHistoryMenuClose}
+          />
+        );
+      }
+
       const entry = item.entry;
       const isActive = entry.id === activeId;
 
@@ -225,30 +301,49 @@ export default function HistorySheet({
         <HistoryEntryCard
           entry={entry}
           isActive={isActive}
+          isMenuOpen={openMenuEntryId === entry.id}
           isRenaming={renamingId === entry.id}
           renameValue={renameValue}
           onRenameValueChange={setRenameValue}
           onCommitRename={commitRename}
           onSelect={onSelect}
-          onLongPress={openEntryMenu}
+          onRename={startRename}
+          onChangeCategory={openCategoryEditor}
+          onTogglePin={(item) => onTogglePin(item.id)}
+          onDelete={handleDeleteEntry}
+          onExportPdf={handleExportPdfEntry}
+          menuSessionOpen={openMenuEntryId != null}
+          menuInteractionBlocked={openMenuEntryId != null && openMenuEntryId !== entry.id}
+          onMenuOpen={() => onHistoryMenuOpen?.(entry.id)}
+          onMenuClose={onHistoryMenuClose}
         />
       );
     },
-    [activeId, commitRename, data, onSelect, openEntryMenu, renameValue, renamingId, searchActive, showIndex]
+    [
+      activeId,
+      commitRename,
+      entries,
+      expandedCollectionIds,
+      toggleCollectionExpanded,
+      handleDeleteEntry,
+      handleExportPdfEntry,
+      onHistoryMenuClose,
+      onHistoryMenuOpen,
+      onSelect,
+      onTogglePin,
+      openCategoryEditor,
+      openMenuEntryId,
+      renameValue,
+      renamingId,
+      searchMode,
+      showIndex,
+      startRename,
+    ]
   );
 
   const listHeaderComponent = useMemo(() => {
-    if (searchActive) {
-      if (usedCategories.length === 0) return null;
-      return (
-        <View className="pb-2 pt-1">
-          <HistoryCategoryFilter
-            selectedCategory={categoryFilter}
-            categories={usedCategories}
-            onSelect={setCategoryFilter}
-          />
-        </View>
-      );
+    if (searchMode) {
+      return null;
     }
 
     if (!showIndex || !data) {
@@ -335,7 +430,6 @@ export default function HistorySheet({
       </View>
     );
   }, [
-    categoryFilter,
     currentStep,
     data,
     indexExpanded,
@@ -343,18 +437,15 @@ export default function HistorySheet({
     onClose,
     onGoToStep,
     showIndex,
-    searchActive,
-    usedCategories,
+    searchMode,
   ]);
 
   const listEmptyComponent = useMemo(() => {
-    if (searchActive && (searchQuery.trim() || categoryFilter)) {
+    if (searchMode && (searchQuery.trim() || listFilter !== 'all')) {
       return (
         <View className="py-8 px-2">
           <Text className="text-center text-body leading-6">
-            {searchQuery.trim()
-              ? `No hay resultados para «${searchQuery.trim()}».`
-              : 'No hay Núcleos en esta categoría.'}
+            Nada por aquí. Prueba con otra categoría.
           </Text>
         </View>
       );
@@ -367,12 +458,36 @@ export default function HistorySheet({
         </Text>
       </View>
     );
-  }, [categoryFilter, searchActive, searchQuery]);
+  }, [listFilter, searchMode, searchQuery]);
 
   const headerSolidHeight = sidebarHeaderSolidHeight(insets.top);
   const listTopInset = sidebarListPaddingTop(insets.top);
+  const searchStackHeight = searchStackHeightProp ?? sidebarSearchStackHeight(insets.top);
+  const listScrollPaddingTop = searchActive
+    ? searchStackHeight + SIDEBAR_SEARCH_FILTER_LIST_GAP
+    : listTopInset;
   const listBottomPadding = Math.max(SIDEBAR_OCCLUSION.listBottomMin, listBottomInset);
   const sheetBackground = canvasColor ?? (isDark ? APP_DARK_BACKGROUND : '#f0f0f0');
+  const modalBrandHeaderHeight =
+    searchActive && !hideBrandHeader ? searchStackHeight : headerSolidHeight;
+
+  const searchFilterNode = useMemo(
+    () =>
+      searchActive ? (
+        <HistoryCategoryFilter
+          embeddedInHeader
+          activeFilter={listFilter}
+          onSelectFilter={setListFilter}
+        />
+      ) : null,
+    [listFilter, searchActive]
+  );
+
+  useEffect(() => {
+    if (!registerSearchFilters) return;
+    registerSearchFilters(searchFilterNode);
+    return () => registerSearchFilters(null);
+  }, [registerSearchFilters, searchFilterNode]);
 
   const content = (
     <View
@@ -380,23 +495,43 @@ export default function HistorySheet({
       style={[styles.sheetRoot, { backgroundColor: sheetBackground }]}
     >
       <View style={styles.sheetBody}>
-        <FlashList
-          data={listData}
-          renderItem={renderItem}
-          keyExtractor={(item) => ('entry' in item ? item.entry.id : item.id)}
-          ListHeaderComponent={listHeaderComponent}
-          ListEmptyComponent={listEmptyComponent}
+        {/* Plain ScrollView on purpose: the native long-press context menu on
+            each card (MenuView) breaks randomly inside virtualized lists
+            (FlashList/FlatList) — the interaction attaches to recycled cells.
+            History lists are small, so mounting every card is cheap. */}
+        <ScrollView
           contentContainerStyle={{
-            paddingTop: listTopInset,
+            paddingTop: listScrollPaddingTop,
             paddingBottom: listBottomPadding,
-            paddingHorizontal: 16,
+            paddingHorizontal: searchActive ? 12 : 16,
           }}
           style={styles.list}
           showsVerticalScrollIndicator={false}
-        />
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="on-drag"
+          scrollEnabled={!openMenuEntryId}
+          pointerEvents={openMenuEntryId ? 'none' : 'auto'}
+        >
+          {listHeaderComponent}
+          {listData.length === 0
+            ? listEmptyComponent
+            : listData.map((item, index) => (
+                <React.Fragment
+                  key={
+                    item.type === 'header'
+                      ? item.id
+                      : item.type === 'collection'
+                        ? item.group.collection.id
+                        : item.entry.id
+                  }
+                >
+                  {renderItem({ item, index })}
+                </React.Fragment>
+              ))}
+        </ScrollView>
         {!hideBrandHeader ? (
           <SidebarBrandHeader
-            height={headerSolidHeight}
+            height={modalBrandHeaderHeight}
             insetTop={insets.top}
             backgroundColor={sheetBackground}
             isDark={isDark}
@@ -409,39 +544,33 @@ export default function HistorySheet({
             onSearchQueryChange={onSearchQueryChange}
             onSearchOpen={onSearchOpen}
             onSearchClose={onSearchClose}
+            searchFilters={searchActive ? searchFilterNode : undefined}
           />
         ) : null}
       </View>
 
-      <View
-        pointerEvents="box-none"
-        className="absolute left-0 right-0 flex-row items-center justify-between px-5"
-        style={{ bottom: floatingActionsBottom }}
-      >
-        <ProfileMenu placement="bottomLeft" floating />
-        <FloatingGlassButton
-          onPress={() => {
-            onNewMap?.();
-            onClose();
-          }}
-          accessibilityLabel="Nuevo Núcleo"
-          shape="pill"
-          tone="accent"
-          compact
+      {!searchActive ? (
+        <View
+          pointerEvents={openMenuEntryId ? 'none' : 'box-none'}
+          className="absolute left-0 right-0 flex-row items-center justify-between px-5"
+          style={{ bottom: floatingActionsBottom }}
         >
-          <SquarePen size={17} color="#ffffff" />
-          <Text className="text-[15px] font-bold text-white">Nuevo Núcleo</Text>
-        </FloatingGlassButton>
-      </View>
-
-      <HistoryEntryGlassMenu
-        menu={actionMenu}
-        onClose={() => setActionMenu(null)}
-        onRename={startRename}
-        onChangeCategory={openCategoryEditor}
-        onTogglePin={(entry) => onTogglePin(entry.id)}
-        onDelete={handleDeleteEntry}
-      />
+          <ProfileMenu placement="bottomLeft" floating />
+          <FloatingGlassButton
+            onPress={() => {
+              onNewMap?.();
+              onClose();
+            }}
+            accessibilityLabel="Nuevo Núcleo"
+            shape="pill"
+            tone="accent"
+            compact
+          >
+            <SquarePen size={17} color="#ffffff" />
+            <Text className="text-[15px] font-bold text-white">Nuevo Núcleo</Text>
+          </FloatingGlassButton>
+        </View>
+      ) : null}
 
       <CategoryEditSheet
         visible={Boolean(categoryEditEntry)}

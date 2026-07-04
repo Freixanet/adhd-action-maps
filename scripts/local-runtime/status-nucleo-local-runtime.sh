@@ -30,7 +30,7 @@ launchctl list 2>/dev/null | grep nucleo || echo "No nucleo launch agents loaded
 echo
 echo "=== Listeners ==="
 lsof -nP -iTCP:3000 -sTCP:LISTEN 2>/dev/null || echo "Port 3000: not listening"
-lsof -nP -iTCP:8082 -sTCP:LISTEN 2>/dev/null || echo "Port 8082: not listening"
+lsof -nP -iTCP:8081 -sTCP:LISTEN 2>/dev/null || echo "Port 8081: not listening"
 
 echo
 echo "=== Health (localhost) ==="
@@ -39,7 +39,7 @@ if curl_backend_health "http://localhost:3000"; then
 else
   echo "backend /health: FAILED"
 fi
-if curl_metro_status "http://localhost:8082"; then
+if curl_metro_status "http://localhost:8081"; then
   echo
 else
   echo "metro /status: FAILED"
@@ -52,7 +52,7 @@ if [[ -n "${MAC_IP}" ]]; then
   else
     echo "backend /health: FAILED"
   fi
-  if curl_metro_status "http://${MAC_IP}:8082"; then
+  if curl_metro_status "http://${MAC_IP}:8081"; then
     echo
   else
     echo "metro /status: FAILED"

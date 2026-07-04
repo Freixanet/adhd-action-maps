@@ -1,5 +1,4 @@
 import { useCallback, useEffect, type RefObject } from 'react';
-import { Capacitor } from '@capacitor/core';
 
 export type NativeComposerMetrics = {
   height: number;
@@ -60,7 +59,7 @@ export function useNativeComposer({
   mainRef?: RefObject<HTMLElement | null>;
   attachment?: NativeComposerAttachment;
 }) {
-  const isNativeIOS = Capacitor.getPlatform() === 'ios';
+  const isNativeIOS = false;
 
   const setLayout = useCallback(
     (layout: NativeComposerLayout) => {

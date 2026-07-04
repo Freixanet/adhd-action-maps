@@ -1,8 +1,10 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Pressable } from 'react-native-gesture-handler';
 import GlassBarShell, { GLASS_BAR_BUTTON_RADIUS } from './GlassBarShell';
 import GlassSurface from './GlassSurface';
+import { usePressScale } from '../hooks/usePressScale';
 import { SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
 import { useTheme } from '../context/ThemeContext';
 
@@ -168,22 +170,36 @@ function FloatingGlassButton({
   compact = false,
   fullWidth = false,
 }: FloatingGlassButtonProps) {
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const hitSlop =
+    shape === 'circle' && size < 44
+      ? { top: 6, bottom: 6, left: 6, right: 6 }
+      : undefined;
+
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      hitSlop={hitSlop}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [fullWidth ? styles.fullWidth : null, pressed ? styles.pressed : null]}
+      style={({ pressed }) => [
+        fullWidth ? styles.fullWidth : null,
+        pressed ? styles.pressedOpacity : null,
+      ]}
     >
-      <FloatingGlassShell
-        shape={shape}
-        tone={tone}
-        size={size}
-        compact={compact}
-        fullWidth={fullWidth}
-      >
-        {children}
-      </FloatingGlassShell>
+      <Animated.View style={animatedStyle}>
+        <FloatingGlassShell
+          shape={shape}
+          tone={tone}
+          size={size}
+          compact={compact}
+          fullWidth={fullWidth}
+        >
+          {children}
+        </FloatingGlassShell>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -204,9 +220,8 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
   },
-  pressed: {
+  pressedOpacity: {
     opacity: 0.82,
-    transform: [{ scale: 0.97 }],
   },
   accentShadow: {
     shadowColor: '#8B8FF5',

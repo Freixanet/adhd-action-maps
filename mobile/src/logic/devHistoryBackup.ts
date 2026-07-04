@@ -33,7 +33,7 @@ function clearDevHistoryBackup(): void {
 export function hideHistoryForDev(store: HistoryStore): HistoryStore {
   stashDevHistoryBackup(store);
   clearAllHistory();
-  return { activeId: null, entries: [] };
+  return { activeId: null, entries: [], collections: [] };
 }
 
 /** Restaura el historial desde la copia de seguridad dev. */

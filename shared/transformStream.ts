@@ -103,7 +103,7 @@ export type TransformStreamHandlers = {
 
 export type ConsumeTransformStreamResult = 'done' | 'error' | 'idle' | 'incomplete' | 'aborted';
 
-function parseStreamLine(line: string): TransformStreamEvent | null {
+export function parseTransformStreamLine(line: string): TransformStreamEvent | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
   try {
@@ -176,7 +176,7 @@ export async function consumeTransformStream(
       buffer = lines.pop() ?? '';
 
       for (const line of lines) {
-        const event = parseStreamLine(line);
+        const event = parseTransformStreamLine(line);
         if (!event) continue;
 
         if (event.type === 'partial' && event.map) {

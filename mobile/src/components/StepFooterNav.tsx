@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowRight, Check } from 'lucide-react-native';
+import { Check } from 'lucide-react-native';
 import StepFooterGlassButton from './StepFooterGlassButton';
 import { GenerationProgressBar } from './loadingGenerationUi';
 import { useAppSession } from '../context/AppSessionContext';
@@ -30,7 +30,7 @@ export default function StepFooterNav({ completeLabel = 'Completar Núcleo' }: S
           session.isStreamGenerating ? (
             <View>
               <GenerationProgressBar
-                progress={session.streamProgress}
+                progressShared={session.streamProgressShared}
                 fullWidth
                 height={2}
                 style={styles.footerProgress}
@@ -47,7 +47,6 @@ export default function StepFooterNav({ completeLabel = 'Completar Núcleo' }: S
               variant="primary"
               label="Empezar a leer"
               onPress={() => session.goToStep(1)}
-              icon={<ArrowRight size={20} color={CTA_ICON_COLOR} />}
             />
           )
         ) : (
@@ -65,7 +64,6 @@ export default function StepFooterNav({ completeLabel = 'Completar Núcleo' }: S
                   variant="primary"
                   label="Siguiente"
                   onPress={() => session.goToStep(session.currentStep + 1)}
-                  icon={<ArrowRight size={20} color={CTA_ICON_COLOR} />}
                 />
               ) : (
                 <StepFooterGlassButton

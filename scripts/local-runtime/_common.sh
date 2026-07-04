@@ -47,3 +47,14 @@ curl_metro_status() {
   local base="$1"
   curl -fsS -m 5 -I "${base%/}/status" 2>/dev/null || return 1
 }
+
+# First iOS bundle can take 20–30s; dev client times out if cold. Prewarm after Metro starts.
+prewarm_metro_ios_bundle() {
+  local ip="${1:-$(detect_mac_ip)}"
+  if [[ -z "${ip}" ]]; then
+    return 0
+  fi
+  local url="http://${ip}:8081/index.ts.bundle?platform=ios&dev=true&minify=false"
+  echo "Prewarming iOS bundle on ${ip}:8081 (may take ~30s)..."
+  curl -fsS -m 120 -o /dev/null "${url}" 2>/dev/null && echo "Bundle prewarmed." || echo "WARN: bundle prewarm failed"
+}

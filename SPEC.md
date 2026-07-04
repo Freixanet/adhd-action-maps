@@ -192,7 +192,7 @@ Layout de arriba a abajo:
   - Debajo: sección "Recientes" con máximo 3 items (label categoría + título + metadata). Tap → abre.
   - Si NO hay ningún Núcleo (primer uso): wordmark + tagline "Separa lo importante del ruido." + chip centrado "Ver un ejemplo →" que abre un Núcleo demo pregenerado y empaquetado con la app (contenido: cualquier artículo corto de dominio público sobre hábitos o atención).
 3. Zona inferior fija: caja de input.
-  - Placeholder ESTÁTICO: "Pega texto, un enlace, un vídeo o un PDF". Los ejemplos rotatorios solo existen en el estado de primer uso (cero Núcleos), una única pasada, y nunca vuelven a rotar.
+  - Placeholder ESTÁTICO: "Pega texto, un enlace o adjunta un archivo". Los ejemplos rotatorios solo existen en el estado de primer uso (cero Núcleos), una única pasada, y nunca vuelven a rotar.
   - **Altura del campo de texto:** en reposo, 3 líneas (~88px). Crece con el contenido hasta el 40% del viewport; al superar ese tope, el texto scrollea dentro del campo (no expande más el composer).
   - **Pegado largo:** si el usuario pega texto de más de 500 caracteres, el contenido NO permanece en el input: se colapsa a un chip adjunto dentro del composer, mismo patrón visual que un archivo ("Texto · N palabras" + ✕ para quitar). El input queda libre; el envío usa el texto del chip.
   - Borde 1px `accent` al 35% de opacidad en reposo, 100% al enfocar. Debe verse activa, nunca disabled.
@@ -208,10 +208,10 @@ Layout de arriba a abajo:
 ### 5.2 Generación (loading)
 
 Layout centrado vertical (una columna):
-1. Orbe animado a 96px (`ExactLiquidOrbWebView`, glifo según 3.4), centrado.
+1. Orbe animado a 72px (`ExactLiquidOrbWebView`, glifo según 3.4), centrado.
 2. A 24px bajo el orbe: label de fase en `text-body` 15px, crossfade 200ms entre fases reales del stream: "Leyendo la fuente…" (request enviado) → "Destilando la idea central…" (primer partial con `coreIdea`) → "Construyendo tu Núcleo…" (partials con `steps`). Sin timers ni puntos estilo Apple.
 3. A 16px: barra de progreso fina (4px, radius 2, ancho 200px, track `surface-2`, fill `accent`) ligada a hitos reales: 15% al enviar, 45% al primer chunk del LLM, 70% con `coreIdea` parseada, 90% con primer `step`, 100% solo al `done`. Entre hitos avanza lentamente hacia el siguiente tope (nunca lo cruza ni retrocede). Con `prefers-reduced-motion`: saltos discretos sin animación.
-4. Transición a Introducción (5.3): cuando `coreIdea` + intro estén completas (`title`, `coreIdea`, `sourceMetadata`, `tldr` ≥3), crossfade 300ms de la pantalla de carga a la Introducción. Los pasos siguen generándose en background.
+4. Transición a Introducción (5.3): cuando la barra alcanza el 100% (intro lista: `coreIdea`, `sourceMetadata`, `tldr` ≥3), crossfade 300ms de la pantalla de carga a la Introducción. Los pasos siguen generándose en background.
 5. Mientras el stream no haya terminado, el CTA inferior de la intro muestra "Generando pasos…" deshabilitado con la misma barra de progreso fina integrada encima del botón (2px); al `done` pasa a "Empezar a leer →" habilitado con haptic light.
 6. Si la generación falla: banner de error según §7.3 / `SessionErrorBanner` + botón "Reintentar". Nunca pantalla en blanco.
 
@@ -243,8 +243,8 @@ Como el diseño actual (correcto), con cambios:
 
 ### 5.5 Núcleo completado
 
-1. Label `NÚCLEO COMPLETADO` con check → título display → párrafo de cierre → card PARA RECORDAR (bullets `accent`).
-2. Jerarquía de acciones (P5): CTA primario único "Nuevo Núcleo". Secundario: "Guardar ficha PDF" (gratis, ver 6.3). Terciario: menú `···` que agrupa Repasar lo esencial / Preguntar / Volver al inicio.
+1. Label `NÚCLEO COMPLETADO` con check → título display → párrafo de cierre → sección plana PARA RECORDAR (bullets `accent`) → cobertura de fuente y secciones de conocimiento en secciones planas (sin tarjetas glass apiladas).
+2. Jerarquía de acciones: fila "Repasar lo esencial" | "Preguntar"; ancho completo "Guardar ficha PDF"; CTA primario único al final "Nuevo Núcleo" (`accent`). Sin "Volver al inicio" (sidebar accesible desde la barra superior).
 3. Haptic `success` al entrar por primera vez.
 
 

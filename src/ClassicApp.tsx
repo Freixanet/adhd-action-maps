@@ -1,6 +1,4 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowRight,
@@ -245,7 +243,7 @@ function authErrorMessage(err: unknown): string {
 export default function ClassicApp() {
   useKeyboardDismissOnSwipeDown();
   const initialHistory: HistoryStore =
-    typeof window !== 'undefined' ? loadHistory() : { activeId: null, entries: [] };
+    typeof window !== 'undefined' ? loadHistory() : { activeId: null, entries: [], collections: [] };
   const initialActive = getActiveEntry(initialHistory);
 
   const [historyStore, setHistoryStore] = useState<HistoryStore>(initialHistory);
@@ -517,16 +515,9 @@ export default function ClassicApp() {
 
   const triggerMobileSidebarHaptic = useCallback(() => {
     if (isDesktop) return;
-
-    void (async () => {
-      try {
-        if (Capacitor.isNativePlatform()) {
-          await Haptics.impact({ style: ImpactStyle.Light });
-        }
-      } catch {
-        // Haptics unavailable; fail silently.
-      }
-    })().catch(() => {});
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(12);
+    }
   }, [isDesktop]);
 
   const animateMainSheetTo = useCallback(

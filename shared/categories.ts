@@ -1,5 +1,6 @@
 import type { MapIntent, SavedSession, SourceType } from './contracts';
 import type { HistoryEntry } from './history';
+import { migrateCategoryToEnum } from './nucleoPipeline';
 
 export const DEFAULT_MAP_CATEGORIES = [
   'IA y tecnología',
@@ -43,56 +44,24 @@ export function normalizeCategoryName(input: unknown): string | null {
 }
 
 export function sanitizeUserCategory(input: unknown): string | null {
-  return normalizeCategoryName(input);
+  const value = migrateCategoryToEnum(input);
+  return value || null;
 }
 
-export function resolveMapCategory(
-  suggested: unknown,
-  userCategories: readonly string[] = []
-): string {
-  const name = normalizeCategoryName(suggested);
-  if (!name) return FALLBACK_MAP_CATEGORY;
-
-  const defaultMatch = DEFAULT_MAP_CATEGORIES.find(
-    (category) => category.toLowerCase() === name.toLowerCase()
-  );
-  if (defaultMatch) return defaultMatch;
-
-  const userMatch = userCategories.find(
-    (category) => category.toLowerCase() === name.toLowerCase()
-  );
-  if (userMatch) return userMatch;
-
-  return FALLBACK_MAP_CATEGORY;
+export function resolveMapCategory(suggested: unknown): string {
+  return migrateCategoryToEnum(suggested);
 }
 
-export function collectUserCategories(entries: Array<{ category?: string }>): string[] {
-  const seen = new Set<string>();
-  const custom: string[] = [];
-
-  for (const entry of entries) {
-    const category = entry.category?.trim();
-    if (!category) continue;
-    const isDefault = DEFAULT_MAP_CATEGORIES.some(
-      (item) => item.toLowerCase() === category.toLowerCase()
-    );
-    if (isDefault) continue;
-    const key = category.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    custom.push(category);
-  }
-
-  return custom.slice(0, 20);
+export function collectUserCategories(_entries: Array<{ category?: string }>): string[] {
+  return [];
 }
 
 export function collectUsedCategories(entries: Array<{ category?: string }>): string[] {
-  const userCategories = collectUserCategories(entries);
   const seen = new Set<string>();
   const used: string[] = [];
 
   for (const entry of entries) {
-    const category = resolveMapCategory(entry.category, userCategories);
+    const category = resolveMapCategory(entry.category);
     const key = category.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -108,24 +77,14 @@ export function collectUsedCategories(entries: Array<{ category?: string }>): st
   return used;
 }
 
-export function getAllCategoryOptions(userCategories: readonly string[] = []): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const category of [...DEFAULT_MAP_CATEGORIES, ...userCategories]) {
-    const key = category.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(category);
-  }
-
-  return result;
+export function getAllCategoryOptions(): string[] {
+  return [...DEFAULT_MAP_CATEGORIES];
 }
 
-export function getCategoryEditSections(
-  usedCategories: readonly string[] = [],
-  userCategories: readonly string[] = []
-): { used: string[]; suggested: string[] } {
+export function getCategoryEditSections(usedCategories: readonly string[] = []): {
+  used: string[];
+  suggested: string[];
+} {
   const used = [...usedCategories];
   const usedKeys = new Set(used.map((category) => category.toLowerCase()));
   const suggested: string[] = [];
@@ -134,13 +93,6 @@ export function getCategoryEditSections(
     if (!usedKeys.has(category.toLowerCase())) {
       suggested.push(category);
     }
-  }
-
-  for (const category of userCategories) {
-    const key = category.toLowerCase();
-    if (usedKeys.has(key)) continue;
-    if (DEFAULT_MAP_CATEGORIES.some((item) => item.toLowerCase() === key)) continue;
-    suggested.push(category);
   }
 
   return { used, suggested };
@@ -191,8 +143,8 @@ export function normalizeHistoryEntry(entry: HistoryEntry): HistoryEntry {
   };
 
   const category =
-    sanitizeUserCategory(entry.category) ??
-    sanitizeUserCategory(data.category) ??
+    migrateCategoryToEnum(entry.category) ??
+    migrateCategoryToEnum(data.category) ??
     FALLBACK_MAP_CATEGORY;
   const tags = entry.tags?.length ? normalizeTags(entry.tags) : normalizeTags(data.tags);
   const intent =

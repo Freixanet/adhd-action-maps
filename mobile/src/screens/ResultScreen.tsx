@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -7,24 +7,23 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { initialWindowMetrics, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
   FadeOut,
   runOnJS,
+  useAnimatedStyle,
   useSharedValue,
-  withTiming,
+  withSpring,
 } from 'react-native-reanimated';
 import {
   CheckCircle2,
   Clock,
-  Download,
-  MessageSquareText,
-  SquarePen,
 } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 import CompletionGlassButton from '../components/CompletionGlassButton';
+import CompletionOverflowMenu from '../components/CompletionOverflowMenu';
 import IncompleteTransformBanner from '../components/IncompleteTransformBanner';
 import SessionErrorBanner from '../components/SessionErrorBanner';
 import MapChatSheet from '../components/MapChatSheet';
@@ -33,14 +32,21 @@ import { useMapHeaderAutoHide } from '../hooks/useMapHeaderAutoHide';
 import SourceMetadataGlassCard from '../components/SourceMetadataGlassCard';
 import StepContentBlocks from '../components/StepContentBlocks';
 import StepFooterNav from '../components/StepFooterNav';
+import StepSlideTransition from '../components/StepSlideTransition';
 import SourceCoverageCard from '../components/SourceCoverageCard';
 import TakeawaysGlassCard from '../components/TakeawaysGlassCard';
 import KnowledgeSectionsList from '../components/KnowledgeSectionsList';
+import SectionCompleteCue from '../components/SectionCompleteCue';
+import StepSelfCheck from '../components/StepSelfCheck';
 import { stepHaptic, useAppSession } from '../context/AppSessionContext';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useViewAllScrollSpy } from '../hooks/useViewAllScrollSpy';
 import { getIntentLabel, getSourceTypeLabel } from '@shared/categories';
+import { formatReadingProgressLabel, getReadingSectionForStep } from '@shared/nucleoPipeline';
 import type { SourceReference } from '../logic/contracts';
+import { debugTransitionLog } from '../logic/debugTransitionLog';
+
+const PREVIEW_TOP_INSET = initialWindowMetrics?.insets.top ?? 0;
 
 function parseTotalMinutes(steps: Array<{ time?: string }> | undefined): number | null {
   if (!steps?.length) return null;
@@ -64,12 +70,13 @@ function ReferencesChips({ references }: { references?: SourceReference[] }) {
       {references.slice(0, 3).map((reference, idx) => (
         <View
           key={`${reference.label}-${reference.locator}-${idx}`}
-          className="flex-row items-center gap-1.5 rounded-full border border-neutral-300 dark:border-white/12 px-2.5 py-1"
+          className="max-w-full flex-row items-center gap-1.5 rounded-full bg-white/6 px-3 py-1.5"
+          style={{ flexShrink: 1 }}
         >
-          <Text className="text-[11px] font-medium text-secondary">
+          <Text className="text-xs text-secondary shrink" numberOfLines={1}>
             {reference.label}
           </Text>
-          <Text className="text-[11px] font-medium text-body">
+          <Text className="text-xs text-body shrink" numberOfLines={1}>
             {reference.locator}
           </Text>
         </View>
@@ -82,14 +89,51 @@ const VIEW_ALL_SECTION_DIVIDER = 'pb-8 mb-8 border-b border-neutral-200 border-w
 const VIEW_ALL_SECTION_BEFORE_COMPLETION = 'pb-8';
 const VIEW_ALL_COMPLETION_SECTION = 'pt-8 pb-8 border-t border-neutral-200 border-white/10';
 
-export default function ResultScreen() {
+type ResultScreenProps = {
+  previewMode?: boolean;
+  suppressStepTransitions?: boolean;
+  onHandoffLayout?: () => void;
+};
+
+export default function ResultScreen({
+  previewMode = false,
+  suppressStepTransitions = false,
+  onHandoffLayout,
+}: ResultScreenProps = {}) {
   const session = useAppSession();
   const { data } = session;
+  const safeInsets = useSafeAreaInsets();
+  const handoffReportedRef = React.useRef(false);
+  const rootLaidOutRef = React.useRef(false);
+
+  useEffect(() => {
+    if (!previewMode && !onHandoffLayout) return;
+    // #region agent log
+    debugTransitionLog('H1', 'ResultScreen.tsx:insets', 'result safe area insets', {
+      previewMode,
+      handoffPending: Boolean(onHandoffLayout),
+      insetTop: safeInsets.top,
+      insetBottom: safeInsets.bottom,
+    });
+    // #endregion
+  }, [onHandoffLayout, previewMode, safeInsets.bottom, safeInsets.top]);
+
+  useEffect(() => {
+    if (previewMode || !onHandoffLayout || handoffReportedRef.current || !rootLaidOutRef.current) {
+      return;
+    }
+    handoffReportedRef.current = true;
+    // #region agent log
+    debugTransitionLog('H3', 'ResultScreen.tsx:handoffEffect', 'handoff from layout effect', {}, 'post-fix-v4');
+    // #endregion
+    onHandoffLayout();
+  }, [onHandoffLayout, previewMode]);
 
   const scrollProgress = useSharedValue(0);
 
   const hideProgressLine =
-    !session.viewAll && !session.isComplete && session.currentStep === 0;
+    (!session.viewAll && !session.isComplete && session.currentStep === 0) ||
+    session.isComplete;
 
   const mapHeaderResetKey = session.viewAll
     ? `${session.viewAll}:${session.isComplete}`
@@ -100,7 +144,7 @@ export default function ResultScreen() {
     [session]
   );
   const { registerSectionLayout, handleScrollViewLayout, handleScroll, resetSpy } = useViewAllScrollSpy({
-    enabled: session.viewAll && !session.isComplete,
+    enabled: session.viewAll,
     totalSteps: session.totalSteps,
     onStepChange: syncReadingStep,
   });
@@ -140,6 +184,47 @@ export default function ResultScreen() {
   const totalMinutes = useMemo(() => parseTotalMinutes(data?.steps), [data?.steps]);
 
   const { reduceMotion } = useGlassAccessibility();
+  const completionCheckScale = useSharedValue(1);
+  const [ceremonyTitleReady, setCeremonyTitleReady] = useState(true);
+
+  useEffect(() => {
+    if (!session.isComplete || session.essentialsReview || session.viewAll) {
+      completionCheckScale.value = 1;
+      setCeremonyTitleReady(true);
+      return;
+    }
+
+    const shouldCeremony = session.triggerCompletionCeremonyIfNeeded();
+    if (!shouldCeremony) {
+      completionCheckScale.value = 1;
+      setCeremonyTitleReady(true);
+      return;
+    }
+
+    if (reduceMotion) {
+      completionCheckScale.value = 1;
+      setCeremonyTitleReady(true);
+      return;
+    }
+
+    completionCheckScale.value = 0.8;
+    completionCheckScale.value = withSpring(1, { damping: 14, stiffness: 160 });
+    setCeremonyTitleReady(false);
+    const timer = setTimeout(() => setCeremonyTitleReady(true), 120);
+    return () => clearTimeout(timer);
+  }, [
+    completionCheckScale,
+    reduceMotion,
+    session.triggerCompletionCeremonyIfNeeded,
+    session.essentialsReview,
+    session.historyStore.activeId,
+    session.isComplete,
+    session.viewAll,
+  ]);
+
+  const completionCheckStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: completionCheckScale.value }],
+  }));
 
   const remainingMinutes = useMemo(() => {
     if (session.viewAll || session.isComplete || session.currentStep < 1) return null;
@@ -168,6 +253,60 @@ export default function ResultScreen() {
     [navDir, session]
   );
 
+  const tryReverseContinue = useCallback(() => {
+    if (previewMode) return;
+    if (!session.canReverseContinueTransition()) return;
+    session.startReverseContinueTransition();
+  }, [previewMode, session]);
+
+  const handleRootLayout = useCallback(
+    (event: import('react-native').LayoutChangeEvent) => {
+      const { x, y, width, height } = event.nativeEvent.layout;
+      rootLaidOutRef.current = true;
+      // #region agent log
+      debugTransitionLog('H1', 'ResultScreen.tsx:rootLayout', 'result root layout', {
+        previewMode,
+        suppressStepTransitions,
+        layoutX: x,
+        layoutY: y,
+        layoutW: width,
+        layoutH: height,
+        insetTop: previewMode ? PREVIEW_TOP_INSET : safeInsets.top,
+        handoffPending: Boolean(onHandoffLayout),
+      });
+      // #endregion
+      if (!onHandoffLayout || handoffReportedRef.current) return;
+      handoffReportedRef.current = true;
+      // #region agent log
+      debugTransitionLog('H3', 'ResultScreen.tsx:handoff', 'handoff layout fired', { previewMode });
+      // #endregion
+      onHandoffLayout();
+    },
+    [onHandoffLayout, previewMode, safeInsets.top, suppressStepTransitions]
+  );
+
+  const backHomeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!previewMode)
+        .activeOffsetX(24)
+        .failOffsetY([-24, 24])
+        .onTouchesDown((event, stateManager) => {
+          'worklet';
+          const touch = event.allTouches[0];
+          if (!touch || touch.absoluteX > 36) {
+            stateManager.fail();
+          }
+        })
+        .onEnd((event) => {
+          'worklet';
+          if (event.translationX > 56 || event.velocityX > 520) {
+            runOnJS(tryReverseContinue)();
+          }
+        }),
+    [previewMode, tryReverseContinue]
+  );
+
   const swipeGesture = useMemo(
     () =>
       Gesture.Pan()
@@ -193,57 +332,22 @@ export default function ResultScreen() {
     [canNext, canPrev, commitStep, swipeEnabled]
   );
 
-  type EnterType = React.ComponentProps<typeof Animated.View>['entering'];
-  type ExitType = React.ComponentProps<typeof Animated.View>['exiting'];
-
-  const stepEntering = useMemo<EnterType>(() => {
-    if (reduceMotion) return FadeIn.duration(150);
-    return () => {
-      'worklet';
-      return {
-        initialValues: { opacity: 0, transform: [{ translateX: navDir.value * 24 }] },
-        animations: {
-          opacity: withTiming(1, { duration: 250 }),
-          transform: [{ translateX: withTiming(0, { duration: 250 }) }],
-        },
-      };
-    };
-  }, [navDir, reduceMotion]);
-
-  const stepExiting = useMemo<ExitType>(() => {
-    if (reduceMotion) return FadeOut.duration(150);
-    return () => {
-      'worklet';
-      return {
-        initialValues: { opacity: 1, transform: [{ translateX: 0 }] },
-        animations: {
-          opacity: withTiming(0, { duration: 180 }),
-          transform: [{ translateX: withTiming(navDir.value * -24, { duration: 250 }) }],
-        },
-      };
-    };
-  }, [navDir, reduceMotion]);
-
-  const stepKey = useMemo(() => {
-    const parts = [
+  const contentModeKey = useMemo(() => {
+    return [
       session.viewAll ? 'view-all' : 'step-mode',
       session.isComplete ? 'complete' : 'active',
       session.essentialsReview ? 'essentials' : 'content',
       session.isStreamGenerating ? 'stream' : 'idle',
-    ];
-    // Step-by-step only: remount for fade between steps. View-all keeps one tree so
-    // scroll-spy index updates do not remount liquid-glass surfaces.
-    if (!session.viewAll && !session.isComplete) {
-      parts.push(String(session.currentStep));
-    }
-    return parts.join(':');
+    ].join(':');
   }, [
-    session.currentStep,
     session.essentialsReview,
     session.isComplete,
     session.isStreamGenerating,
     session.viewAll,
   ]);
+
+  const showStepSlide =
+    isStepMode && !suppressStepTransitions && !session.isStreamGenerating;
 
   if (!data) return null;
 
@@ -259,7 +363,7 @@ export default function ResultScreen() {
         <View className="flex-row items-center gap-2">
           <AppIcon size={20} />
           <Text className="text-sm font-bold tracking-widest uppercase text-primary">
-            Núcleo
+            Idea central
           </Text>
         </View>
         {!session.isComplete && totalMinutes !== null ? (
@@ -277,16 +381,7 @@ export default function ResultScreen() {
       ) : null}
 
       {data.sourceMetadata ? (
-        <SourceMetadataGlassCard sourceMetadata={data.sourceMetadata} coverage={data.coverage} />
-      ) : null}
-
-      {data.references?.length ? (
-        <View className="mt-6">
-          <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
-            Referencias visibles
-          </Text>
-          <ReferencesChips references={data.references} />
-        </View>
+        <SourceMetadataGlassCard sourceMetadata={data.sourceMetadata} />
       ) : null}
 
       {data.tldr?.length ? (
@@ -321,6 +416,15 @@ export default function ResultScreen() {
         ? VIEW_ALL_SECTION_BEFORE_COMPLETION
         : VIEW_ALL_SECTION_DIVIDER
       : '';
+    const stepLabel = formatReadingProgressLabel(
+      stepIndex,
+      session.totalSteps,
+      data.readingSections ?? null
+    );
+    const completedSection =
+      session.sectionCompleteCue != null
+        ? getReadingSectionForStep(session.sectionCompleteCue, data.readingSections ?? null)
+        : null;
 
     return (
       <Pressable
@@ -329,9 +433,15 @@ export default function ResultScreen() {
         onPress={interactive ? () => session.goToStep(stepIndex, true) : undefined}
         className={stepDividerClass}
       >
+        {!interactive && session.sectionCompleteCue != null ? (
+          <SectionCompleteCue
+            visible
+            sectionTitle={completedSection?.title}
+          />
+        ) : null}
         <View className="flex-row flex-wrap items-center gap-2 mb-4">
           <Text className="text-sm font-bold uppercase tracking-widest text-accent dark:text-accent">
-            Paso {stepIndex} de {session.totalSteps}
+            {stepLabel}
           </Text>
           {step.time ? <Text className="text-sm text-secondary">{step.time}</Text> : null}
         </View>
@@ -340,6 +450,7 @@ export default function ResultScreen() {
           <Text className="text-[17px] leading-[26px] text-body mb-4">{step.purpose}</Text>
         ) : null}
         <StepContentBlocks blocks={step.content} />
+        {step.selfCheck ? <StepSelfCheck question={step.selfCheck} /> : null}
         <ReferencesChips references={step.references} />
       </Pressable>
     );
@@ -377,85 +488,104 @@ export default function ResultScreen() {
     );
   };
 
-  const renderCompletion = () => (
-    <View className="py-6">
-      <View className="flex-row items-center gap-2 mb-4">
-        <CheckCircle2 size={16} color="#8B8FF5" />
-        <Text className="text-xs font-bold uppercase tracking-widest text-secondary">Núcleo completado</Text>
+  const renderCompletionActions = () => (
+    <View className="mt-10 flex-row flex-wrap gap-3" style={styles.completionActions}>
+      <View style={styles.completionActionFullWidthSlot}>
+        <CompletionGlassButton
+          label="Nuevo Núcleo"
+          variant="accent"
+          onPress={session.handleNewMap}
+        />
       </View>
-      <Text className="text-3xl font-extrabold text-primary">
-        {data.completionCard?.title || 'Has terminado esta lectura'}
-      </Text>
+      <View className="flex-row gap-3 w-full items-center">
+        <View style={styles.completionActionSlot}>
+          <CompletionGlassButton
+            label="Repasar lo esencial"
+            onPress={() => session.setEssentialsReview(true)}
+          />
+        </View>
+        <CompletionOverflowMenu
+            onExportPdf={() => void session.handleDownloadPdf()}
+            onAsk={() => {
+              session.setChatOpen(true);
+              stepHaptic();
+            }}
+            onViewAll={session.enterCompletedViewAll}
+            pdfDisabled={!session.historyStore.activeId}
+            pdfLoading={session.isPdfGenerating}
+          />
+      </View>
+    </View>
+  );
+
+  const renderCompletionBody = (plainTakeaways = true) => (
+    <>
       <Text className="mt-4 text-lg leading-7 text-body">
         {data.completionCard?.summary || 'Aquí tienes lo esencial para retomarlo con rapidez.'}
       </Text>
-      <TakeawaysGlassCard items={data.completionCard?.takeaways ?? []} />
+      <TakeawaysGlassCard items={data.completionCard?.takeaways ?? []} plain={plainTakeaways} />
       <SourceCoverageCard
         coverage={data.coverage}
         limitations={data.sourceMetadata?.limitations}
         knowledgeSectionsCount={data.knowledgeSections?.length}
+        plain
       />
       <KnowledgeSectionsList sections={data.knowledgeSections} />
+    </>
+  );
 
-      <View className="mt-10 flex-row flex-wrap gap-3" style={styles.completionActions}>
-        {[
-          {
-            label: 'Repasar lo esencial',
-            onPress: () => session.setEssentialsReview(true),
-            fullWidth: true,
-          },
-          {
-            label: 'Preguntar sobre la fuente',
-            icon: MessageSquareText,
-            onPress: () => {
-              session.setChatOpen(true);
-              stepHaptic();
-            },
-          },
-          {
-            label: 'Guardar ficha PDF',
-            icon: Download,
-            onPress: () => void session.handleDownloadPdf(),
-            disabled: session.isPdfGenerating,
-            loading: session.isPdfGenerating,
-            loadingLabel: 'Preparando PDF…',
-          },
-          {
-            label: 'Volver al inicio',
-            onPress: () => {
-              session.setEssentialsReview(false);
-              session.goToStep(0);
-            },
-            fullWidth: true,
-          },
-          {
-            label: 'Nuevo Núcleo',
-            icon: SquarePen,
-            variant: 'accent' as const,
-            onPress: session.handleNewMap,
-            fullWidth: true,
-          },
-        ].map((action) => {
-          const Icon = action.icon;
-          return (
-            <View
-              key={action.label}
-              style={action.fullWidth ? styles.completionActionFullWidthSlot : styles.completionActionSlot}
-            >
-              <CompletionGlassButton
-                label={action.label}
-                onPress={action.onPress}
-                icon={Icon ? <Icon size={16} color={action.variant === 'accent' ? '#fff' : '#525252'} /> : undefined}
-                variant={action.variant ?? 'neutral'}
-                disabled={action.disabled}
-                loading={action.loading}
-                loadingLabel={action.loadingLabel}
-              />
-            </View>
-          );
-        })}
+  const renderCompletion = () => (
+    <View className="py-6">
+      <View className="flex-row items-center gap-2 mb-4">
+        <Animated.View style={completionCheckStyle}>
+          <CheckCircle2 size={16} color="#8B8FF5" />
+        </Animated.View>
+        <Text className="text-xs font-bold uppercase tracking-widest text-secondary">Núcleo completado</Text>
       </View>
+      {ceremonyTitleReady ? (
+        <Animated.Text
+          entering={FadeIn.duration(reduceMotion ? 150 : 250)}
+          className="text-3xl font-extrabold text-primary"
+        >
+          {data.completionCard?.title || 'Has terminado esta lectura'}
+        </Animated.Text>
+      ) : (
+        <Text className="text-3xl font-extrabold text-primary opacity-0">
+          {data.completionCard?.title || 'Has terminado esta lectura'}
+        </Text>
+      )}
+      {renderCompletionBody(true)}
+      {renderCompletionActions()}
     </View>
+  );
+
+  const renderCompletedViewAll = () => (
+    <>
+      <View onLayout={(event) => registerSectionLayout(0, event)}>{renderResumen(true)}</View>
+      {data.steps.map((_, idx) => {
+        const stepIndex = idx + 1;
+        const isLastStep = stepIndex === session.totalSteps;
+        return (
+          <View
+            key={data.steps[idx]?.id ?? stepIndex}
+            onLayout={(event) => registerSectionLayout(stepIndex, event)}
+          >
+            {renderStep(stepIndex, true, isLastStep)}
+          </View>
+        );
+      })}
+      <View className={VIEW_ALL_COMPLETION_SECTION}>
+        <View className="flex-row items-center gap-2 mb-4">
+          <CheckCircle2 size={16} color="#8B8FF5" />
+          <Text className="text-xs font-bold uppercase tracking-widest text-secondary">Núcleo completado</Text>
+        </View>
+        <Text className="text-3xl font-extrabold text-primary">
+          {data.completionCard?.title || 'Has terminado esta lectura'}
+        </Text>
+        {renderCompletionBody(false)}
+        {renderCompletionActions()}
+      </View>
+    </>
   );
 
   const renderViewAllCompletion = () => (
@@ -482,8 +612,44 @@ export default function ResultScreen() {
     </View>
   );
 
-  return (
-    <SafeAreaView className="flex-1 bg-base" edges={['top', 'left', 'right']}>
+  const renderStepModeReading = (step: number) =>
+    step === 0 ? renderResumen(false) : renderStep(step, false);
+
+  const renderModeBody = () => {
+    if (session.isComplete) {
+      if (session.essentialsReview) return renderEssentialsReview();
+      if (session.viewAll) return renderCompletedViewAll();
+      return renderCompletion();
+    }
+
+    if (session.viewAll) {
+      return (
+        <>
+          <View onLayout={(event) => registerSectionLayout(0, event)}>
+            {renderResumen(true)}
+          </View>
+          {data.steps.map((_, idx) => {
+            const stepIndex = idx + 1;
+            const isLastStep = stepIndex === session.totalSteps;
+            return (
+              <View
+                key={data.steps[idx]?.id ?? stepIndex}
+                onLayout={(event) => registerSectionLayout(stepIndex, event)}
+              >
+                {renderStep(stepIndex, true, isLastStep)}
+              </View>
+            );
+          })}
+          {renderViewAllCompletion()}
+        </>
+      );
+    }
+
+    return renderStepModeReading(session.currentStep);
+  };
+
+  const resultShell = (
+    <GestureDetector gesture={backHomeGesture}>
       <View className="flex-1 relative overflow-hidden">
       <ReadingProgressBar
         viewAll={session.viewAll}
@@ -507,10 +673,10 @@ export default function ResultScreen() {
           <Animated.ScrollView
             ref={scrollRef}
             className="flex-1"
-            contentContainerClassName="px-5 pb-32"
+            contentContainerClassName="px-5"
             contentContainerStyle={{
-              flexGrow: 1,
               paddingTop: mapContentTopPadding(hideProgressLine),
+              paddingBottom: session.viewAll || session.isComplete ? 128 : 32,
             }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={!isIntroStep}
@@ -519,8 +685,8 @@ export default function ResultScreen() {
             onScroll={scrollHandler}
             scrollEventThrottle={16}
           >
-            <View className="mb-12">
-              <View onLayout={handleMapMetaAnchorLayout} collapsable={false}>
+            <View>
+              <View onLayout={handleMapMetaAnchorLayout} collapsable={false} className="mb-10">
                 <Text className="text-xs font-bold uppercase tracking-[0.16em] text-secondary text-body">
                   {data.title}
                 </Text>
@@ -539,50 +705,27 @@ export default function ResultScreen() {
                 </Text>
               </View>
               <Animated.View style={styles.readingColumn}>
+              {showStepSlide ? (
+                <StepSlideTransition step={session.currentStep} reduceMotion={reduceMotion}>
+                  {renderStepModeReading}
+                </StepSlideTransition>
+              ) : (
               <Animated.View
-                key={stepKey}
+                key={contentModeKey}
                 entering={
-                  session.isStreamGenerating || session.viewAll
+                  suppressStepTransitions || session.isStreamGenerating
                     ? undefined
-                    : isStepMode
-                      ? stepEntering
-                      : FadeIn.duration(220)
+                    : FadeIn.duration(reduceMotion ? 150 : 220)
                 }
                 exiting={
-                  session.viewAll
+                  suppressStepTransitions || session.viewAll
                     ? undefined
-                    : isStepMode
-                      ? stepExiting
-                      : FadeOut.duration(180)
+                    : FadeOut.duration(reduceMotion ? 150 : 180)
                 }
               >
-                {session.isComplete ? (
-                  session.essentialsReview ? renderEssentialsReview() : renderCompletion()
-                ) : session.viewAll ? (
-                  <>
-                    <View onLayout={(event) => registerSectionLayout(0, event)}>
-                      {renderResumen(true)}
-                    </View>
-                    {data.steps.map((_, idx) => {
-                      const stepIndex = idx + 1;
-                      const isLastStep = stepIndex === session.totalSteps;
-                      return (
-                        <View
-                          key={data.steps[idx]?.id ?? stepIndex}
-                          onLayout={(event) => registerSectionLayout(stepIndex, event)}
-                        >
-                          {renderStep(stepIndex, true, isLastStep)}
-                        </View>
-                      );
-                    })}
-                    {renderViewAllCompletion()}
-                  </>
-                ) : session.currentStep === 0 ? (
-                  renderResumen(false)
-                ) : (
-                  renderStep(session.currentStep, false)
-                )}
+                {renderModeBody()}
               </Animated.View>
+              )}
             </Animated.View>
             </View>
           </Animated.ScrollView>
@@ -591,7 +734,7 @@ export default function ResultScreen() {
         <StepFooterNav />
       </View>
 
-      {session.historyStore.activeId ? (
+      {!previewMode && session.historyStore.activeId ? (
         <MapChatSheet
           visible={session.chatOpen}
           onClose={() => session.setChatOpen(false)}
@@ -600,6 +743,26 @@ export default function ResultScreen() {
         />
       ) : null}
       </View>
+    </GestureDetector>
+  );
+
+  return previewMode ? (
+    <View
+      className="flex-1 bg-base"
+      style={{ paddingTop: PREVIEW_TOP_INSET }}
+      onLayout={handleRootLayout}
+      pointerEvents="none"
+    >
+      {resultShell}
+    </View>
+  ) : (
+    <SafeAreaView
+      className="flex-1 bg-base"
+      edges={['top', 'left', 'right']}
+      onLayout={handleRootLayout}
+      pointerEvents="auto"
+    >
+      {resultShell}
     </SafeAreaView>
   );
 }
@@ -616,7 +779,8 @@ const styles = StyleSheet.create({
   completionActionSlot: {
     flexGrow: 1,
     flexShrink: 1,
-    minWidth: '45%',
+    flexBasis: 0,
+    minWidth: 0,
   },
   completionActionFullWidthSlot: {
     width: '100%',

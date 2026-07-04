@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -14,10 +14,17 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HistorySheet from './HistorySheet';
-import { SidebarBrandHeader, sidebarHeaderSolidHeight } from './SidebarGlassHeader';
+import {
+  SidebarBrandHeader,
+  SidebarOcclusionFade,
+  SIDEBAR_OCCLUSION,
+  sidebarHeaderSolidHeight,
+  sidebarSearchStackHeight,
+} from './SidebarGlassHeader';
 import { APP_DARK_BACKGROUND } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
 import { DRAWER_WIDTH, MAIN_SHEET_CORNER_RADIUS, SCREEN_WIDTH } from './sidebarLayout';
+import type { Coleccion } from '@shared/collections';
 import type { ActionMapData } from '../logic/contracts';
 import type { HistoryEntry } from '../logic/history';
 import type { AppPhase } from '../context/AppSessionContext';
@@ -25,11 +32,14 @@ import type { AppPhase } from '../context/AppSessionContext';
 export { DRAWER_WIDTH, MAIN_SHEET_CORNER_RADIUS } from './sidebarLayout';
 
 const SPRING = { damping: 26, stiffness: 280 } as const;
+const EDGE_SWIPE_TOP_INSET = 140;
+
 const SEARCH_TIMING = { duration: 320, easing: Easing.out(Easing.cubic) } as const;
 
 type HistoryDrawerProps = {
   open: boolean;
   entries: HistoryEntry[];
+  collections: Coleccion[];
   activeId: string | null;
   phase: AppPhase;
   data: ActionMapData | null;
@@ -41,6 +51,7 @@ type HistoryDrawerProps = {
   onRename: (id: string, title: string) => void;
   onUpdateCategory: (id: string, category: string) => void;
   onTogglePin: (id: string) => void;
+  onExportPdf?: (id: string) => void;
   onOpen: () => void;
   onGoToStep: (idx: number) => void;
   onNewMap: () => void;
@@ -51,6 +62,7 @@ type HistoryDrawerProps = {
 export default function HistoryDrawer({
   open,
   entries,
+  collections,
   activeId,
   phase,
   data,
@@ -62,6 +74,7 @@ export default function HistoryDrawer({
   onRename,
   onUpdateCategory,
   onTogglePin,
+  onExportPdf,
   onOpen,
   onGoToStep,
   onNewMap,
@@ -72,6 +85,8 @@ export default function HistoryDrawer({
   const insets = useSafeAreaInsets();
   const [searchActive, setSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchFilters, setSearchFilters] = useState<ReactNode>(null);
+  const [openHistoryMenuEntryId, setOpenHistoryMenuEntryId] = useState<string | null>(null);
   const offsetX = useSharedValue(open ? DRAWER_WIDTH : 0);
   const sidebarClipWidth = useSharedValue(DRAWER_WIDTH);
   const openShared = useSharedValue(open);
@@ -83,11 +98,27 @@ export default function HistoryDrawer({
   );
 
   const headerSolidHeight = sidebarHeaderSolidHeight(insets.top);
+  const searchStackHeight = sidebarSearchStackHeight(insets.top);
+  const brandHeaderHeight = searchActive ? searchStackHeight : headerSolidHeight;
   const sidebarCanvasColor = isDark ? APP_DARK_BACKGROUND : '#f0f0f0';
 
   useEffect(() => {
     searchActiveShared.value = searchActive;
   }, [searchActive, searchActiveShared]);
+
+  useEffect(() => {
+    if (!open) {
+      setOpenHistoryMenuEntryId(null);
+    }
+  }, [open]);
+
+  const handleHistoryMenuOpen = useCallback((entryId: string) => {
+    setOpenHistoryMenuEntryId(entryId);
+  }, []);
+
+  const handleHistoryMenuClose = useCallback(() => {
+    setOpenHistoryMenuEntryId(null);
+  }, []);
 
   useEffect(() => {
     openShared.value = open;
@@ -115,7 +146,7 @@ export default function HistoryDrawer({
   };
 
   const panGesture = Gesture.Pan()
-    .enabled(open)
+    .enabled(open && !openHistoryMenuEntryId)
     .activeOffsetX([-12, 12])
     .failOffsetY([-16, 16])
     .onBegin(() => {
@@ -158,7 +189,7 @@ export default function HistoryDrawer({
     });
 
   const tapGesture = Gesture.Tap()
-    .enabled(open)
+    .enabled(open && !openHistoryMenuEntryId)
     .onEnd(() => {
       runOnJS(onClose)();
     });
@@ -265,28 +296,41 @@ export default function HistoryDrawer({
       <Animated.View
         style={[styles.sidebar, sidebarClipStyle, { backgroundColor: sidebarCanvasColor }]}
       >
-        <SidebarBrandHeader
-          height={headerSolidHeight}
-          insetTop={insets.top}
-          backgroundColor={sidebarCanvasColor}
-          isDark={isDark}
-          onPress={() => {
-            onNewMap();
-            onClose();
-          }}
-          searchActive={searchActive}
-          searchQuery={searchQuery}
-          onSearchQueryChange={setSearchQuery}
-          onSearchOpen={() => setSearchActive(true)}
-          onSearchClose={closeSearch}
+        <View pointerEvents={openHistoryMenuEntryId ? 'none' : 'auto'}>
+          <SidebarBrandHeader
+            height={brandHeaderHeight}
+            insetTop={insets.top}
+            backgroundColor={sidebarCanvasColor}
+            isDark={isDark}
+            onPress={() => {
+              onNewMap();
+              onClose();
+            }}
+            searchActive={searchActive}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            onSearchOpen={() => setSearchActive(true)}
+            onSearchClose={closeSearch}
+            searchFilters={searchActive ? searchFilters : undefined}
+          />
+        </View>
+        <SidebarOcclusionFade
+          top={searchActive ? searchStackHeight : headerSolidHeight}
+          color={sidebarCanvasColor}
         />
-        <View style={[styles.sidebarBody, { width: DRAWER_WIDTH }]}>
+        <View
+          style={[
+            styles.sidebarBody,
+            { width: searchActive ? SCREEN_WIDTH : DRAWER_WIDTH },
+          ]}
+        >
           <HistorySheet
             visible
             embedded
             hideBrandHeader
             canvasColor={sidebarCanvasColor}
             entries={entries}
+            collections={collections}
             activeId={activeId}
             onClose={onClose}
             onSelect={onSelect}
@@ -294,6 +338,7 @@ export default function HistoryDrawer({
             onRename={onRename}
             onUpdateCategory={onUpdateCategory}
             onTogglePin={onTogglePin}
+            onExportPdf={onExportPdf}
             showIndex={phase === 'result' && Boolean(data)}
             data={data}
             currentStep={currentStep}
@@ -305,6 +350,11 @@ export default function HistoryDrawer({
             onSearchOpen={() => setSearchActive(true)}
             onSearchClose={closeSearch}
             onSearchQueryChange={setSearchQuery}
+            openMenuEntryId={openHistoryMenuEntryId}
+            onHistoryMenuOpen={handleHistoryMenuOpen}
+            onHistoryMenuClose={handleHistoryMenuClose}
+            registerSearchFilters={setSearchFilters}
+            searchStackHeight={searchStackHeight}
           />
         </View>
       </Animated.View>
@@ -362,7 +412,7 @@ const styles = StyleSheet.create({
   edgeHitSlop: {
     position: 'absolute',
     left: 0,
-    top: 0,
+    top: EDGE_SWIPE_TOP_INSET,
     bottom: 0,
     width: 24,
     zIndex: 20,

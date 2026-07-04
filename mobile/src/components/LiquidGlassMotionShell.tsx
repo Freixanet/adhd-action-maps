@@ -16,14 +16,13 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 import LiquidGlassSurface, { type LiquidGlassVariant } from './LiquidGlassSurface';
 import GlassPerimeterHighlight from './GlassPerimeterRing';
 import GlassTouchGlow from './GlassTouchGlow';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useGlassTouchGlow } from '../hooks/useGlassTouchGlow';
 import { useTheme } from '../context/ThemeContext';
-import { COMPOSER_DARK_SURFACE, GLASS_TOUCH_GLOW_COMPOSER_CENTER_OPACITY_DARK, GLASS_TOUCH_GLOW_COMPOSER_CENTER_OPACITY_LIGHT, GLASS_TOUCH_GLOW_COMPOSER_HOLD_SETTLE_MS, GLASS_TOUCH_GLOW_COMPOSER_PEAK_DWELL_MS, GLASS_TOUCH_GLOW_COMPOSER_RADIUS_SCALE, GLASS_TOUCH_GLOW_FADE_IN_MS_COMPOSER, GLASS_TOUCH_GLOW_FOCUSED_HOLD_OPACITY, liquidGlassShellClasses } from '@shared/uiTokens';
+import { COMPOSER_DARK_SURFACE, GLASS_TOUCH_GLOW_COMPOSER_CENTER_OPACITY_DARK, GLASS_TOUCH_GLOW_COMPOSER_CENTER_OPACITY_LIGHT, GLASS_TOUCH_GLOW_COMPOSER_PEAK_DWELL_MS, GLASS_TOUCH_GLOW_COMPOSER_RADIUS_SCALE, GLASS_TOUCH_GLOW_FADE_IN_MS_COMPOSER, liquidGlassShellClasses } from '@shared/uiTokens';
 
 /**
  * Composer-only glass motion shell.
@@ -57,10 +56,6 @@ const BLUR_SPRING = { damping: 22, stiffness: 560, mass: 0.55 };
 const SHEEN_MS = 180;
 const PULSE_DEBOUNCE_MS = 140;
 
-function triggerHaptic() {
-  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-}
-
 export default function LiquidGlassMotionShell({
   children,
   borderRadius,
@@ -77,8 +72,7 @@ export default function LiquidGlassMotionShell({
   const { reduceMotion } = useGlassAccessibility();
   const touchGlow = useGlassTouchGlow(reduceMotion, isDark, {
     fadeInMs: GLASS_TOUCH_GLOW_FADE_IN_MS_COMPOSER,
-    holdCenterOpacity: GLASS_TOUCH_GLOW_FOCUSED_HOLD_OPACITY,
-    holdSettleMs: GLASS_TOUCH_GLOW_COMPOSER_HOLD_SETTLE_MS,
+    releaseFadeMs: 900,
     peakDwellMs: GLASS_TOUCH_GLOW_COMPOSER_PEAK_DWELL_MS,
     centerOpacity: isDark
       ? GLASS_TOUCH_GLOW_COMPOSER_CENTER_OPACITY_DARK
@@ -122,9 +116,7 @@ export default function LiquidGlassMotionShell({
   );
 
   const firePulse = useCallback(
-    (isFocused: boolean, withHaptic: boolean) => {
-      if (withHaptic) triggerHaptic();
-
+    (isFocused: boolean) => {
       if (reduceMotion) {
         scale.value = settleScale(isFocused);
         sheenProgress.value = 0;
@@ -149,11 +141,11 @@ export default function LiquidGlassMotionShell({
   );
 
   const requestPulse = useCallback(
-    (isFocused: boolean, withHaptic: boolean) => {
+    (isFocused: boolean) => {
       const now = Date.now();
       if (now - lastPulseAt.current < PULSE_DEBOUNCE_MS) return;
       lastPulseAt.current = now;
-      firePulse(isFocused, withHaptic);
+      firePulse(isFocused);
     },
     [firePulse]
   );
@@ -164,7 +156,7 @@ export default function LiquidGlassMotionShell({
       glowStartedThisFocusRef.current = true;
       pendingFocusGlowRef.current = false;
       touchGlow.onPressIn(locationX, locationY);
-      requestPulse(focused, true);
+      requestPulse(focused);
     },
     [focused, requestPulse, touchGlow]
   );
@@ -178,18 +170,8 @@ export default function LiquidGlassMotionShell({
     [triggerPressGlow]
   );
 
-  // Responder only claims taps on the empty chrome (no child claimed them):
-  // focus the input plus fire the glow.
-  const handleTouchGrant = useCallback(
-    (event: import('react-native').GestureResponderEvent) => {
-      triggerPressGlow(event);
-      inputRef?.current?.focus();
-    },
-    [inputRef, triggerPressGlow]
-  );
-
   const handleTouchRelease = useCallback(() => {
-    touchGlow.onReleaseHold();
+    touchGlow.onPressOut();
   }, [touchGlow]);
 
   useEffect(() => {
@@ -197,7 +179,7 @@ export default function LiquidGlassMotionShell({
     prevFocusedRef.current = focused;
 
     if (focused && !wasFocused) {
-      requestPulse(true, true);
+      requestPulse(true);
       if (!glowStartedThisFocusRef.current) {
         beginFocusGlow();
       }
@@ -263,11 +245,7 @@ export default function LiquidGlassMotionShell({
       <View
         className={liquidGlassShellClasses(className)}
         style={[styles.shell, { borderRadius }, style]}
-        onStartShouldSetResponder={() => true}
-        onResponderGrant={handleTouchGrant}
-        onResponderRelease={handleTouchRelease}
-        onResponderTerminate={handleTouchRelease}
-        onResponderTerminationRequest={() => true}
+        onStartShouldSetResponder={() => false}
         onTouchStart={handleGlowTouch}
         onTouchEnd={handleTouchRelease}
         onTouchCancel={handleTouchRelease}
@@ -295,9 +273,10 @@ export default function LiquidGlassMotionShell({
             height={shellSize.height}
             borderRadius={borderRadius}
             isDark={isDark}
-            edgeInset={2}
+            edgeInset={0}
             glowOpacity={touchGlow.glowOpacity}
-            touchPoint={touchGlow.touchPoint}
+            touchX={touchGlow.touchX}
+            touchY={touchGlow.touchY}
             centerOpacity={touchGlow.centerOpacity}
             radiusScale={GLASS_TOUCH_GLOW_COMPOSER_RADIUS_SCALE}
           />

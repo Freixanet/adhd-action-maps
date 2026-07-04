@@ -9,7 +9,8 @@ import {
 } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as Haptics from 'expo-haptics';
-import type { ActionMapData, MapIntent, SourceType, TransformRequest } from '../logic/contracts';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
+import type { ActionMapData, MapIntent, SourceAnalysisResponse, SourceType, TransformRequest } from '../logic/contracts';
 import {
   deleteCloudHistoryEntry,
   migrateLocalHistory,
@@ -19,20 +20,32 @@ import {
 } from '../logic/cloudHistory';
 import { toCloudUserProfile } from '../logic/cloudUserProfile';
 import {
+  createCollection,
   createEntry,
   deleteEntry,
   getActiveEntry,
   loadHistory,
+  registerNucleoInCollection,
   renameEntry,
   saveHistory,
   setActiveId,
   togglePinEntry,
   updateActiveSession,
   updateEntryCategory,
+  markCompletionCeremonyShown,
   type HistoryEntry,
   type HistoryStore,
 } from '../logic/history';
-import { collectUserCategories } from '@shared/categories';
+import {
+  analyzeTransformSource,
+  buildCollectionPartBody,
+  promptCollectionSplit,
+} from '../logic/collectionAnalyze';
+import {
+  formatReadingProgressLabel,
+  isLastStepInReadingSection,
+} from '@shared/nucleoPipeline';
+import { isProUser } from '@shared/proEntitlement';
 import { normalizeMapData } from '../logic/mapData';
 import {
   getInitialModelPreference,
@@ -80,10 +93,18 @@ import {
 import { apiUrl } from '../logic/apiBase';
 import { isCloudSyncConfigured, supabase } from '../logic/supabase';
 import { fetchWithTimeout } from '../logic/network';
+import {
+  CONTINUE_IMMEDIATE_BACK_MS,
+  type ContinueChipRect,
+  type ContinueTransitionSnapshot,
+} from '../logic/continueTransition';
+import { debugTransitionLog } from '../logic/debugTransitionLog';
 
 export type AppPhase = 'input' | 'loading' | 'result';
 
 const MAX_SYNCED_ENTRIES = 30;
+/** The loading bar animates to 100% (400ms fill) before the phase swaps. */
+const INTRO_TRANSITION_BAR_MS = 520;
 const OFFLINE_TRANSFORM_MESSAGE = 'Sin conexión. Comprueba tu red y vuelve a intentarlo.';
 const GENERIC_TRANSFORM_ERROR = 'No se pudo procesar la fuente.';
 
@@ -165,6 +186,7 @@ type AppSessionContextValue = {
   cloudUserEmail: string | null;
   cloudUserAvatarUrl: string | null;
   cloudSignedIn: boolean;
+  isPro: boolean;
   isCloudSyncConfigured: boolean;
   uploadedFile: UploadedFile | null;
   attachMenuOpen: boolean;
@@ -181,6 +203,7 @@ type AppSessionContextValue = {
   continueEntry: HistoryEntry | null;
   dismissContinueChip: () => void;
   progressLabel: string;
+  sectionCompleteCue: number | null;
   stepProgress: number;
   goToStep: (idx: number, fromViewAll?: boolean) => void;
   syncReadingStep: (step: number) => void;
@@ -197,18 +220,35 @@ type AppSessionContextValue = {
   devRestoreHistory?: () => void;
   handleNewMap: () => void;
   handleSelectHistory: (id: string) => void;
+  beginContinueTransition: (id: string, chipRect: ContinueChipRect, chipLabel: string) => void;
+  markContinueHandoffLayoutReady: () => void;
+  registerContinueHandoffGlassTarget: () => void;
+  notifyContinueHandoffGlassActive: () => void;
+  completeContinueTransitionHandoff: () => void;
+  finishContinueExpandTransition: () => void;
+  finishContinueCollapseTransition: () => void;
+  startReverseContinueTransition: () => boolean;
+  canReverseContinueTransition: () => boolean;
+  continueTransition: ContinueTransitionSnapshot | null;
+  continueTransitionHandoff: boolean;
+  /** Keeps eager glass mount briefly after overlay removal for late surfaces. */
+  continueHandoffPrewarm: boolean;
   handleDeleteHistory: (id: string) => void;
   handleRenameHistory: (id: string, title: string) => void;
   handleUpdateCategory: (category: string) => void;
   handleUpdateEntryCategory: (id: string, category: string) => void;
   handlePinHistory: (id: string) => void;
   handleCompleteMap: () => void;
+  triggerCompletionCeremonyIfNeeded: () => boolean;
   essentialsReview: boolean;
   setEssentialsReview: (value: boolean) => void;
   handleDownloadPdf: () => Promise<void>;
+  handleDownloadPdfForEntry: (entryId: string) => Promise<void>;
+  enterCompletedViewAll: () => void;
   isStreamGenerating: boolean;
+  collectionGenerationProgress: { completed: number; total: number } | null;
   streamLoadPhase: StreamLoadPhase;
-  streamProgress: number;
+  streamProgressShared: SharedValue<number>;
   loadingFadeOverlayActive: boolean;
   completeLoadingFadeOverlay: () => void;
   isPdfGenerating: boolean;
@@ -242,6 +282,18 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [viewAll, setViewAll] = useState(initialActive?.session.viewAll ?? false);
   const [historyOpen, setHistoryOpenState] = useState(false);
   const [dismissedContinueId, setDismissedContinueId] = useState<string | null>(null);
+  const [continueTransition, setContinueTransition] = useState<ContinueTransitionSnapshot | null>(null);
+  const [continueTransitionHandoff, setContinueTransitionHandoff] = useState(false);
+  const [continueHandoffPrewarm, setContinueHandoffPrewarm] = useState(false);
+  const continueTransitionEnteredAtRef = useRef<number | null>(null);
+  const continueChipRectRef = useRef<ContinueChipRect | null>(null);
+  const continueChipLabelRef = useRef<string>('');
+  const continueEntryIdRef = useRef<string | null>(null);
+  const continueHandoffFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const continueHandoffLayoutReadyRef = useRef(false);
+  const continueHandoffGlassExpectedRef = useRef(0);
+  const continueHandoffGlassActiveRef = useRef(0);
+  const continueHandoffPrewarmEndRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [devHistoryHidden, setDevHistoryHidden] = useState(() =>
     __DEV__ ? isDevHistoryHidden() : false
   );
@@ -287,9 +339,14 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     getInitialDepthPreference()
   );
   const [essentialsReview, setEssentialsReview] = useState(false);
+  const [sectionCompleteCue, setSectionCompleteCue] = useState<number | null>(null);
   const [isStreamGenerating, setIsStreamGenerating] = useState(false);
+  const [collectionGenerationProgress, setCollectionGenerationProgress] = useState<{
+    completed: number;
+    total: number;
+  } | null>(null);
   const [streamLoadPhase, setStreamLoadPhase] = useState<StreamLoadPhase>(0);
-  const [streamProgress, setStreamProgress] = useState(0);
+  const streamProgressShared = useSharedValue(0);
   const [loadingFadeOverlayActive, setLoadingFadeOverlayActive] = useState(false);
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
 
@@ -307,9 +364,14 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const draftRestoredRef = useRef(false);
 
   const pendingDeletesRef = useRef<string[]>([]);
+  const introTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     phaseRef.current = phase;
+    if (phase !== 'loading' && introTransitionTimeoutRef.current) {
+      clearTimeout(introTransitionTimeoutRef.current);
+      introTransitionTimeoutRef.current = null;
+    }
   }, [phase]);
 
   useEffect(() => {
@@ -321,16 +383,16 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const resetStreamGenerationUi = useCallback(() => {
     streamProgressCapRef.current = 0;
     setStreamLoadPhase(0);
-    setStreamProgress(0);
+    streamProgressShared.value = 0;
     setLoadingFadeOverlayActive(false);
-  }, []);
+  }, [streamProgressShared]);
 
   const bumpStreamProgressCap = useCallback((cap: number) => {
     streamProgressCapRef.current = Math.max(streamProgressCapRef.current, cap);
     if (reduceMotionRef.current) {
-      setStreamProgress(streamProgressCapRef.current);
+      streamProgressShared.value = streamProgressCapRef.current;
     }
-  }, []);
+  }, [streamProgressShared]);
 
   const completeLoadingFadeOverlay = useCallback(() => {
     setLoadingFadeOverlayActive(false);
@@ -341,15 +403,15 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
     const interval = setInterval(() => {
       if (reduceMotionRef.current) return;
-      setStreamProgress((current) => {
-        const cap = streamProgressCapRef.current;
-        if (current >= cap) return current;
-        return Math.min(cap, current + 0.35);
-      });
+      const current = streamProgressShared.value;
+      const cap = streamProgressCapRef.current;
+      if (current >= cap) return;
+      const step = Math.max(0.35, (cap - current) * 0.055);
+      streamProgressShared.value = Math.min(cap, current + step);
     }, 80);
 
     return () => clearInterval(interval);
-  }, [isStreamGenerating, loadingFadeOverlayActive, phase]);
+  }, [isStreamGenerating, loadingFadeOverlayActive, phase, streamProgressShared]);
 
   const getPendingDeletes = useCallback((email: string): string[] => {
     try {
@@ -404,6 +466,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
   const pendingAuthRef = useRef(false);
   const cloudSignedIn = Boolean(cloudUserEmail);
+  const isPro = useMemo(() => isProUser(cloudUserEmail), [cloudUserEmail]);
 
   const totalSteps = data?.steps.length ?? 0;
   const composerBodyText = pastedText?.trim() ?? inputText.trim();
@@ -415,7 +478,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       ? 'Añade una indicación sobre el video (opcional)…'
       : uploadedFile
         ? 'Archivo adjunto listo para convertir'
-        : 'Pega texto, un enlace, un vídeo o un PDF';
+        : 'Pega texto, un enlace o adjunta un archivo';
 
   const hasAnyNucleo = historyStore.entries.length > 0;
 
@@ -482,8 +545,12 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     if (isComplete) return 'Núcleo completado';
     if (viewAll) return 'Vista completa';
     if (currentStep === 0) return 'Introducción';
-    return `Paso ${currentStep} de ${totalSteps}`;
-  }, [currentStep, isComplete, totalSteps, viewAll]);
+    return formatReadingProgressLabel(
+      currentStep,
+      totalSteps,
+      data?.readingSections ?? null
+    );
+  }, [currentStep, data?.readingSections, isComplete, totalSteps, viewAll]);
 
   const stepProgress = useMemo(() => {
     if (isComplete || viewAll || !data || totalSteps === 0) return 0;
@@ -717,13 +784,26 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   // Eliminado el useEffect de sincronización global masiva para favorecer sync selectivo
 
   const goToStep = useCallback((idx: number, fromViewAll = false) => {
+    const previousStep = currentStep;
     setIsComplete(false);
     setCurrentStep(idx);
     const nextViewAll = fromViewAll ? false : viewAll;
     if (fromViewAll) setViewAll(false);
     persistSessionState(idx, false, nextViewAll);
-    stepHaptic();
-  }, [persistSessionState, viewAll]);
+
+    if (
+      idx > previousStep &&
+      previousStep > 0 &&
+      data?.readingSections?.length &&
+      isLastStepInReadingSection(previousStep, data.readingSections)
+    ) {
+      setSectionCompleteCue(previousStep);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      setTimeout(() => setSectionCompleteCue(null), 1200);
+    } else {
+      stepHaptic();
+    }
+  }, [currentStep, data?.readingSections, persistSessionState, viewAll]);
 
   const syncReadingStep = useCallback((step: number) => {
     setCurrentStep((prev) => {
@@ -767,6 +847,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setIsStreamGenerating(false);
+    setCollectionGenerationProgress(null);
     resetStreamGenerationUi();
 
     if (partialShownRef.current) {
@@ -858,109 +939,210 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       }
     }
 
-    setPhase('loading');
     setError(null);
     setTransformIncomplete(false);
     setAttachMenuOpen(false);
     clearComposerDraft();
+
+    const sourceKind = resolveTransformSourceKind(uploadedFile, urlDetection);
+    const mapId = generateMapId();
+    const sourceLabel =
+      uploadedFile?.name || bodyText.split('\n')[0]?.slice(0, 80) || 'Fuente analizada';
+
+    let body: TransformRequest;
+    if (uploadedFile?.isPdf && uploadedFile.fileData) {
+      body = {
+        type: 'pdf',
+        fileData: uploadedFile.fileData,
+        mimeType: uploadedFile.mimeType || 'application/pdf',
+        preferredModel: 'auto',
+        intent,
+        depth: depthPreference,
+        outputLanguage: 'es',
+        sourceLabel,
+        mapId,
+      };
+    } else if (uploadedFile?.isVideo && uploadedFile.fileData) {
+      body = {
+        type: 'video',
+        fileData: uploadedFile.fileData,
+        mimeType: uploadedFile.mimeType || 'video/mp4',
+        preferredModel: 'auto',
+        intent,
+        depth: depthPreference,
+        outputLanguage: 'es',
+        sourceLabel,
+        mapId,
+      };
+      if (inputText.trim()) body.text = inputText.trim();
+    } else if (uploadedFile?.isImage && uploadedFile.fileData) {
+      body = {
+        type: 'image',
+        fileData: uploadedFile.fileData,
+        mimeType: uploadedFile.mimeType || 'image/jpeg',
+        preferredModel: 'auto',
+        intent,
+        depth: depthPreference,
+        outputLanguage: 'es',
+        sourceLabel,
+        mapId,
+      };
+      if (inputText.trim()) body.text = inputText.trim();
+    } else if (urlDetection?.kind === 'youtube') {
+      body = {
+        text: urlDetection.url,
+        type: 'youtube',
+        preferredModel: 'auto',
+        intent,
+        depth: depthPreference,
+        outputLanguage: 'es',
+        sourceLabel: urlDetection.url,
+        mapId,
+      };
+    } else if (urlDetection?.kind === 'link') {
+      body = {
+        text: urlDetection.url,
+        type: 'link',
+        preferredModel: 'auto',
+        intent,
+        depth: depthPreference,
+        outputLanguage: 'es',
+        sourceLabel: urlDetection.url,
+        mapId,
+      };
+    } else {
+      body = {
+        text: bodyText,
+        type: 'text',
+        preferredModel: 'auto',
+        intent,
+        depth: depthPreference,
+        outputLanguage: 'es',
+        sourceLabel,
+        mapId,
+      };
+    }
+
+    const accessToken = supabase
+      ? (await supabase.auth.getSession()).data.session?.access_token
+      : undefined;
+    const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+
+    let collectionPlan: SourceAnalysisResponse | null = null;
+    try {
+      const analysis = await analyzeTransformSource(body, headers);
+      if (analysis.shouldProposeSplit && analysis.partCount >= 2) {
+        const choice = await promptCollectionSplit(analysis.partCount);
+        if (choice === 'split') {
+          collectionPlan = analysis;
+        } else {
+          body = { ...body, singleNucleoMode: true };
+        }
+      }
+    } catch {
+      // Si el análisis falla, continúa con transform normal.
+    }
+
+    setPhase('loading');
     transformCancelledRef.current = false;
     partialShownRef.current = false;
     resetStreamGenerationUi();
     bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[0]);
     setStreamLoadPhase(0);
-    setStreamProgress(STREAM_PROGRESS_MILESTONES[0]);
+    streamProgressShared.value = STREAM_PROGRESS_MILESTONES[0];
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    const sourceKind = resolveTransformSourceKind(uploadedFile, urlDetection);
     let hasShownPartial = false;
 
     try {
-      const mapId = generateMapId();
-      const existingCategories = collectUserCategories(historyStoreRef.current.entries);
-      const sourceLabel =
-        uploadedFile?.name || bodyText.split('\n')[0]?.slice(0, 80) || 'Fuente analizada';
+      if (collectionPlan) {
+        const collectionId = generateMapId();
+        let store = createCollection(historyStoreRef.current, {
+          id: collectionId,
+          title: collectionPlan.collectionTitle,
+        });
+        commitHistoryStore(store);
 
-      let body: TransformRequest;
-      if (uploadedFile?.isPdf && uploadedFile.fileData) {
-        body = {
-          type: 'pdf',
-          fileData: uploadedFile.fileData,
-          mimeType: uploadedFile.mimeType || 'application/pdf',
-          preferredModel: 'auto',
-          intent,
-          depth: depthPreference,
-          outputLanguage: 'es',
-          sourceLabel,
-          mapId,
-        };
-      } else if (uploadedFile?.isVideo && uploadedFile.fileData) {
-        body = {
-          type: 'video',
-          fileData: uploadedFile.fileData,
-          mimeType: uploadedFile.mimeType || 'video/mp4',
-          preferredModel: 'auto',
-          intent,
-          depth: depthPreference,
-          outputLanguage: 'es',
-          sourceLabel,
-          mapId,
-        };
-        if (inputText.trim()) body.text = inputText.trim();
-      } else if (uploadedFile?.isImage && uploadedFile.fileData) {
-        body = {
-          type: 'image',
-          fileData: uploadedFile.fileData,
-          mimeType: uploadedFile.mimeType || 'image/jpeg',
-          preferredModel: 'auto',
-          intent,
-          depth: depthPreference,
-          outputLanguage: 'es',
-          sourceLabel,
-          mapId,
-        };
-        if (inputText.trim()) body.text = inputText.trim();
-      } else if (urlDetection?.kind === 'youtube') {
-        body = {
-          text: urlDetection.url,
-          type: 'youtube',
-          preferredModel: 'auto',
-          intent,
-          depth: depthPreference,
-          outputLanguage: 'es',
-          sourceLabel: urlDetection.url,
-          mapId,
-        };
-      } else if (urlDetection?.kind === 'link') {
-        body = {
-          text: urlDetection.url,
-          type: 'link',
-          preferredModel: 'auto',
-          intent,
-          depth: depthPreference,
-          outputLanguage: 'es',
-          sourceLabel: urlDetection.url,
-          mapId,
-        };
-      } else {
-        body = {
-          text: bodyText,
-          type: 'text',
-          preferredModel: 'auto',
-          intent,
-          depth: depthPreference,
-          outputLanguage: 'es',
-          sourceLabel,
-          mapId,
-        };
+        const generatedIds: string[] = [];
+        for (let index = 0; index < collectionPlan.parts.length; index += 1) {
+          if (transformCancelledRef.current) return;
+
+          const part = collectionPlan.parts[index];
+          setCollectionGenerationProgress({
+            completed: index,
+            total: collectionPlan.parts.length,
+          });
+          streamProgressShared.value = Math.round(
+            (index / Math.max(collectionPlan.parts.length, 1)) * 100
+          );
+
+          const partMapId = generateMapId();
+          const partBody = buildCollectionPartBody(body, part, partMapId);
+          const response = await fetchWithTimeout(apiUrl('/api/transform'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(headers ?? {}),
+            },
+            body: JSON.stringify(partBody),
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            const payload = (await response.json().catch(() => ({}))) as { error?: string };
+            throw new Error(payload.error || GENERIC_TRANSFORM_ERROR);
+          }
+
+          const normalized = normalizeMapData(await response.json());
+          if (!normalized) {
+            throw new Error(GENERIC_TRANSFORM_ERROR);
+          }
+          store = createEntry(
+            store,
+            { data: normalized, currentStep: 0, isComplete: false, viewAll: false },
+            toSourceType(partBody.type),
+            partMapId,
+            collectionId
+          );
+          store = registerNucleoInCollection(store, collectionId, partMapId);
+          commitHistoryStore(store);
+
+          const createdEntry = store.entries.find((item) => item.id === partMapId);
+          if (createdEntry) {
+            syncCloudEntry(createdEntry);
+          }
+          generatedIds.push(partMapId);
+        }
+
+        setCollectionGenerationProgress({
+          completed: collectionPlan.parts.length,
+          total: collectionPlan.parts.length,
+        });
+        streamProgressShared.value = 100;
+
+        const firstId = generatedIds[0];
+        store = setActiveId(store, firstId);
+        commitHistoryStore(store);
+        const firstEntry = getActiveEntry(store);
+        if (!firstEntry) {
+          throw new Error(GENERIC_TRANSFORM_ERROR);
+        }
+
+        const firstMap = normalizeMapData(firstEntry.session.data);
+        setData(firstMap);
+        setCurrentStep(0);
+        setIsComplete(false);
+        setViewAll(false);
+        setUploadedFile(null);
+        setPastedText(null);
+        setInputText('');
+        inputTextRef.current = '';
+        setPhase('result');
+        setTransformIncomplete(false);
+        stepHaptic();
+        return;
       }
-
-      body.existingCategories = existingCategories;
-
-      const accessToken = supabase
-        ? (await supabase.auth.getSession()).data.session?.access_token
-        : undefined;
-      const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
 
       setIsStreamGenerating(true);
 
@@ -989,7 +1171,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setPastedText(null);
         setInputText('');
         inputTextRef.current = '';
-        if (phaseRef.current !== 'result') {
+        // A pending intro transition owns the phase swap (bar must reach 100%
+        // on screen first) — don't jump ahead of it.
+        if (phaseRef.current !== 'result' && !introTransitionTimeoutRef.current) {
           setPhase('result');
         }
         setTransformIncomplete(false);
@@ -1006,7 +1190,12 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[3]);
         }
 
-        if (!isIntroReadyForTransition(partialMap) || phaseRef.current !== 'loading') {
+        if (
+          !isIntroReadyForTransition(partialMap) ||
+          phaseRef.current !== 'loading' ||
+          // Already scheduled — later partials must not push the swap back.
+          introTransitionTimeoutRef.current
+        ) {
           return;
         }
 
@@ -1015,8 +1204,14 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setCurrentStep(0);
         setIsComplete(false);
         setViewAll(false);
-        setLoadingFadeOverlayActive(true);
-        setPhase('result');
+        bumpStreamProgressCap(100);
+        streamProgressShared.value = 100;
+        introTransitionTimeoutRef.current = setTimeout(() => {
+          introTransitionTimeoutRef.current = null;
+          if (phaseRef.current !== 'loading') return;
+          setLoadingFadeOverlayActive(true);
+          setPhase('result');
+        }, INTRO_TRANSITION_BAR_MS);
       };
 
       await fetchTransformWithProgress({
@@ -1035,14 +1230,21 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           },
           onDone: (finalMap) => {
             bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[4]);
-            setStreamProgress(STREAM_PROGRESS_MILESTONES[4]);
-            if (phaseRef.current === 'loading') {
+            streamProgressShared.value = STREAM_PROGRESS_MILESTONES[4];
+            // The result appears only after the bar visually reaches 100%.
+            // If a partial already scheduled the swap, keep that schedule.
+            if (phaseRef.current === 'loading' && !introTransitionTimeoutRef.current) {
               hasShownPartial = true;
               partialShownRef.current = true;
               setCurrentStep(0);
               setIsComplete(false);
               setViewAll(false);
-              setPhase('result');
+              introTransitionTimeoutRef.current = setTimeout(() => {
+                introTransitionTimeoutRef.current = null;
+                if (phaseRef.current !== 'loading') return;
+                setLoadingFadeOverlayActive(true);
+                setPhase('result');
+              }, INTRO_TRANSITION_BAR_MS);
             }
             saveCompletedMap(finalMap);
             stepHaptic();
@@ -1067,6 +1269,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       failTransform(rawMessage, hasShownPartial, sourceKind, offline);
     } finally {
       setIsStreamGenerating(false);
+      setCollectionGenerationProgress(null);
       abortControllerRef.current = null;
     }
   }, [bumpStreamProgressCap, commitHistoryStore, depthPreference, failTransform, inputText, intent, modelPreference, pastedText, resetStreamGenerationUi, uploadedFile, syncCloudEntry]);
@@ -1091,6 +1294,12 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setHistoryOpen(false);
     setChatOpen(false);
     setEssentialsReview(false);
+    continueTransitionEnteredAtRef.current = null;
+    continueChipRectRef.current = null;
+    continueChipLabelRef.current = '';
+    continueEntryIdRef.current = null;
+    setContinueTransition(null);
+    setContinueTransitionHandoff(false);
     setPhase('input');
   }, [commitHistoryStore, flushPendingSessionPersist]);
 
@@ -1166,7 +1375,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setCloudUserAvatarUrl(null);
 
     // 4. Purgar historial local de mapas en disco y memoria de forma segura
-    const emptyStore = { entries: [], activeId: null };
+    const emptyStore: HistoryStore = { entries: [], activeId: null, collections: [] };
     commitHistoryStore(emptyStore);
 
     // 5. Ejecutar signOut remoto
@@ -1241,6 +1450,12 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setHistoryOpen(false);
       setChatOpen(false);
       setEssentialsReview(false);
+      continueTransitionEnteredAtRef.current = null;
+      continueChipRectRef.current = null;
+      continueChipLabelRef.current = '';
+      continueEntryIdRef.current = null;
+      setContinueTransition(null);
+      setContinueTransitionHandoff(false);
       setPhase('result');
       setError(null);
       setTransformIncomplete(false);
@@ -1248,6 +1463,209 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     },
     [commitHistoryStore, flushPendingSessionPersist]
   );
+
+  const beginContinueTransition = useCallback(
+    (id: string, chipRect: ContinueChipRect, chipLabel: string) => {
+      flushPendingSessionPersist();
+      const currentStore = historyStoreRef.current;
+      const entry = currentStore.entries.find((e) => e.id === id);
+      if (!entry) return;
+
+      const normalized = normalizeMapData(entry.session.data);
+      if (!normalized) return;
+
+      const updatedStore = setActiveId(currentStore, id);
+      commitHistoryStore(updatedStore);
+
+      setData(normalized);
+      intentUserOverrideRef.current = false;
+      setIntentState(normalized.intent ?? 'understand');
+      setCurrentStep(entry.session.currentStep);
+      setIsComplete(entry.session.isComplete ?? false);
+      setViewAll(entry.session.viewAll ?? false);
+      setHistoryOpen(false);
+      setChatOpen(false);
+      setEssentialsReview(false);
+      setError(null);
+      setTransformIncomplete(false);
+      setContinueTransitionHandoff(false);
+      continueChipRectRef.current = chipRect;
+      continueChipLabelRef.current = chipLabel;
+      continueEntryIdRef.current = id;
+      setContinueTransition({
+        mode: 'expand',
+        chipRect,
+        chipLabel,
+        entryId: id,
+      });
+    },
+    [commitHistoryStore, flushPendingSessionPersist]
+  );
+
+  const finishContinueExpandTransition = useCallback(() => {
+    // #region agent log
+    debugTransitionLog('H3', 'AppSessionContext.tsx:finishExpand', 'phase switching to result', {}, 'post-fix-v7');
+    // #endregion
+    continueTransitionEnteredAtRef.current = Date.now();
+    continueHandoffLayoutReadyRef.current = false;
+    continueHandoffGlassExpectedRef.current = 0;
+    continueHandoffGlassActiveRef.current = 0;
+    if (continueHandoffPrewarmEndRef.current) {
+      clearTimeout(continueHandoffPrewarmEndRef.current);
+      continueHandoffPrewarmEndRef.current = null;
+    }
+    setContinueHandoffPrewarm(true);
+    setContinueTransitionHandoff(true);
+    setPhase('result');
+    if (continueHandoffFallbackRef.current) {
+      clearTimeout(continueHandoffFallbackRef.current);
+    }
+    continueHandoffFallbackRef.current = setTimeout(() => {
+      continueHandoffFallbackRef.current = null;
+      setContinueTransition((current) => {
+        if (!current) return current;
+        // #region agent log
+        debugTransitionLog('H23', 'AppSessionContext.tsx:handoffFallback', 'forced overlay cleanup', {}, 'post-fix-v7');
+        // #endregion
+        setContinueTransitionHandoff(false);
+        return null;
+      });
+    }, 600);
+  }, []);
+
+  const completeContinueTransitionHandoff = useCallback(() => {
+    if (continueHandoffFallbackRef.current) {
+      clearTimeout(continueHandoffFallbackRef.current);
+      continueHandoffFallbackRef.current = null;
+    }
+    continueHandoffLayoutReadyRef.current = false;
+    continueHandoffGlassExpectedRef.current = 0;
+    continueHandoffGlassActiveRef.current = 0;
+    // #region agent log
+    debugTransitionLog('H3', 'AppSessionContext.tsx:handoffComplete', 'overlay handoff complete', {}, 'post-fix-v8');
+    // #endregion
+    setContinueTransition(null);
+    setContinueTransitionHandoff(false);
+    if (continueHandoffPrewarmEndRef.current) {
+      clearTimeout(continueHandoffPrewarmEndRef.current);
+    }
+    continueHandoffPrewarmEndRef.current = setTimeout(() => {
+      continueHandoffPrewarmEndRef.current = null;
+      setContinueHandoffPrewarm(false);
+      // #region agent log
+      debugTransitionLog('H30', 'AppSessionContext.tsx:prewarmEnd', 'handoff glass prewarm ended', {}, 'post-fix-v8');
+      // #endregion
+    }, 320);
+  }, []);
+
+  const tryCompleteContinueHandoff = useCallback(() => {
+    if (!continueHandoffLayoutReadyRef.current) {
+      return;
+    }
+    const expected = continueHandoffGlassExpectedRef.current;
+    const active = continueHandoffGlassActiveRef.current;
+    if (expected === 0 || active < expected) {
+      // #region agent log
+      debugTransitionLog(
+        'H29',
+        'AppSessionContext.tsx:handoffWait',
+        'waiting for all handoff glass',
+        { expected, active },
+        'post-fix-v7'
+      );
+      // #endregion
+      return;
+    }
+    // #region agent log
+    debugTransitionLog(
+      'H29',
+      'AppSessionContext.tsx:allGlassReady',
+      'all handoff glass active',
+      { expected, active },
+      'post-fix-v7'
+    );
+    // #endregion
+    completeContinueTransitionHandoff();
+  }, [completeContinueTransitionHandoff]);
+
+  const markContinueHandoffLayoutReady = useCallback(() => {
+    continueHandoffLayoutReadyRef.current = true;
+    // #region agent log
+    debugTransitionLog('H28', 'AppSessionContext.tsx:layoutReady', 'result layout ready for handoff', {}, 'post-fix-v7');
+    // #endregion
+    tryCompleteContinueHandoff();
+  }, [tryCompleteContinueHandoff]);
+
+  const registerContinueHandoffGlassTarget = useCallback(() => {
+    continueHandoffGlassExpectedRef.current += 1;
+    // #region agent log
+    debugTransitionLog(
+      'H29',
+      'AppSessionContext.tsx:glassRegister',
+      'handoff glass target registered',
+      { expected: continueHandoffGlassExpectedRef.current },
+      'post-fix-v7'
+    );
+    // #endregion
+    tryCompleteContinueHandoff();
+  }, [tryCompleteContinueHandoff]);
+
+  const notifyContinueHandoffGlassActive = useCallback(() => {
+    continueHandoffGlassActiveRef.current += 1;
+    // #region agent log
+    debugTransitionLog(
+      'H29',
+      'AppSessionContext.tsx:glassActive',
+      'handoff glass target active',
+      {
+        expected: continueHandoffGlassExpectedRef.current,
+        active: continueHandoffGlassActiveRef.current,
+      },
+      'post-fix-v7'
+    );
+    // #endregion
+    tryCompleteContinueHandoff();
+  }, [tryCompleteContinueHandoff]);
+
+  const canReverseContinueTransition = useCallback(() => {
+    if (phase !== 'result') return false;
+    if (continueTransitionEnteredAtRef.current == null) return false;
+    if (Date.now() - continueTransitionEnteredAtRef.current > CONTINUE_IMMEDIATE_BACK_MS) {
+      return false;
+    }
+    if (!continueChipRectRef.current || !continueChipLabelRef.current) return false;
+    if (!continueEntryIdRef.current) return false;
+    const entry = historyStoreRef.current.entries.find((e) => e.id === continueEntryIdRef.current);
+    if (!entry) return false;
+    if (dismissedContinueId === entry.id) return false;
+    return true;
+  }, [dismissedContinueId, phase]);
+
+  const finishContinueCollapseTransition = useCallback(() => {
+    continueTransitionEnteredAtRef.current = null;
+    continueChipRectRef.current = null;
+    continueChipLabelRef.current = '';
+    continueEntryIdRef.current = null;
+    setContinueTransition(null);
+    setContinueTransitionHandoff(false);
+    setPhase('input');
+  }, []);
+
+  const startReverseContinueTransition = useCallback(() => {
+    if (!canReverseContinueTransition()) return false;
+    const chipRect = continueChipRectRef.current;
+    const chipLabel = continueChipLabelRef.current;
+    const entryId = continueEntryIdRef.current;
+    if (!chipRect || !chipLabel || !entryId) return false;
+
+    setContinueTransition({
+      mode: 'collapse',
+      chipRect,
+      chipLabel,
+      entryId,
+    });
+    return true;
+  }, [canReverseContinueTransition]);
 
   const handleDeleteHistory = useCallback(
     (id: string) => {
@@ -1345,16 +1763,38 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setIsComplete(true);
     setEssentialsReview(false);
     persistSessionState(currentStep, true, viewAll);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    stepHaptic();
   }, [currentStep, persistSessionState, viewAll]);
 
-  const handleDownloadPdf = useCallback(async () => {
-    if (isPdfGeneratingRef.current) return;
-    const mapId = historyStore.activeId;
-    if (!data || !mapId) return;
+  const triggerCompletionCeremonyIfNeeded = useCallback((): boolean => {
+    const activeId = historyStoreRef.current.activeId;
+    if (!activeId) return false;
 
-    const filename = `${data.title || 'nucleo-cheatsheet'}.pdf`.replace(/[^\w.-]+/g, '-');
+    const entry = historyStoreRef.current.entries.find((item) => item.id === activeId);
+    if (!entry || entry.completionCeremonyShown) return false;
+
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    const updatedStore = markCompletionCeremonyShown(historyStoreRef.current, activeId);
+    commitHistoryStore(updatedStore);
+
+    const updatedEntry = updatedStore.entries.find((item) => item.id === activeId);
+    if (updatedEntry) {
+      syncCloudEntry(updatedEntry);
+    }
+
+    return true;
+  }, [commitHistoryStore, syncCloudEntry]);
+
+  const enterCompletedViewAll = useCallback(() => {
+    setEssentialsReview(false);
+    setViewAll(true);
+    persistSessionState(currentStep, true, true);
+  }, [currentStep, persistSessionState]);
+
+  const downloadPdfForMap = useCallback(async (mapId: string, mapData: ActionMapData) => {
+    if (isPdfGeneratingRef.current) return;
+
+    const filename = `${mapData.title || 'nucleo-cheatsheet'}.pdf`.replace(/[^\w.-]+/g, '-');
     const directory = cacheDirectory;
     if (!directory) {
       setError('No se pudo acceder al almacenamiento local.');
@@ -1373,7 +1813,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ map: data }),
+          body: JSON.stringify({ map: mapData }),
         },
         {
           timeoutMs: 15000,
@@ -1431,7 +1871,24 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       isPdfGeneratingRef.current = false;
       setIsPdfGenerating(false);
     }
-  }, [data, historyStore.activeId]);
+  }, []);
+
+  const handleDownloadPdf = useCallback(async () => {
+    const mapId = historyStore.activeId;
+    if (!data || !mapId) return;
+    await downloadPdfForMap(mapId, data);
+  }, [data, downloadPdfForMap, historyStore.activeId]);
+
+  const handleDownloadPdfForEntry = useCallback(
+    async (entryId: string) => {
+      const entry = historyStoreRef.current.entries.find((item) => item.id === entryId);
+      if (!entry) return;
+      const mapData = normalizeMapData(entry.session.data);
+      if (!mapData) return;
+      await downloadPdfForMap(entryId, mapData);
+    },
+    [downloadPdfForMap]
+  );
 
   const value = useMemo(
     () => ({
@@ -1467,6 +1924,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       cloudUserEmail,
       cloudUserAvatarUrl,
       cloudSignedIn,
+      isPro,
       isCloudSyncConfigured,
       uploadedFile,
       attachMenuOpen,
@@ -1483,6 +1941,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       continueEntry: visibleContinueEntry,
       dismissContinueChip,
       progressLabel,
+      sectionCompleteCue,
       stepProgress,
       goToStep,
       syncReadingStep,
@@ -1497,18 +1956,34 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       ...(__DEV__ ? { devHistoryHidden, devHideHistory, devRestoreHistory } : {}),
       handleNewMap,
       handleSelectHistory,
+      beginContinueTransition,
+      completeContinueTransitionHandoff,
+      markContinueHandoffLayoutReady,
+      registerContinueHandoffGlassTarget,
+      notifyContinueHandoffGlassActive,
+      finishContinueExpandTransition,
+      finishContinueCollapseTransition,
+      startReverseContinueTransition,
+      canReverseContinueTransition,
+      continueTransition,
+      continueTransitionHandoff,
+      continueHandoffPrewarm,
       handleDeleteHistory,
       handleRenameHistory,
       handleUpdateCategory,
       handleUpdateEntryCategory,
       handlePinHistory,
       handleCompleteMap,
+      triggerCompletionCeremonyIfNeeded,
       essentialsReview,
       setEssentialsReview,
       handleDownloadPdf,
+      handleDownloadPdfForEntry,
+      enterCompletedViewAll,
       isStreamGenerating,
+      collectionGenerationProgress,
       streamLoadPhase,
-      streamProgress,
+      streamProgressShared,
       loadingFadeOverlayActive,
       completeLoadingFadeOverlay,
       isPdfGenerating,
@@ -1544,6 +2019,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       cloudUserEmail,
       cloudUserAvatarUrl,
       cloudSignedIn,
+      isPro,
       uploadedFile,
       attachMenuOpen,
       modelPreference,
@@ -1557,6 +2033,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       visibleContinueEntry,
       dismissContinueChip,
       progressLabel,
+      sectionCompleteCue,
       stepProgress,
       goToStep,
       syncReadingStep,
@@ -1573,17 +2050,33 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       devRestoreHistory,
       handleNewMap,
       handleSelectHistory,
+      beginContinueTransition,
+      completeContinueTransitionHandoff,
+      markContinueHandoffLayoutReady,
+      registerContinueHandoffGlassTarget,
+      notifyContinueHandoffGlassActive,
+      finishContinueExpandTransition,
+      finishContinueCollapseTransition,
+      startReverseContinueTransition,
+      canReverseContinueTransition,
+      continueTransition,
+      continueTransitionHandoff,
+      continueHandoffPrewarm,
       handleDeleteHistory,
       handleRenameHistory,
       handleUpdateCategory,
       handleUpdateEntryCategory,
       handlePinHistory,
       handleCompleteMap,
+      triggerCompletionCeremonyIfNeeded,
       essentialsReview,
       handleDownloadPdf,
+      handleDownloadPdfForEntry,
+      enterCompletedViewAll,
       isStreamGenerating,
+      collectionGenerationProgress,
       streamLoadPhase,
-      streamProgress,
+      streamProgressShared,
       loadingFadeOverlayActive,
       completeLoadingFadeOverlay,
       isPdfGenerating,

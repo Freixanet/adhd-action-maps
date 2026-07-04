@@ -12,7 +12,6 @@ This document tracks the reversible native migration without replacing the web a
 | Supabase schema | Done | [`supabase/migrations/`](../supabase/migrations/) with RLS. Apply in **staging first**. |
 | Web cloud sync | Done (optional) | Web works offline with localStorage. With `VITE_SUPABASE_*`, profile menu offers sign-in and sync. |
 | **React Native (official mobile)** | **In progress** | Expo app in [`mobile/`](../mobile/): navigation stack, shared logic, drawer history, loading skeletons, reading progress, theme/model selectors, video attachments. |
-| Capacitor iOS (fallback, frozen) | Done | [`ios/`](../ios/) wraps the Vite web app. Native composer via Swift bridge. Do not extend unless RN blocked. |
 | Swift/Kotlin shells | **Archived** | Moved to [`archive/ios-native/`](../archive/ios-native/) and [`archive/android-native/`](../archive/android-native/). |
 
 ## Architecture
@@ -21,7 +20,6 @@ This document tracks the reversible native migration without replacing the web a
 shared/          ← pure TS logic (contracts, history, mapData, urlInput, …)
 src/             ← web React + Vite (unchanged UX)
 mobile/          ← Expo React Native + NativeWind (official iOS + Android)
-ios/             ← Capacitor fallback (frozen)
 server.ts        ← Express API (unchanged)
 ```
 
@@ -29,7 +27,6 @@ server.ts        ← Express API (unchanged)
 
 - Do not remove the existing web flow or `/api/transform`.
 - Prefer extending `shared/` over duplicating logic in `src/` and `mobile/`.
-- Capacitor remains a fallback until RN reaches production parity; then freeze `ios/`.
 - Do not publish to App Store, Play Store, Supabase prod, or Railway prod until explicitly approved.
 
 ## Mobile release (requires human setup)
@@ -49,9 +46,6 @@ npm run dev
 
 # Mobile (Expo)
 cd mobile && npm install && npx expo start
-
-# Capacitor fallback iOS
-npm run cap:ios
 
 # Type checks
 npm run lint

@@ -1,10 +1,13 @@
 import React from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
+import { DEFAULT_MAP_CATEGORIES } from '@shared/categories';
+import type { HistoryListFilter } from '@shared/historySearch';
+import { stepHaptic } from '../context/AppSessionContext';
 
 type HistoryCategoryFilterProps = {
-  selectedCategory: string | null;
-  categories: string[];
-  onSelect: (category: string | null) => void;
+  activeFilter: HistoryListFilter;
+  onSelectFilter: (filter: HistoryListFilter) => void;
+  embeddedInHeader?: boolean;
 };
 
 function FilterItem({
@@ -21,52 +24,70 @@ function FilterItem({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-      className="mr-5 pb-1 active:opacity-70"
+      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+      className={`mr-2 h-8 px-3.5 rounded-full flex-row items-center active:opacity-80 ${
+        selected ? 'bg-accent/20 border border-accent/40' : 'bg-white/6'
+      }`}
     >
       <Text
-        className={`text-sm ${
-          selected
-            ? 'font-semibold text-primary'
-            : 'font-medium text-secondary'
+        className={`text-[13px] ${
+          selected ? 'font-semibold text-primary' : 'font-medium text-secondary'
         }`}
       >
         {label}
       </Text>
-      {selected ? (
-        <View className="mt-1.5 h-px bg-base dark:bg-neutral-100" />
-      ) : (
-        <View className="mt-1.5 h-px bg-transparent" />
-      )}
     </Pressable>
   );
 }
 
 export default function HistoryCategoryFilter({
-  selectedCategory,
-  categories,
-  onSelect,
+  activeFilter,
+  onSelectFilter,
+  embeddedInHeader = false,
 }: HistoryCategoryFilterProps) {
-  if (categories.length === 0) return null;
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
+  };
+
+  const selectFilter = (filter: HistoryListFilter) => {
+    dismissKeyboard();
+    stepHaptic();
+    onSelectFilter(filter);
+  };
+
+  const handleSelectCategory = (category: string) => {
+    selectFilter(activeFilter === category ? 'all' : category);
+  };
+
+  const handleSelectIncomplete = () => {
+    selectFilter(activeFilter === 'incomplete' ? 'all' : 'incomplete');
+  };
+
+  const handleSelectAll = () => {
+    if (activeFilter === 'all') return;
+    selectFilter('all');
+  };
 
   return (
-    <View className="px-1 pb-4">
-      <Text className="pb-3 text-[11px] font-bold uppercase tracking-widest text-secondary">
-        Categorías
-      </Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <View className={embeddedInHeader ? undefined : 'px-1 pb-4'}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
+      >
         <View className="flex-row pr-3">
+          <FilterItem label="Todas" selected={activeFilter === 'all'} onPress={handleSelectAll} />
           <FilterItem
-            label="Todas"
-            selected={selectedCategory === null}
-            onPress={() => onSelect(null)}
+            label="Incompletos"
+            selected={activeFilter === 'incomplete'}
+            onPress={handleSelectIncomplete}
           />
-          {categories.map((category) => (
+          {DEFAULT_MAP_CATEGORIES.map((category) => (
             <FilterItem
               key={category}
               label={category}
-              selected={selectedCategory === category}
-              onPress={() => onSelect(category)}
+              selected={activeFilter === category}
+              onPress={() => handleSelectCategory(category)}
             />
           ))}
         </View>

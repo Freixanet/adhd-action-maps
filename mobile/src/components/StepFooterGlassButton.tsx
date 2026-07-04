@@ -1,7 +1,9 @@
 import React from 'react';
 import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
+import { usePressScale } from '../hooks/usePressScale';
 
 /** Fixed height — Atrás and Siguiente must match without flex growth. */
 export const STEP_FOOTER_BUTTON_HEIGHT = 52;
@@ -30,6 +32,7 @@ export default function StepFooterGlassButton({
   disabled = false,
 }: StepFooterGlassButtonProps) {
   const isPrimary = variant === 'primary';
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
 
   const content = (
     <View style={styles.content}>
@@ -47,6 +50,8 @@ export default function StepFooterGlassButton({
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
@@ -55,22 +60,24 @@ export default function StepFooterGlassButton({
         styles.pressable,
         style,
         disabled ? styles.disabled : null,
-        pressed && !disabled ? styles.pressed : null,
+        pressed && !disabled ? styles.pressedOpacity : null,
       ]}
     >
+      <Animated.View style={[styles.pressableInner, animatedStyle]}>
       {isPrimary ? (
         <View style={[styles.shell, styles.primaryShell]}>{content}</View>
       ) : (
         <GlassSurface
           liquid
           liquidBorder="perimeter"
-          borderRadius={RADII.lg}
+          borderRadius={RADII.md}
           style={[styles.shell, styles.secondaryShell]}
           contentClassName="h-full w-full items-center justify-center"
         >
           {content}
         </GlassSurface>
       )}
+      </Animated.View>
     </Pressable>
   );
 }
@@ -79,13 +86,16 @@ const styles = StyleSheet.create({
   pressable: {
     width: '100%',
   },
+  pressableInner: {
+    width: '100%',
+  },
   shell: {
     width: '100%',
     height: STEP_FOOTER_BUTTON_HEIGHT,
   },
   primaryShell: {
     backgroundColor: STEP_FOOTER_PRIMARY_BG,
-    borderRadius: RADII.lg,
+    borderRadius: RADII.md,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -103,12 +113,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   secondaryShell: {
-    borderRadius: RADII.lg,
+    borderRadius: RADII.md,
     overflow: 'hidden',
   },
-  pressed: {
+  pressedOpacity: {
     opacity: 0.88,
-    transform: [{ scale: 0.98 }],
   },
   disabled: {
     opacity: 0.55,

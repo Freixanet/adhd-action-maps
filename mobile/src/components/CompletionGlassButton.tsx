@@ -1,7 +1,9 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
+import { usePressScale } from '../hooks/usePressScale';
 import { useTheme } from '../context/ThemeContext';
 
 type CompletionGlassButtonProps = {
@@ -26,6 +28,7 @@ export default function CompletionGlassButton({
   loadingLabel,
 }: CompletionGlassButtonProps) {
   const { isDark } = useTheme();
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
   const isAccent = variant === 'accent';
 
   const accentTint = isDark ? 'rgba(139, 143, 245, 0.52)' : 'rgba(139, 143, 245, 0.46)';
@@ -44,15 +47,18 @@ export default function CompletionGlassButton({
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
       disabled={isButtonDisabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? (showLoading ? (loadingLabel ?? label) : label)}
       style={({ pressed }) => [
         styles.pressable,
-        pressed && !isButtonDisabled ? styles.pressed : null,
+        pressed && !isButtonDisabled ? styles.pressedOpacity : null,
         isButtonDisabled ? styles.disabled : null,
       ]}
     >
+      <Animated.View style={[styles.pressableInner, animatedStyle]}>
       <GlassSurface
         liquid
         liquidBorder="none"
@@ -79,6 +85,7 @@ export default function CompletionGlassButton({
           </Text>
         </View>
       </GlassSurface>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -87,6 +94,9 @@ const styles = StyleSheet.create({
   pressable: {
     width: '100%',
     alignSelf: 'stretch',
+  },
+  pressableInner: {
+    width: '100%',
   },
   shell: {
     width: '100%',
@@ -102,9 +112,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     minHeight: 52,
   },
-  pressed: {
+  pressedOpacity: {
     opacity: 0.88,
-    transform: [{ scale: 0.98 }],
   },
   disabled: {
     opacity: 0.55,

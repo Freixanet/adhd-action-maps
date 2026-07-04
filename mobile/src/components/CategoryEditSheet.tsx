@@ -66,8 +66,8 @@ export default function CategoryEditSheet({
   const [customValue, setCustomValue] = useState('');
   const allowCreate = FEATURES.customCategories;
   const { used, suggested } = useMemo(
-    () => getCategoryEditSections(usedCategories, userCategories),
-    [usedCategories, userCategories]
+    () => getCategoryEditSections(usedCategories),
+    [usedCategories]
   );
 
   useEffect(() => {

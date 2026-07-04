@@ -1,27 +1,11 @@
 import type { HistoryEntry } from './history';
 
-function collectStrings(value: unknown, parts: string[]): void {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (trimmed) parts.push(trimmed);
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) collectStrings(item, parts);
-    return;
-  }
-  if (value && typeof value === 'object') {
-    for (const nested of Object.values(value as Record<string, unknown>)) {
-      collectStrings(nested, parts);
-    }
-  }
-}
-
 export function historyEntrySearchText(entry: HistoryEntry): string {
   const parts: string[] = [entry.title];
-  if (entry.category) parts.push(entry.category);
-  if (entry.tags?.length) parts.push(...entry.tags);
-  collectStrings(entry.session?.data, parts);
+  const coreIdea = (entry.session.data as { coreIdea?: string } | undefined)?.coreIdea;
+  if (typeof coreIdea === 'string' && coreIdea.trim()) {
+    parts.push(coreIdea.trim());
+  }
   return parts.join('\n').toLowerCase();
 }
 
@@ -46,4 +30,24 @@ export function filterHistoryByCategory(
   if (!category) return entries;
   const key = category.toLowerCase();
   return entries.filter((entry) => entry.category?.toLowerCase() === key);
+}
+
+export function filterHistoryByIncomplete(
+  entries: HistoryEntry[],
+  incompleteOnly: boolean
+): HistoryEntry[] {
+  if (!incompleteOnly) return entries;
+  return entries.filter((entry) => !entry.session.isComplete);
+}
+
+/** Single active chip in sidebar search: Todas, Incompletos, or one category. */
+export type HistoryListFilter = 'all' | 'incomplete' | string;
+
+export function applyHistoryListFilter(
+  entries: HistoryEntry[],
+  filter: HistoryListFilter
+): HistoryEntry[] {
+  if (filter === 'incomplete') return filterHistoryByIncomplete(entries, true);
+  if (filter !== 'all') return filterHistoryByCategory(entries, filter);
+  return entries;
 }

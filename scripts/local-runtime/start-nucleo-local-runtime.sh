@@ -37,19 +37,21 @@ launchctl list 2>/dev/null | grep nucleo || echo "No nucleo agents listed."
 echo
 echo "=== Listeners ==="
 lsof -nP -iTCP:3000 -sTCP:LISTEN 2>/dev/null || echo "Port 3000: not listening"
-lsof -nP -iTCP:8082 -sTCP:LISTEN 2>/dev/null || echo "Port 8082: not listening"
+lsof -nP -iTCP:8081 -sTCP:LISTEN 2>/dev/null || echo "Port 8081: not listening"
 
 echo
 echo "=== Health ==="
 curl_backend_health "http://localhost:3000" || echo "WARN: backend localhost health failed"
 echo
-curl_metro_status "http://localhost:8082" || echo "WARN: metro localhost status failed"
+curl_metro_status "http://localhost:8081" || echo "WARN: metro localhost status failed"
 
 if [[ -n "${MAC_IP}" ]]; then
   echo
   curl_backend_health "http://${MAC_IP}:3000" || echo "WARN: backend LAN health failed"
   echo
-  curl_metro_status "http://${MAC_IP}:8082" || echo "WARN: metro LAN status failed"
+  curl_metro_status "http://${MAC_IP}:8081" || echo "WARN: metro LAN status failed"
+  echo
+  prewarm_metro_ios_bundle "${MAC_IP}"
 fi
 
 echo

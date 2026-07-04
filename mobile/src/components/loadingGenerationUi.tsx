@@ -1,16 +1,35 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
+  Easing,
   FadeIn,
   FadeOut,
+  SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 import { ACCENT } from '@shared/uiTokens';
 
+function clampRatio(value: number): number {
+  'worklet';
+  return Math.min(1, Math.max(0, value));
+}
+
+function progressFillStyle(ratio: number) {
+  'worklet';
+  return {
+    width: '100%' as const,
+    transform: [{ scaleX: clampRatio(ratio) }],
+    transformOrigin: 'left center' as const,
+  };
+}
+
 type GenerationProgressBarProps = {
-  progress: number;
+  /** 0–100; ignored when progressShared is set. */
+  progress?: number;
+  /** 0–100 on the UI thread (stream generation). */
+  progressShared?: SharedValue<number>;
   width?: number;
   fullWidth?: boolean;
   height?: number;
@@ -19,7 +38,8 @@ type GenerationProgressBarProps = {
 };
 
 export function GenerationProgressBar({
-  progress,
+  progress = 0,
+  progressShared,
   width = 200,
   fullWidth = false,
   height = 4,
@@ -27,22 +47,22 @@ export function GenerationProgressBar({
   style,
 }: GenerationProgressBarProps) {
   const clamped = Math.max(0, Math.min(100, progress));
-  const fillWidth = useSharedValue(fullWidth ? clamped : (width * clamped) / 100);
+  const fillRatio = useSharedValue(clamped / 100);
 
   useEffect(() => {
-    if (fullWidth) {
-      fillWidth.value = reduceMotion ? clamped : withTiming(clamped, { duration: 280 });
-      return;
-    }
-    const target = (width * clamped) / 100;
-    fillWidth.value = reduceMotion ? target : withTiming(target, { duration: 280 });
-  }, [clamped, fillWidth, fullWidth, reduceMotion, width]);
+    if (progressShared) return;
+    const target = clamped / 100;
+    fillRatio.value = reduceMotion
+      ? target
+      : withTiming(target, { duration: 400, easing: Easing.out(Easing.cubic) });
+  }, [clamped, fillRatio, progressShared, reduceMotion]);
 
-  const fillStyle = useAnimatedStyle(() =>
-    fullWidth
-      ? { width: `${fillWidth.value}%` }
-      : { width: fillWidth.value }
-  );
+  const fillStyle = useAnimatedStyle(() => {
+    const ratio = progressShared
+      ? clampRatio(progressShared.value / 100)
+      : fillRatio.value;
+    return progressFillStyle(ratio);
+  });
 
   return (
     <View

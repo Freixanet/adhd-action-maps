@@ -86,6 +86,12 @@ export type StepContentBlock = {
   references?: SourceReference[];
 };
 
+export type ReadingSection = {
+  title: string;
+  fromStep: number;
+  toStep: number;
+};
+
 export type MapStep = {
   id: string;
   shortNav: string;
@@ -94,6 +100,8 @@ export type MapStep = {
   content: StepContentBlock[];
   purpose?: string;
   references?: SourceReference[];
+  /** Pregunta de comprensión colapsada por defecto (SPEC §5.4.3). */
+  selfCheck?: string | null;
 };
 
 export type CompletionCard = {
@@ -118,6 +126,8 @@ export type ActionMapData = {
   coreSupport: string;
   tldr: TLDRItem[];
   knowledgeSections?: KnowledgeSection[];
+  /** Agrupación de pasos para mini-completado (SPEC §4); solo si steps.length >= 6. */
+  readingSections?: ReadingSection[] | null;
   steps: MapStep[];
   references?: SourceReference[];
   completionCard?: CompletionCard;
@@ -154,8 +164,18 @@ export type TransformRequest = {
   sourceLabel?: string;
   mapId?: string;
   depth?: MapDepth;
-  /** Categorías personalizadas del usuario para guiar la clasificación automática. */
-  existingCategories?: string[];
+  /** Si true, fuerza un único Núcleo con límites declarados (SPEC §6.7). */
+  singleNucleoMode?: boolean;
+  /** Parte concreta de una fuente larga (colección). */
+  segmentTitle?: string;
+};
+
+export type SourceAnalysisResponse = {
+  shouldProposeSplit: boolean;
+  partCount: number;
+  parts: Array<{ title: string; text?: string }>;
+  totalWords: number;
+  collectionTitle: string;
 };
 
 export type ChatTurn = {

@@ -1,9 +1,8 @@
 import React from 'react';
-import { View } from 'react-native';
-import { MenuView, type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
-import { FEATURES } from '@shared/features';
-import { stepHaptic } from '../context/AppSessionContext';
+import { type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
 import type { DepthPreference } from '../logic/depthPreference';
+import { useAppSession } from '../context/AppSessionContext';
+import ComposerMenuTrigger from './ComposerMenuTrigger';
 
 type DepthMenuItem = {
   id: DepthPreference;
@@ -32,7 +31,7 @@ export default function DepthMenu({
   disabled = false,
   children,
 }: DepthMenuProps) {
-  const isPro = FEATURES.deepDepth;
+  const { isPro } = useAppSession();
 
   const actions: MenuAction[] = DEPTH_ITEMS.map((item) => {
     const locked = item.id === 'profundo' && !isPro;
@@ -52,28 +51,18 @@ export default function DepthMenu({
     }
     if (id === value) return;
     onChange(id);
-    stepHaptic();
   };
 
   if (disabled) return <>{children}</>;
 
   return (
-    // Claims the JS touch responder so the composer shell doesn't focus the
-    // TextInput (which would open the keyboard). The native menu still opens.
-    <View
-      onStartShouldSetResponder={() => true}
-      onResponderGrant={() => undefined}
-      onResponderTerminationRequest={() => false}
+    <ComposerMenuTrigger
+      title="Profundidad"
+      actions={actions}
+      onPressAction={handlePress}
+      accessibilityLabel="Profundidad"
     >
-      <MenuView
-        title="Profundidad"
-        actions={actions}
-        onPressAction={handlePress}
-        shouldOpenOnLongPress={false}
-        themeVariant="dark"
-      >
-        {children}
-      </MenuView>
-    </View>
+      {children}
+    </ComposerMenuTrigger>
   );
 }

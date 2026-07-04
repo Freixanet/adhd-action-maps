@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
   LayoutChangeEvent,
@@ -11,6 +11,8 @@ import {
 import { BlurView } from 'expo-blur';
 import { BLUR_INTENSITY, COMPOSER_DARK_SURFACE, liquidGlassShellClasses } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
+import { useAppSession } from '../context/AppSessionContext';
+import { useContinueTransitionPreview } from '../context/ContinueTransitionPreviewContext';
 import { useDeferredGlassMount } from '../hooks/useDeferredGlassMount';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useGlassTouchGlow, type GlassTouchGlowState } from '../hooks/useGlassTouchGlow';
@@ -87,11 +89,50 @@ export default function GlassSurface({
 }: GlassSurfaceProps) {
   const { isDark } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
+  const session = useAppSession();
+  const continuePreview = useContinueTransitionPreview();
+  const eagerGlass =
+    (session.continueTransitionHandoff || session.continueHandoffPrewarm) && !continuePreview;
   const internalTouchGlow = useGlassTouchGlow(reduceMotion, isDark);
   const touchGlow = touchGlowProp ?? internalTouchGlow;
   const touchGlowActive = Boolean(interactive || touchGlowProp);
-  const deferredGlass = useDeferredGlassMount(glassRefreshKey);
+  const deferredGlass = useDeferredGlassMount(glassRefreshKey, { eager: eagerGlass });
   const [shellSize, setShellSize] = useState({ width: 0, height: 0 });
+  const handoffGlassRegisteredRef = useRef(false);
+  const handoffGlassReportedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!liquid || continuePreview || !session.continueTransitionHandoff) {
+      return;
+    }
+    if (handoffGlassRegisteredRef.current) {
+      return;
+    }
+    handoffGlassRegisteredRef.current = true;
+    session.registerContinueHandoffGlassTarget();
+  }, [
+    continuePreview,
+    liquid,
+    session.continueTransitionHandoff,
+    session.registerContinueHandoffGlassTarget,
+  ]);
+
+  useEffect(() => {
+    if (!liquid || continuePreview || !session.continueTransitionHandoff || !deferredGlass.glassActive) {
+      return;
+    }
+    if (handoffGlassReportedRef.current) {
+      return;
+    }
+    handoffGlassReportedRef.current = true;
+    session.notifyContinueHandoffGlassActive();
+  }, [
+    continuePreview,
+    deferredGlass.glassActive,
+    liquid,
+    session.continueTransitionHandoff,
+    session.notifyContinueHandoffGlassActive,
+  ]);
 
   const handleShellLayout = useCallback(
     (event: LayoutChangeEvent) => {
@@ -117,7 +158,7 @@ export default function GlassSurface({
     touchGlow.onPressOut();
   }, [interactive, touchGlow, touchGlowProp]);
 
-  if (liquid) {
+  if (liquid && !continuePreview) {
     const resolvedTint =
       tintColor ??
       (variant === 'composer'
@@ -169,7 +210,8 @@ export default function GlassSurface({
             borderRadius={borderRadius}
             isDark={isDark}
             glowOpacity={touchGlow.glowOpacity}
-            touchPoint={touchGlow.touchPoint}
+            touchX={touchGlow.touchX}
+            touchY={touchGlow.touchY}
           />
         ) : null}
         {showPerimeterHighlight ? (

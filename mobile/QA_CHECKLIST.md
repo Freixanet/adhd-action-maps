@@ -69,4 +69,3 @@ eas submit --platform android --profile production
 ## Regression (web)
 
 - [ ] `npm run lint && npm run build` pass at repo root
-- [ ] Capacitor iOS fallback still builds (`npm run cap:sync`)

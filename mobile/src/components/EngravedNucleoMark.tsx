@@ -15,7 +15,7 @@ export const ENGRAVED_NUCLEO_COMPACT_FONT_SIZE = 28;
 
 const WORD = 'nucleo';
 const BASE_MARK_HEIGHT = 44;
-const BASE_LETTER_GAP = 7;
+const BASE_LETTER_GAP = 4.5;
 const BASE_BASELINE_INSET = 5;
 
 type InsetPalette = {

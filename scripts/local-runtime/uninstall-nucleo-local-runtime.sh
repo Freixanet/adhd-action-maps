@@ -31,7 +31,7 @@ launchctl bootout "${GUI_DOMAIN}" "${METRO_PLIST}" 2>/dev/null || true
 
 sleep 1
 kill_port_listeners 3000
-kill_port_listeners 8082
+kill_port_listeners 8081
 
 rm -f "${BACKEND_PLIST}" "${METRO_PLIST}"
 

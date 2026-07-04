@@ -14,7 +14,7 @@ for arg in "$@"; do
       cat <<'EOF'
 Usage: install-nucleo-local-runtime.sh [--fix-env]
 
-Installs LaunchAgents for Núcleo backend (3000) and Metro (8082).
+Installs LaunchAgents for Núcleo backend (3000) and Metro (8081).
 
   --fix-env   Update mobile/.env EXPO_PUBLIC_API_BASE_URL to current Mac IP
 EOF
@@ -145,7 +145,7 @@ launchctl bootout "${GUI_DOMAIN}" "${BACKEND_PLIST}" 2>/dev/null || true
 launchctl bootout "${GUI_DOMAIN}" "${METRO_PLIST}" 2>/dev/null || true
 
 kill_port_listeners 3000
-kill_port_listeners 8082
+kill_port_listeners 8081
 sleep 1
 
 launchctl bootstrap "${GUI_DOMAIN}" "${BACKEND_PLIST}"
@@ -161,12 +161,12 @@ echo
 echo "=== Localhost checks ==="
 curl_backend_health "http://localhost:3000" || echo "WARN: backend /health on localhost:3000 failed"
 echo
-curl_metro_status "http://localhost:8082" || echo "WARN: metro /status on localhost:8082 failed"
+curl_metro_status "http://localhost:8081" || echo "WARN: metro /status on localhost:8081 failed"
 echo
 echo "=== LAN checks (${MAC_IP}) ==="
 curl_backend_health "http://${MAC_IP}:3000" || echo "WARN: backend /health on ${MAC_IP}:3000 failed"
 echo
-curl_metro_status "http://${MAC_IP}:8082" || echo "WARN: metro /status on ${MAC_IP}:8082 failed"
+curl_metro_status "http://${MAC_IP}:8081" || echo "WARN: metro /status on ${MAC_IP}:8081 failed"
 
 cat <<EOF
 

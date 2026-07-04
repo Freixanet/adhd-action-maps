@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import {
   cancelAnimation,
   Easing,
@@ -16,10 +16,9 @@ import {
   GLASS_TOUCH_GLOW_REDUCE_MOTION_OPACITY,
 } from '@shared/uiTokens';
 
-export type GlassTouchPoint = { x: number; y: number };
-
 export type GlassTouchGlowOptions = {
   fadeInMs?: number;
+  releaseFadeMs?: number;
   /** Absolute center opacity after release while input stays focused. */
   holdCenterOpacity?: number;
   holdSettleMs?: number;
@@ -31,7 +30,8 @@ export type GlassTouchGlowOptions = {
 
 export type GlassTouchGlowState = {
   glowOpacity: SharedValue<number>;
-  touchPoint: GlassTouchPoint;
+  touchX: SharedValue<number>;
+  touchY: SharedValue<number>;
   centerOpacity: number;
   onPressIn: (locationX: number, locationY: number) => void;
   onPressOut: () => void;
@@ -50,6 +50,7 @@ export function useGlassTouchGlow(
 ): GlassTouchGlowState {
   const {
     fadeInMs = GLASS_TOUCH_GLOW_FADE_IN_MS,
+    releaseFadeMs = GLASS_TOUCH_GLOW_FADE_OUT_MS,
     holdCenterOpacity,
     holdSettleMs = DEFAULT_HOLD_SETTLE_MS,
     peakDwellMs = 0,
@@ -57,7 +58,8 @@ export function useGlassTouchGlow(
   } = options;
 
   const glowOpacity = useSharedValue(0);
-  const [touchPoint, setTouchPoint] = useState<GlassTouchPoint>({ x: 0, y: 0 });
+  const touchX = useSharedValue(0);
+  const touchY = useSharedValue(0);
   const defaultCenterOpacity = isDark
     ? GLASS_TOUCH_GLOW_CENTER_OPACITY_DARK
     : GLASS_TOUCH_GLOW_CENTER_OPACITY_LIGHT;
@@ -66,9 +68,13 @@ export function useGlassTouchGlow(
   const holdOpacityRatio =
     holdCenterOpacity != null ? holdCenterOpacity / centerOpacity : 0;
 
-  const setTouchLocation = useCallback((locationX: number, locationY: number) => {
-    setTouchPoint({ x: locationX, y: locationY });
-  }, []);
+  const setTouchLocation = useCallback(
+    (locationX: number, locationY: number) => {
+      touchX.value = locationX;
+      touchY.value = locationY;
+    },
+    [touchX, touchY]
+  );
 
   const onPressIn = useCallback(
     (locationX: number, locationY: number) => {
@@ -105,7 +111,7 @@ export function useGlassTouchGlow(
         withDelay(
           peakDwellMs,
           withTiming(holdOpacityRatio, {
-            duration: holdSettleMs,
+            duration: holdCenterOpacity != null ? holdSettleMs : releaseFadeMs,
             easing: Easing.out(Easing.cubic),
           })
         )
@@ -114,11 +120,13 @@ export function useGlassTouchGlow(
     [
       fadeInMs,
       glowOpacity,
+      holdCenterOpacity,
       holdOpacityRatio,
       holdSettleMs,
       onPressIn,
       peakDwellMs,
       reduceMotion,
+      releaseFadeMs,
       setTouchLocation,
     ]
   );
@@ -132,10 +140,10 @@ export function useGlassTouchGlow(
     }
 
     glowOpacity.value = withTiming(0, {
-      duration: GLASS_TOUCH_GLOW_FADE_OUT_MS,
+      duration: releaseFadeMs,
       easing: Easing.out(Easing.cubic),
     });
-  }, [glowOpacity, reduceMotion]);
+  }, [glowOpacity, reduceMotion, releaseFadeMs]);
 
   const onReleaseHold = useCallback(() => {
     cancelAnimation(glowOpacity);
@@ -158,7 +166,8 @@ export function useGlassTouchGlow(
 
   return {
     glowOpacity,
-    touchPoint,
+    touchX,
+    touchY,
     centerOpacity,
     onPressIn,
     onPressOut,

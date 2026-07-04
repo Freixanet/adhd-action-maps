@@ -13,7 +13,14 @@ export function ComprensionPhaseRouter() {
   if (session.phase === 'result') {
     return (
       <View className="flex-1">
-        <ResultScreen />
+        <ResultScreen
+          suppressStepTransitions={session.continueTransitionHandoff}
+          onHandoffLayout={
+            session.continueTransitionHandoff
+              ? session.markContinueHandoffLayoutReady
+              : undefined
+          }
+        />
         {session.loadingFadeOverlayActive ? (
           <LoadingFadeOverlay onComplete={session.completeLoadingFadeOverlay} />
         ) : null}

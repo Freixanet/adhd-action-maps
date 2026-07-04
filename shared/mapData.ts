@@ -3,11 +3,18 @@ import type {
   CalloutLabel,
   CoverageNote,
   KnowledgeSection,
+  MapDepth,
   MapStep,
   SourceReference,
   StepListItem,
 } from './contracts';
-import { FALLBACK_MAP_CATEGORY, normalizeTags, sanitizeUserCategory } from './categories';
+import { FALLBACK_MAP_CATEGORY, normalizeTags, resolveMapCategory } from './categories';
+import {
+  capStepsForDepth,
+  extractSelfCheck,
+  normalizeReadingSections,
+  SOURCE_TRUNCATION_NOTICE,
+} from './nucleoPipeline';
 
 const DEFAULT_CALLOUT_LABELS: Record<string, CalloutLabel> = {
   action: 'Para aplicarlo',
@@ -32,11 +39,15 @@ function normalizeReferences(input: unknown): SourceReference[] {
     .filter(Boolean) as SourceReference[];
 }
 
-export function normalizeMapData(input: unknown): ActionMapData | null {
+export function normalizeMapData(
+  input: unknown,
+  options?: { depth?: MapDepth; sourceTruncated?: boolean }
+): ActionMapData | null {
   const raw = input as ActionMapData;
   if (!raw?.title || !Array.isArray(raw?.steps) || !Array.isArray(raw?.tldr)) return null;
 
-  const normalizedSteps: MapStep[] = raw.steps.map((step, index) => ({
+  const cappedSteps = capStepsForDepth(raw.steps, options?.depth);
+  const normalizedSteps: MapStep[] = cappedSteps.map((step, index) => ({
     id: String(step?.id || `step-${index + 1}`),
     shortNav: String(step?.shortNav || step?.title || `Paso ${index + 1}`),
     title: String(step?.title || `Paso ${index + 1}`),
@@ -75,11 +86,12 @@ export function normalizeMapData(input: unknown): ActionMapData | null {
           .filter((block) => block.text || block.items?.length)
       : [],
     references: normalizeReferences(step?.references),
+    selfCheck: extractSelfCheck(step),
   }));
 
   const normalized: ActionMapData = {
     title: String(raw.title),
-    category: sanitizeUserCategory(raw.category) ?? FALLBACK_MAP_CATEGORY,
+    category: resolveMapCategory(raw.category ?? raw.suggestedCategory),
     tags: normalizeTags(raw.tags ?? raw.suggestedTags),
     intent: raw.intent === 'study' || raw.intent === 'apply' ? raw.intent : 'understand',
     outputLanguage: raw.outputLanguage ? String(raw.outputLanguage) : 'es',
@@ -137,6 +149,7 @@ export function normalizeMapData(input: unknown): ActionMapData | null {
           )
           .filter(Boolean) as KnowledgeSection[])
       : [],
+    readingSections: normalizeReadingSections(normalizedSteps.length, raw.readingSections),
     steps: normalizedSteps,
     references: normalizeReferences(raw.references),
     completionCard: {
@@ -156,6 +169,13 @@ export function normalizeMapData(input: unknown): ActionMapData | null {
 
   if (!normalized.sourceMetadata!.detected.length) {
     normalized.sourceMetadata!.detected = [normalized.sourceMetadata!.label];
+  }
+  if (options?.sourceTruncated) {
+    const limitations = normalized.sourceMetadata!.limitations ?? [];
+    normalized.sourceMetadata!.limitations = [
+      ...limitations.filter((item) => item !== SOURCE_TRUNCATION_NOTICE),
+      SOURCE_TRUNCATION_NOTICE,
+    ];
   }
   if (!normalized.completionCard!.takeaways.length) {
     normalized.completionCard!.takeaways = normalized.tldr

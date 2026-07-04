@@ -1,8 +1,10 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Pressable } from 'react-native-gesture-handler';
 import { ArrowUp } from 'lucide-react-native';
 import GlassSurface from './GlassSurface';
+import { usePressScale } from '../hooks/usePressScale';
 import { useTheme } from '../context/ThemeContext';
 
 const SIZE = 38;
@@ -20,6 +22,7 @@ export default function ComposerSendButton({
   accessibilityLabel = 'Enviar',
 }: ComposerSendButtonProps) {
   const { isDark } = useTheme();
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
 
   const iconColor = disabled
     ? isDark
@@ -32,11 +35,14 @@ export default function ComposerSendButton({
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [pressed && !disabled ? styles.pressed : null]}
+      style={({ pressed }) => [pressed && !disabled ? styles.pressedOpacity : null]}
     >
+      <Animated.View style={animatedStyle}>
       {disabled ? (
         <View
           style={[
@@ -61,6 +67,7 @@ export default function ComposerSendButton({
           <ArrowUp size={ICON_SIZE} color={iconColor} strokeWidth={2.25} />
         </GlassSurface>
       )}
+      </Animated.View>
     </Pressable>
   );
 }
@@ -80,8 +87,7 @@ const styles = StyleSheet.create({
   disabledShellDark: {
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
   },
-  pressed: {
+  pressedOpacity: {
     opacity: 0.9,
-    transform: [{ scale: 0.96 }],
   },
 });

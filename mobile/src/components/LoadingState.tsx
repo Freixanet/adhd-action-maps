@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import ExactLiquidOrbWebView from './ExactLiquidOrbWebView';
+import { formatCollectionProgress } from '@shared/collections';
 import {
   GenerationProgressBar,
   LoadingPhaseLabel,
@@ -21,16 +22,21 @@ export default function LoadingState(_props: LoadingStateProps) {
     void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
   }, []);
 
-  const phaseLabel = LOADING_PHASE_LABELS[session.streamLoadPhase] ?? LOADING_PHASE_LABELS[0];
+  const phaseLabel = session.collectionGenerationProgress
+    ? formatCollectionProgress(
+        session.collectionGenerationProgress.completed,
+        session.collectionGenerationProgress.total
+      )
+    : LOADING_PHASE_LABELS[session.streamLoadPhase] ?? LOADING_PHASE_LABELS[0];
 
   return (
     <View className="flex-1 items-center justify-center px-6 bg-base">
-      <ExactLiquidOrbWebView size={96} reduceMotion={reduceMotion} />
+      <ExactLiquidOrbWebView size={72} reduceMotion={reduceMotion} />
       <View className="mt-6 min-h-[22px] justify-center">
         <LoadingPhaseLabel text={phaseLabel} reduceMotion={reduceMotion} />
       </View>
       <View className="mt-4">
-        <GenerationProgressBar progress={session.streamProgress} reduceMotion={reduceMotion} />
+        <GenerationProgressBar progressShared={session.streamProgressShared} reduceMotion={reduceMotion} />
       </View>
     </View>
   );

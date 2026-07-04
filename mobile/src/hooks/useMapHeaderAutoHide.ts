@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { InteractionManager, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   runOnJS,
+  useAnimatedReaction,
   useAnimatedScrollHandler,
   useSharedValue,
   type SharedValue,
@@ -11,10 +12,13 @@ import {
   READING_PROGRESS_BAR_HEIGHT,
   READING_PROGRESS_LINE_HEIGHT,
 } from '../components/ReadingProgressBar';
+import { debugTransitionLog } from '../logic/debugTransitionLog';
 
 const TOP_VISIBLE_THRESHOLD = 8;
 const HIDE_AFTER_SCROLL_Y = 24;
 const DIRECTION_DELTA = 10;
+/** Ignore upward header reveal near the bottom (iOS rubber-band bounce). */
+const BOTTOM_EDGE_THRESHOLD = 24;
 
 type UseMapHeaderAutoHideOptions = {
   hideProgressLine: boolean;
@@ -27,6 +31,7 @@ type UseMapHeaderAutoHideOptions = {
 };
 
 export function useMapHeaderAutoHide({
+  hideProgressLine,
   mapKey,
   resetKey,
   scrollProgress,
@@ -39,6 +44,27 @@ export function useMapHeaderAutoHide({
   const directionAnchorY = useSharedValue(0);
   const isGoingDown = useSharedValue(false);
   const mapMetaAnchorHeight = useSharedValue(0);
+  const lastLoggedHeaderVisible = useSharedValue(true);
+
+  const logScrollHeader = (scrollY: number, visible: boolean, threshold: number) => {
+    debugTransitionLog('H4', 'useMapHeaderAutoHide:scroll', 'scroll header state', {
+      scrollY,
+      headerVisible: visible,
+      threshold,
+      hideProgressLine,
+    });
+  };
+
+  useAnimatedReaction(
+    () => headerVisible.value,
+    (visible, prev) => {
+      if (prev === null || visible === prev) return;
+      if (visible === lastLoggedHeaderVisible.value) return;
+      lastLoggedHeaderVisible.value = visible;
+      runOnJS(logScrollHeader)(lastScrollY.value, visible, mapMetaAnchorHeight.value);
+    },
+    [headerVisible, lastLoggedHeaderVisible, lastScrollY, mapMetaAnchorHeight]
+  );
 
   useEffect(() => {
     if (lastMapKeyRef.current !== mapKey) {
@@ -67,13 +93,29 @@ export function useMapHeaderAutoHide({
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       const currentY = event.contentOffset.y;
-      const maxScroll = event.contentSize.height - event.layoutMeasurement.height;
+      const maxScroll = Math.max(0, event.contentSize.height - event.layoutMeasurement.height);
       const threshold = mapMetaAnchorHeight.value > 0 ? mapMetaAnchorHeight.value + 8 : 120;
+      const inBottomBounce =
+        maxScroll > 0 && currentY >= maxScroll - BOTTOM_EDGE_THRESHOLD;
 
       if (currentY <= TOP_VISIBLE_THRESHOLD) {
         headerVisible.value = true;
         directionAnchorY.value = currentY;
         lastScrollY.value = currentY;
+        return;
+      }
+
+      if (inBottomBounce) {
+        // Rubber-band at the end of the page mimics upward scroll — keep header hidden.
+        directionAnchorY.value = currentY;
+        isGoingDown.value = false;
+        lastScrollY.value = currentY;
+        if (scrollProgress) {
+          scrollProgress.value = 1;
+        }
+        if (onScrollReport) {
+          runOnJS(onScrollReport)(currentY, event.contentSize.height);
+        }
         return;
       }
 

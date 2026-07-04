@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Alert,
@@ -11,16 +11,16 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Animated from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { File, X } from 'lucide-react-native';
 import AttachMenu from '../components/AttachMenu';
-import AttachMenuOverlay from '../components/AttachMenuOverlay';
 import ComposerDismissScroll from '../components/ComposerDismissScroll';
 import ComposerSendButton from '../components/ComposerSendButton';
 import ComposerSurface from '../components/ComposerSurface';
 import ComposerDock, { useComposerKeyboardLift } from '../components/ComposerDock';
-import ContinueChip from '../components/ContinueChip';
+import ContinueChip, { getContinueChipLabel } from '../components/ContinueChip';
 import FloatingGlassButton from '../components/FloatingGlassButton';
 import GlassSurface from '../components/GlassSurface';
 import IntentSelector from '../components/IntentSelector';
@@ -28,11 +28,12 @@ import MenuTwoLines from '../components/MenuTwoLines';
 import ModelChip from '../components/ModelChip';
 import SessionErrorBanner from '../components/SessionErrorBanner';
 import { SIDEBAR_HEADER_BUTTON_SIZE } from '../components/sidebarLayout';
+import { ComposerKeyboardProvider } from '../context/ComposerKeyboardContext';
 import { useTheme } from '../context/ThemeContext';
 import { useAppSession } from '../context/AppSessionContext';
 import EngravedNucleoMark from '../components/EngravedNucleoMark';
-import { useAttachMenuControl } from '../hooks/useAttachMenuControl';
 import { KeyboardDismissBackdrop } from '../logic/keyboardDismiss';
+import { CONTINUE_CHIP_FADE_MS } from '../logic/continueTransition';
 import {
   COMPOSER_LINE_HEIGHT,
   COMPOSER_MAX_VIEWPORT_RATIO,
@@ -40,7 +41,13 @@ import {
   formatPastedTextChipLabel,
 } from '../logic/composerText';
 
-const STATIC_PLACEHOLDER = 'Pega texto, un enlace, un vídeo o un PDF';
+const STATIC_PLACEHOLDER = 'Pega texto, un enlace o adjunta un archivo';
+
+// Plain JS function so the worklet captures a function reference, never the
+// native Keyboard module (which cannot cross to the UI runtime).
+function dismissKeyboard() {
+  Keyboard.dismiss();
+}
 const FIRST_USE_EXAMPLES = [
   'https://www.youtube.com/watch?v=example',
   'Pega un artículo sobre hábitos o atención…',
@@ -61,16 +68,9 @@ export default function InputScreen() {
   const [exampleIndex, setExampleIndex] = useState(0);
   const [examplesFinished, setExamplesFinished] = useState(false);
   const composerInputRef = useRef<TextInput>(null);
+  const continueChipRef = useRef<View>(null);
+  const continueChipOpacity = useSharedValue(1);
   const keyboardLiftStyle = useComposerKeyboardLift();
-  const { anchorRef, anchorRect, handleAttachToggle, dismissAttachMenu, clearPendingOpen } =
-    useAttachMenuControl({
-      attachMenuOpen: session.attachMenuOpen,
-      setAttachMenuOpen: session.setAttachMenuOpen,
-      composerHeight,
-      composerInputRef,
-      composerFocused,
-      phase: session.phase,
-    });
 
   const isFirstUse = !session.hasAnyNucleo;
   const showHero =
@@ -106,12 +106,59 @@ export default function InputScreen() {
     return () => clearInterval(timer);
   }, [composerFocused, examplesFinished, isFirstUse, session.inputText]);
 
-  const menusBlockScroll = session.attachMenuOpen || session.historyOpen;
+  useEffect(() => {
+    if (session.continueTransition?.mode === 'expand') {
+      continueChipOpacity.value = withTiming(0, { duration: CONTINUE_CHIP_FADE_MS });
+      return;
+    }
+    continueChipOpacity.value = withTiming(1, { duration: CONTINUE_CHIP_FADE_MS });
+  }, [continueChipOpacity, session.continueTransition?.mode]);
+
+  const continueChipFadeStyle = useAnimatedStyle(() => ({
+    opacity: continueChipOpacity.value,
+  }));
+
+  // Swipe-down anywhere on the composer dismisses the keyboard. Downward-only
+  // activation (activeOffsetY) keeps taps and horizontal moves untouched.
+  const composerDismissPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(keyboardVisible)
+        .activeOffsetY(18)
+        .failOffsetY(-18)
+        .failOffsetX([-16, 16])
+        .onChange((event) => {
+          if (event.translationY > 56) {
+            runOnJS(dismissKeyboard)();
+          }
+        })
+        .onEnd((event) => {
+          if (event.translationY > 32 || event.velocityY > 450) {
+            runOnJS(dismissKeyboard)();
+          }
+        }),
+    [keyboardVisible]
+  );
+
+  const handleContinuePress = () => {
+    const entry = session.continueEntry;
+    if (!entry) return;
+    continueChipRef.current?.measureInWindow((x, y, width, height) => {
+      session.beginContinueTransition(
+        entry.id,
+        { x, y, width, height, borderRadius: 999 },
+        getContinueChipLabel(entry)
+      );
+    });
+  };
+
+  const menusBlockScroll = session.historyOpen;
 
   return (
+    <ComposerKeyboardProvider>
     <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-base">
       <View className="flex-1 px-3" style={{ position: 'relative' }}>
-        <View className="flex-row items-center justify-between pt-1 pb-3">
+        <View className="flex-row items-center justify-between pt-2.5 pb-3">
           <FloatingGlassButton
             onPress={() => session.toggleHistoryDrawer()}
             accessibilityLabel={session.historyOpen ? 'Cerrar navegacion' : 'Abrir navegacion'}
@@ -123,7 +170,7 @@ export default function InputScreen() {
           <IntentSelector
             value={session.intent}
             onChange={session.setIntent}
-            disabled={session.phase === 'loading' || session.attachMenuOpen}
+            disabled={session.phase === 'loading'}
           />
           <View className="w-9" />
         </View>
@@ -137,7 +184,6 @@ export default function InputScreen() {
             keyboardShouldPersistTaps="handled"
             scrollEnabled={!menusBlockScroll}
             alwaysBounceVertical={Platform.OS === 'ios' && keyboardVisible}
-            onScrollBeginDrag={clearPendingOpen}
             contentContainerClassName="px-1"
             contentContainerStyle={{ flexGrow: 1, paddingBottom: composerHeight + 16 }}
           >
@@ -201,8 +247,7 @@ export default function InputScreen() {
                           >
                             <View className="px-4 py-2.5">
                               <Text className="text-[15px] font-normal text-body">
-                                Ver un ejemplo{' '}
-                                <Text className="text-secondary">→</Text>
+                                Ver un ejemplo
                               </Text>
                             </View>
                           </GlassSurface>
@@ -218,17 +263,19 @@ export default function InputScreen() {
 
         <ComposerDock onHeightChange={setComposerHeight}>
           {session.continueEntry ? (
-            <View className="mb-3 w-full items-center">
+            <Animated.View style={continueChipFadeStyle} className="mb-3 w-full items-center">
               <ContinueChip
+                ref={continueChipRef}
                 entry={session.continueEntry}
-                onPress={() => session.handleSelectHistory(session.continueEntry!.id)}
+                onPress={handleContinuePress}
                 onDismiss={session.dismissContinueChip}
               />
-            </View>
+            </Animated.View>
           ) : null}
           <ComposerDismissScroll>
+            <GestureDetector gesture={composerDismissPan}>
             <ComposerSurface focused={composerFocused} inputRef={composerInputRef}>
-              <View pointerEvents={session.attachMenuOpen ? 'none' : 'auto'}>
+              <View>
                 {session.uploadedFile ? (
                   <View className="px-5 pt-4 pb-1">
                     {session.uploadedFile.isImage && session.uploadedFile.previewUri ? (
@@ -288,7 +335,6 @@ export default function InputScreen() {
                     placeholderTextColor={isDark ? '#9CA0AB' : '#737373'}
                     multiline
                     textAlignVertical="top"
-                    editable={!session.attachMenuOpen}
                     style={{
                       minHeight: COMPOSER_REST_INPUT_HEIGHT,
                       maxHeight: maxComposerInputHeight,
@@ -305,9 +351,9 @@ export default function InputScreen() {
               <View className="flex-row items-center justify-between px-3 pb-4 pt-1.5 gap-2">
                 <View className="flex-row items-center gap-2 shrink">
                   <AttachMenu
-                    anchorRef={anchorRef}
-                    open={session.attachMenuOpen}
-                    onToggle={handleAttachToggle}
+                    onPickCamera={() => void session.handlePickCamera()}
+                    onPickImage={() => void session.handlePickImage()}
+                    onPickFile={() => void session.handlePickFile()}
                     disabled={session.phase === 'loading'}
                     darkSurface={isDark}
                   />
@@ -315,31 +361,22 @@ export default function InputScreen() {
                     value={session.depthPreference}
                     onChange={session.setDepthPreference}
                     onOpenPaywall={session.openPaywall}
-                    disabled={session.phase === 'loading' || session.attachMenuOpen}
+                    disabled={session.phase === 'loading'}
                   />
                 </View>
                 <ComposerSendButton
                   onPress={() => {
-                    clearPendingOpen();
                     void session.handleTransform();
                   }}
-                  disabled={!canSend || session.attachMenuOpen}
+                  disabled={!canSend}
                 />
               </View>
             </ComposerSurface>
+            </GestureDetector>
           </ComposerDismissScroll>
         </ComposerDock>
-
-        <AttachMenuOverlay
-          open={session.attachMenuOpen}
-          anchorRect={anchorRect}
-          onClose={dismissAttachMenu}
-          onPickImage={() => void session.handlePickImage()}
-          onPickCamera={() => void session.handlePickCamera()}
-          onPickFile={() => void session.handlePickFile()}
-          darkSurface={isDark}
-        />
       </View>
     </SafeAreaView>
+    </ComposerKeyboardProvider>
   );
 }

@@ -8,9 +8,9 @@ import {
   GLASS_TOUCH_GLOW_RADIAL_STOP_RATIOS,
   GLASS_TOUCH_GLOW_RADIUS_SCALE,
 } from '@shared/uiTokens';
-import type { GlassTouchPoint } from '../hooks/useGlassTouchGlow';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
+const AnimatedRadialGradient = Animated.createAnimatedComponent(RadialGradient);
 
 type GlassTouchGlowProps = {
   width: number;
@@ -18,7 +18,8 @@ type GlassTouchGlowProps = {
   borderRadius: number;
   isDark: boolean;
   glowOpacity: SharedValue<number>;
-  touchPoint: GlassTouchPoint;
+  touchX: SharedValue<number>;
+  touchY: SharedValue<number>;
   /** Overrides token center opacity (composer peak). */
   centerOpacity?: number;
   /** Wider radial spread (composer). */
@@ -33,7 +34,8 @@ export default function GlassTouchGlow({
   borderRadius,
   isDark,
   glowOpacity,
-  touchPoint,
+  touchX,
+  touchY,
   centerOpacity: centerOpacityProp,
   radiusScale = GLASS_TOUCH_GLOW_RADIUS_SCALE,
   edgeInset = 0,
@@ -57,21 +59,22 @@ export default function GlassTouchGlow({
     [centerOpacity]
   );
 
-  const animatedRectProps = useAnimatedProps(() => ({
-    opacity: glowOpacity.value,
-  }));
-
-  if (width <= 0 || height <= 0) return null;
-
   const inset = Math.max(0, edgeInset);
   const innerWidth = Math.max(0, width - inset * 2);
   const innerHeight = Math.max(0, height - inset * 2);
   const innerRadius = Math.max(0, borderRadius - inset);
-  const cx = touchPoint.x - inset;
-  const cy = touchPoint.y - inset;
   const radius = Math.max(1, Math.min(innerWidth, innerHeight) * radiusScale);
 
-  if (innerWidth <= 0 || innerHeight <= 0) return null;
+  const animatedRectProps = useAnimatedProps(() => ({
+    opacity: glowOpacity.value,
+  }));
+
+  const gradientAnimatedProps = useAnimatedProps(() => ({
+    cx: touchX.value - inset,
+    cy: touchY.value - inset,
+  }));
+
+  if (width <= 0 || height <= 0 || innerWidth <= 0 || innerHeight <= 0) return null;
 
   return (
     <View
@@ -91,11 +94,10 @@ export default function GlassTouchGlow({
     >
       <Svg width={innerWidth} height={innerHeight} pointerEvents="none">
         <Defs>
-          <RadialGradient
+          <AnimatedRadialGradient
+            animatedProps={gradientAnimatedProps}
             id={gradientId}
             gradientUnits="userSpaceOnUse"
-            cx={cx}
-            cy={cy}
             rx={radius}
             ry={radius}
           >
@@ -107,7 +109,7 @@ export default function GlassTouchGlow({
                 stopOpacity={stop.stopOpacity}
               />
             ))}
-          </RadialGradient>
+          </AnimatedRadialGradient>
         </Defs>
         <AnimatedRect
           animatedProps={animatedRectProps}
