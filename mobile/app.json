@@ -34,6 +34,12 @@
       "expo-dev-client",
       "expo-asset",
       [
+        "expo-widgets",
+        {
+          "groupIdentifier": "group.com.freixanet.nucleo"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Permite acceder a tus fotos para adjuntar imágenes y videos.",

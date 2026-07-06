@@ -65,16 +65,35 @@ function allowedOrigins() {
   );
 }
 
-function isWithinRateLimit(ip: string) {
+function isWithinRateLimit(ip: string, options?: { skipIncrement?: boolean }) {
   const now = Date.now();
   const current = requestBuckets.get(ip);
   if (!current || current.resetAt <= now) {
-    requestBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    if (!options?.skipIncrement) {
+      requestBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    }
     return true;
   }
   if (current.count >= RATE_LIMIT_MAX) return false;
-  current.count += 1;
+  if (!options?.skipIncrement) {
+    current.count += 1;
+  }
   return true;
+}
+
+const transformAttemptDedup = new Map<string, number>();
+const TRANSFORM_ATTEMPT_DEDUP_MS = 120_000;
+
+function consumeTransformRateLimit(ip: string, mapId?: string): boolean {
+  if (mapId) {
+    const dedupeKey = `${ip}:${mapId}`;
+    const seenAt = transformAttemptDedup.get(dedupeKey);
+    if (seenAt && Date.now() - seenAt < TRANSFORM_ATTEMPT_DEDUP_MS) {
+      return isWithinRateLimit(ip, { skipIncrement: true });
+    }
+    transformAttemptDedup.set(dedupeKey, Date.now());
+  }
+  return isWithinRateLimit(ip);
 }
 
 async function authenticateOptional(req: AuthenticatedRequest) {
@@ -100,6 +119,13 @@ function base64Size(data: unknown) {
 }
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+const analyzeAi = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: {
+    retryOptions: { attempts: 1 },
+  },
+});
 
 // Models tried in order, best capability first. All of these have a Gemini API
 // free tier, so the automatic fallback works without billing enabled. The model
@@ -173,7 +199,9 @@ async function generateWithFallback(
   },
   chain: string[] = MODEL_CHAIN,
   configForModel?: (model: string) => Parameters<typeof ai.models.generateContent>[0]["config"],
-  timeoutMs = 60_000
+  timeoutMs = 60_000,
+  client: GoogleGenAI = ai,
+  logPrefix?: string
 ): Promise<{ response: Awaited<ReturnType<typeof ai.models.generateContent>>; model: string }> {
   let lastErr: any;
 
@@ -181,17 +209,27 @@ async function generateWithFallback(
     try {
       const config = configForModel?.(model) ?? params.config;
       const response = await Promise.race([
-        ai.models.generateContent({ model, ...params, config }),
+        client.models.generateContent({ model, ...params, config }),
         new Promise<never>((_, reject) => {
           setTimeout(() => {
             reject(new Error("La generación ha superado el tiempo límite. Inténtalo de nuevo."));
           }, timeoutMs);
         }),
       ]);
+      if (logPrefix) {
+        console.log(`${logPrefix} model attempt`, { model, status: "ok" });
+      }
       return { response, model };
     } catch (err: any) {
       lastErr = err;
       const { statusCode } = describeGeminiError(err);
+      if (logPrefix) {
+        console.log(`${logPrefix} model attempt`, {
+          model,
+          status: statusCode,
+          error: String(err?.message || err).slice(0, 160),
+        });
+      }
       if (statusCode === 429 || statusCode === 503) {
         console.warn(
           `Modelo "${model}" no disponible (estado ${statusCode}). Probando el siguiente modelo...`
@@ -1796,6 +1834,7 @@ async function handleTransformStream(
   };
 
   let streamStarted = false;
+  let lastStreamErr: unknown = null;
 
   for (const model of context.modelChain) {
     try {
@@ -1820,6 +1859,7 @@ async function handleTransformStream(
 
       break;
     } catch (err: any) {
+      lastStreamErr = err;
       if (streamStarted) throw err;
       const { statusCode } = describeGeminiError(err);
       if (statusCode === 429 || statusCode === 503) {
@@ -1833,7 +1873,10 @@ async function handleTransformStream(
   }
 
   if (!streamStarted) {
-    throw new Error("No hay modelos disponibles para generar el mapa.");
+    const { errorMessage } = describeGeminiError(
+      lastStreamErr ?? new Error("No hay modelos disponibles para generar el mapa.")
+    );
+    throw new Error(errorMessage);
   }
 
   console.log(`Mapa generado en streaming con el modelo "${usedModel}".`);
@@ -2590,7 +2633,7 @@ function describeGeminiError(err: any): { statusCode: number; errorMessage: stri
   const isQuota =
     statusCode === 429 ||
     geminiStatus === "RESOURCE_EXHAUSTED" ||
-    /quota exceeded|RESOURCE_EXHAUSTED/i.test(rawMessage);
+    /quota exceeded|RESOURCE_EXHAUSTED|too many requests/i.test(rawMessage);
 
   if (isQuota) {
     const violations: any[] =
@@ -2747,7 +2790,6 @@ async function startServer() {
       throw new Error("API key is missing on the server.");
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const prompt = [
       "Analiza este PDF y detecta si tiene capítulos o secciones claramente separadas aptas para dividir en unidades de lectura independientes.",
       "Si el documento tiene 2 o más capítulos/secciones distintas Y (estima más de 15000 palabras O estructura clara de capítulos), establece shouldProposeSplit en true y lista cada parte con un título breve.",
@@ -2755,18 +2797,25 @@ async function startServer() {
       "Responde solo en JSON.",
     ].join("\n");
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [
-        { inlineData: { data: fileData, mimeType } },
-        { text: prompt },
-      ],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: pdfAnalyzeSchema as any,
-        temperature: 0.1,
+    const { response, model: analyzeModel } = await generateWithFallback(
+      {
+        contents: [
+          { inlineData: { data: fileData, mimeType } },
+          { text: prompt },
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: pdfAnalyzeSchema as any,
+          temperature: 0.1,
+        },
       },
-    });
+      MODEL_CHAIN,
+      undefined,
+      90_000,
+      analyzeAi,
+      "[analyze]"
+    );
+    console.log(`[analyze] pdf model used: ${analyzeModel}`);
 
     const parsed = JSON.parse(response.text || "{}") as {
       shouldProposeSplit?: boolean;
@@ -2784,10 +2833,13 @@ async function startServer() {
       ? Number(parsed.totalWordsEstimate)
       : 0;
     const hasChapters = parts.length >= 2;
-    const shouldProposeSplit =
+    let shouldProposeSplit =
       Boolean(parsed.shouldProposeSplit) &&
       hasChapters &&
       (totalWords >= LONG_SOURCE_WORD_THRESHOLD || hasChapters);
+    if (hasChapters && !Boolean(parsed.shouldProposeSplit)) {
+      shouldProposeSplit = true;
+    }
 
     return {
       shouldProposeSplit,
@@ -2802,6 +2854,12 @@ async function startServer() {
     try {
       await authenticateOptional(req);
       const body = req.body as TransformRequest;
+
+      console.log("[analyze] request", {
+        type: body.type,
+        fileBytes: base64Size(body.fileData),
+        textChars: typeof body.text === "string" ? body.text.length : 0,
+      });
 
       if (!validateTransformType(body.type)) {
         return res.status(400).json({ error: "Tipo de fuente no válido." });
@@ -2823,6 +2881,11 @@ async function startServer() {
           body.mimeType,
           body.sourceLabel
         );
+        console.log("[analyze] result", {
+          type: body.type,
+          shouldProposeSplit: result.shouldProposeSplit,
+          partCount: result.partCount,
+        });
         return res.json(result);
       }
 
@@ -2848,6 +2911,11 @@ async function startServer() {
       }
 
       const analysis = analyzeSourceText(plainText, body.sourceLabel);
+      console.log("[analyze] result", {
+        type: body.type,
+        shouldProposeSplit: analysis.shouldProposeSplit,
+        partCount: analysis.partCount,
+      });
       return res.json({
         shouldProposeSplit: analysis.shouldProposeSplit,
         partCount: analysis.partCount,
@@ -2866,7 +2934,10 @@ async function startServer() {
   app.post("/api/transform", async (req: AuthenticatedRequest, res) => {
     try {
       const ip = req.ip || req.socket.remoteAddress || "unknown";
-      if (!isWithinRateLimit(ip)) {
+      const mapId = typeof (req.body as TransformRequest)?.mapId === "string"
+        ? (req.body as TransformRequest).mapId
+        : undefined;
+      if (!consumeTransformRateLimit(ip, mapId)) {
         return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
       }
       await authenticateOptional(req);
@@ -2909,7 +2980,10 @@ async function startServer() {
   app.post("/api/transform/stream", async (req: AuthenticatedRequest, res) => {
     try {
       const ip = req.ip || req.socket.remoteAddress || "unknown";
-      if (!isWithinRateLimit(ip)) {
+      const mapId = typeof (req.body as TransformRequest)?.mapId === "string"
+        ? (req.body as TransformRequest).mapId
+        : undefined;
+      if (!consumeTransformRateLimit(ip, mapId)) {
         return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
       }
       await authenticateOptional(req);

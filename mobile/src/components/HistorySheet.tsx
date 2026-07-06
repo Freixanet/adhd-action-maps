@@ -561,13 +561,13 @@ export default function HistorySheet({
               onNewMap?.();
               onClose();
             }}
-            accessibilityLabel="Nuevo Núcleo"
+            accessibilityLabel="Núcleo"
             shape="pill"
             tone="accent"
             compact
           >
             <SquarePen size={17} color="#ffffff" />
-            <Text className="text-[15px] font-bold text-white">Nuevo Núcleo</Text>
+            <Text className="text-[15px] font-bold text-white">Núcleo</Text>
           </FloatingGlassButton>
         </View>
       ) : null}

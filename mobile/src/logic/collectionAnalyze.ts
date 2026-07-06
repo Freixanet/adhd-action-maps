@@ -25,14 +25,18 @@ export async function analyzeTransformSource(
   const local = analyzeTransformSourceLocally(body);
   if (local) return local;
 
-  const response = await fetchWithTimeout(apiUrl('/api/transform/analyze'), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(headers ?? {}),
+  const response = await fetchWithTimeout(
+    apiUrl('/api/transform/analyze'),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(headers ?? {}),
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+    { timeoutMs: 60_000 }
+  );
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };

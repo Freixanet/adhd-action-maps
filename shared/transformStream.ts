@@ -24,6 +24,18 @@ function resolveDepthFromBody(body: unknown): MapDepth {
   return 'estandar';
 }
 
+export function isNonRetryableTransformError(message: string): boolean {
+  return (
+    /Demasiadas solicitudes/i.test(message) ||
+    /No hay modelos disponibles/i.test(message) ||
+    /l[ií]mite.*Gemini/i.test(message) ||
+    /Error 429/i.test(message) ||
+    /Error 503/i.test(message) ||
+    /quota|RESOURCE_EXHAUSTED/i.test(message) ||
+    /plan gratuito de Gemini/i.test(message)
+  );
+}
+
 export type FetchWithTimeoutOptions = {
   timeoutMs?: number;
   timeoutMessage?: string;
@@ -331,6 +343,10 @@ export async function fetchTransformWithProgress({
     throw new Error(streamEndedWithoutDoneMessage(result, receivedRenderablePartial));
   } catch (err: unknown) {
     if (signal?.aborted) throw err;
+    const message = err instanceof Error ? err.message : '';
+    if (message && isNonRetryableTransformError(message)) {
+      throw err;
+    }
     if (!shouldAllowRestFallback()) throw err;
 
     const fallbackResponse = await fetchWithTimeout(

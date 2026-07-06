@@ -27,6 +27,8 @@ import GlassSurface from '../components/GlassSurface';
 import IntentSelector from '../components/IntentSelector';
 import MenuTwoLines from '../components/MenuTwoLines';
 import ModelChip from '../components/ModelChip';
+import LoadingPreviewButton from '../components/LoadingPreviewButton';
+import OrbSkiaCompare from '../components/OrbSkiaCompare';
 import SessionErrorBanner from '../components/SessionErrorBanner';
 import { SIDEBAR_HEADER_BUTTON_SIZE } from '../components/sidebarLayout';
 import { ComposerKeyboardProvider } from '../context/ComposerKeyboardContext';
@@ -70,6 +72,7 @@ export default function InputScreen() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [exampleIndex, setExampleIndex] = useState(0);
   const [examplesFinished, setExamplesFinished] = useState(false);
+  const [orbCompareVisible, setOrbCompareVisible] = useState(false);
   const composerInputRef = useRef<TextInput>(null);
   const continueChipRef = useRef<View>(null);
   const continueChipOpacity = useSharedValue(1);
@@ -215,23 +218,25 @@ export default function InputScreen() {
               contentContainerClassName="px-1"
               contentContainerStyle={{
                 flexGrow: 1,
+                justifyContent: inlineActive ? 'flex-start' : undefined,
+                paddingTop: inlineActive ? 44 : 0,
                 paddingBottom: composerHeight + 16,
               }}
             >
+              {inlineActive ? (
+                <View className="w-full">
+                  <InlineGenerationThread />
+                </View>
+              ) : (
               <View className="w-full flex-1 justify-center py-2">
-                {inlineActive ? <InlineGenerationThread /> : null}
-
                 <Animated.View
                   style={heroFadeStyle}
-                  pointerEvents={inlineActive || !showHero ? 'none' : 'auto'}
+                  pointerEvents={!showHero ? 'none' : 'auto'}
                   className="w-full items-center px-2"
                 >
                   {showHero ? (
                     <KeyboardDismissBackdrop className="w-full items-center justify-center">
-                      <View
-                        className="w-full items-center px-2"
-                        style={{ marginTop: inlineActive ? 0 : -24 }}
-                      >
+                      <View className="w-full items-center px-2" style={{ marginTop: -24 }}>
                         <Pressable
                           onLongPress={() => {
                             if (!__DEV__) return;
@@ -300,10 +305,31 @@ export default function InputScreen() {
                   ) : null}
                 </Animated.View>
               </View>
+              )}
             </ScrollView>
           </Animated.View>
 
           <ComposerDock onHeightChange={setComposerHeight}>
+            {__DEV__ && session.phase !== 'loading' ? (
+              <View className="mb-2 w-full items-center gap-1">
+                <LoadingPreviewButton
+                  onPress={() => session.previewInlineGeneration?.()}
+                  onLongPress={() => session.previewLoadingScreen?.()}
+                />
+                <Pressable
+                  onPress={() => setOrbCompareVisible(true)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Comparar orbe WebView y Skia"
+                  className="opacity-30 active:opacity-50"
+                >
+                  <Text className="text-[11px] font-medium tracking-wide text-secondary">
+                    Compare orb
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+            <OrbSkiaCompare visible={orbCompareVisible} onClose={() => setOrbCompareVisible(false)} />
             {!composerDisabled && session.continueEntry ? (
               <Animated.View style={continueChipFadeStyle} className="mb-3 w-full items-center">
                 <ContinueChip

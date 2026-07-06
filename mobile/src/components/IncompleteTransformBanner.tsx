@@ -53,7 +53,7 @@ export default function IncompleteTransformBanner() {
           accessibilityLabel="Volver al inicio"
         >
           <Text className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-            Nuevo Núcleo
+            Núcleo
           </Text>
         </Pressable>
       </View>

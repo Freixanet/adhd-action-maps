@@ -8,8 +8,8 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { File, Image as ImageIcon, Link2 } from 'lucide-react-native';
-import ExactLiquidOrbWebView from './ExactLiquidOrbWebView';
+import NucleoOrb from './NucleoOrb';
+import InlineUserBubble from './InlineUserBubble';
 import SessionErrorBanner from './SessionErrorBanner';
 import {
   ANALYZING_SOURCE_LABEL,
@@ -17,10 +17,9 @@ import {
   LoadingPhaseLabel,
   LOADING_PHASE_LABELS,
 } from './loadingGenerationUi';
-import { stepHaptic, useAppSession, type InlineUserTurnSnapshot } from '../context/AppSessionContext';
+import { stepHaptic, useAppSession } from '../context/AppSessionContext';
 import { useTheme } from '../context/ThemeContext';
 
-const BUBBLE_ENTER_MS = 200;
 const BLOCK_B_DELAY_MS = 250;
 const PHASES_DELAY_MS = 600;
 const PHASE_FADE_OUT_MS = 200;
@@ -40,129 +39,6 @@ function parseTotalMinutes(steps: Array<{ time?: string }> | undefined): number 
     }
   }
   return found ? total : null;
-}
-
-function formatFileSize(bytes: number | undefined): string {
-  if (!bytes || bytes <= 0) return '';
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
-  }
-  if (bytes >= 1024) {
-    return `${Math.round(bytes / 1024)} KB`;
-  }
-  return `${bytes} B`;
-}
-
-function truncateName(name: string, max = 24): string {
-  if (name.length <= max) return name;
-  return `${name.slice(0, max - 1)}…`;
-}
-
-function formatLinkDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '') || url;
-  } catch {
-    return url;
-  }
-}
-
-function enterTiming(duration: number, reduceMotion: boolean) {
-  if (reduceMotion) {
-    return withTiming(1, { duration: REDUCED_FADE_MS });
-  }
-  return withTiming(1, { duration, easing: Easing.out(Easing.ease) });
-}
-
-type UserBubbleProps = {
-  snapshot: InlineUserTurnSnapshot;
-  reduceMotion: boolean;
-  maxWidth: number;
-  mutedIcon: string;
-};
-
-function UserBubble({ snapshot, reduceMotion, maxWidth, mutedIcon }: UserBubbleProps) {
-  const opacity = useSharedValue(reduceMotion ? 1 : 0);
-  const translateY = useSharedValue(reduceMotion ? 0 : 8);
-
-  useEffect(() => {
-    opacity.value = enterTiming(BUBBLE_ENTER_MS, reduceMotion);
-    translateY.value = reduceMotion
-      ? 0
-      : withTiming(0, { duration: BUBBLE_ENTER_MS, easing: Easing.out(Easing.ease) });
-  }, [opacity, reduceMotion, translateY]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  return (
-    <Animated.View style={[{ maxWidth, alignSelf: 'flex-end' }, style]}>
-      <View className="rounded-2xl bg-surface-2 px-4 py-3">
-        <UserBubbleContent snapshot={snapshot} mutedIcon={mutedIcon} />
-      </View>
-    </Animated.View>
-  );
-}
-
-function UserBubbleContent({
-  snapshot,
-  mutedIcon,
-}: {
-  snapshot: InlineUserTurnSnapshot;
-  mutedIcon: string;
-}) {
-  if (snapshot.uploadedFile) {
-    const file = snapshot.uploadedFile;
-    const kind = file.isPdf ? 'PDF' : file.isImage ? 'Imagen' : 'Archivo';
-    const sizeLabel = formatFileSize(file.size);
-    const label = sizeLabel
-      ? `${kind} · ${truncateName(file.name)} · ${sizeLabel}`
-      : `${kind} · ${truncateName(file.name)}`;
-    const Icon = file.isImage ? ImageIcon : File;
-    return (
-      <View className="flex-row items-center gap-2">
-        <Icon size={16} color={mutedIcon} />
-        <Text className="flex-1 text-[15px] text-body" numberOfLines={1}>
-          {label}
-        </Text>
-      </View>
-    );
-  }
-
-  if (snapshot.urlKind === 'youtube') {
-    const prefix = snapshot.linkTitle?.trim()
-      ? `YouTube · ${snapshot.linkTitle.trim()}`
-      : 'YouTube';
-    return (
-      <View className="flex-row items-center gap-2">
-        <Link2 size={16} color={mutedIcon} />
-        <Text className="flex-1 text-[15px] text-body" numberOfLines={1}>
-          {prefix}
-        </Text>
-      </View>
-    );
-  }
-
-  if (snapshot.urlKind === 'link') {
-    const domain = formatLinkDomain(snapshot.sourceLabel);
-    const label = snapshot.linkTitle?.trim() ? `${domain} · ${snapshot.linkTitle.trim()}` : domain;
-    return (
-      <View className="flex-row items-center gap-2">
-        <Link2 size={16} color={mutedIcon} />
-        <Text className="flex-1 text-[15px] text-body" numberOfLines={1}>
-          {label}
-        </Text>
-      </View>
-    );
-  }
-
-  const text = snapshot.pastedText?.trim() || snapshot.text?.trim() || '';
-  return (
-    <Text className="text-[15px] leading-[22px] text-body" numberOfLines={2}>
-      {text}
-    </Text>
-  );
 }
 
 export default function InlineGenerationThread() {
@@ -253,12 +129,12 @@ export default function InlineGenerationThread() {
 
     const blockTimer = setTimeout(() => setBlockBVisible(true), BLOCK_B_DELAY_MS);
     return () => clearTimeout(blockTimer);
-  }, [snapshot?.sourceLabel, snapshot?.conversationalMessage]);
+  }, [snapshot?.sourceUrl, snapshot?.conversationalMessage, snapshot?.text, snapshot?.pastedText]);
 
   useEffect(() => {
     if (!blockBVisible) return;
 
-    const fadeMs = reduceMotion ? REDUCED_FADE_MS : BUBBLE_ENTER_MS;
+    const fadeMs = reduceMotion ? REDUCED_FADE_MS : 200;
     blockBOpacity.value = withTiming(1, { duration: fadeMs, easing: Easing.out(Easing.ease) });
     blockBTranslateY.value = reduceMotion
       ? 0
@@ -313,7 +189,7 @@ export default function InlineGenerationThread() {
   useEffect(() => {
     if (!orbVisible) return;
 
-    const fadeMs = reduceMotion ? REDUCED_FADE_MS : BUBBLE_ENTER_MS;
+    const fadeMs = reduceMotion ? REDUCED_FADE_MS : 200;
     orbOpacity.value = withTiming(1, { duration: fadeMs });
     orbScale.value = reduceMotion
       ? 1
@@ -371,8 +247,8 @@ export default function InlineGenerationThread() {
     (status === 'generating' || status === 'ready') && (phasesVisible || progressVisible);
 
   return (
-    <View className="w-full gap-4 px-1">
-      <UserBubble
+    <View className="w-full px-1">
+      <InlineUserBubble
         snapshot={snapshot}
         reduceMotion={reduceMotion}
         maxWidth={bubbleMaxWidth}
@@ -380,7 +256,7 @@ export default function InlineGenerationThread() {
       />
 
       {blockBVisible ? (
-        <Animated.View style={blockBStyle} className="w-full">
+        <Animated.View style={blockBStyle} className="mt-9 w-full">
           <Text className="text-[13px] font-semibold uppercase tracking-[0.08em] text-secondary">
             nucleo
           </Text>
@@ -428,9 +304,14 @@ export default function InlineGenerationThread() {
               accessibilityRole="button"
               accessibilityLabel={`Abrir ${title}`}
               className="mt-3 w-full flex-row items-center gap-3"
+              style={{ overflow: 'visible' }}
             >
               <Animated.View style={orbEntranceStyle}>
-                <ExactLiquidOrbWebView size={ORB_SIZE} reduceMotion={reduceMotion} />
+                <NucleoOrb
+                  size={ORB_SIZE}
+                  state="complete"
+                  reduceMotion={reduceMotion}
+                />
               </Animated.View>
               <View className="min-w-0 flex-1">
                 <Text className="text-[17px] font-semibold leading-6 text-primary" numberOfLines={2}>

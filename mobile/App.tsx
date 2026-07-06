@@ -10,6 +10,10 @@ import { AppSessionProvider, useAppSession } from './src/context/AppSessionConte
 import { ThemeProvider } from './src/context/ThemeContext';
 import { NetworkStatusProvider } from './src/context/NetworkStatusContext';
 import { bootstrapStorage } from './src/shims/localStorage';
+import {
+  isBrandLiveActivitySupported,
+  startNucleoBrandLiveActivity,
+} from './src/logic/nucleoBrandLiveActivity';
 import ComprensionApp from './src/screens/ComprensionApp';
 import { ACCENT } from '@shared/uiTokens';
 
@@ -53,6 +57,11 @@ export default function App() {
         setReady(true);
       });
   }, []);
+
+  useEffect(() => {
+    if (!ready || bootError || !isBrandLiveActivitySupported()) return;
+    void startNucleoBrandLiveActivity();
+  }, [bootError, ready]);
 
   if (!ready) {
     return (

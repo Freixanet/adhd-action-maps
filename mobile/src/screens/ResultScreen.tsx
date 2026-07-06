@@ -492,7 +492,7 @@ export default function ResultScreen({
     <View className="mt-10 flex-row flex-wrap gap-3" style={styles.completionActions}>
       <View style={styles.completionActionFullWidthSlot}>
         <CompletionGlassButton
-          label="Nuevo Núcleo"
+          label="Núcleo"
           variant="accent"
           onPress={session.handleNewMap}
         />

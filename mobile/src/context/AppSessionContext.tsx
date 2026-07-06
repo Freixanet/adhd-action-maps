@@ -104,23 +104,18 @@ export type AppPhase = 'input' | 'loading' | 'result';
 
 export type InlineGenerationStatus = 'idle' | 'generating' | 'ready' | 'error';
 
-export type InlineUserTurnSnapshot = {
-  text: string | null;
-  pastedText: string | null;
-  uploadedFile: {
-    name: string;
-    size?: number;
-    isPdf?: boolean;
-    isImage?: boolean;
-    isVideo?: boolean;
-  } | null;
-  sourceLabel: string;
-  urlKind: 'youtube' | 'link' | null;
-  linkTitle: string | null;
-  conversationalMessage: string;
-};
+import {
+  buildInlineUserTurnSnapshot,
+  type InlineUserTurnSnapshot,
+} from '../logic/inlineUserBubble';
 
-const INLINE_ACK_MESSAGES = ['Voy con ello.', 'Dame un momento.', 'A ello.'] as const;
+export type { InlineUserTurnSnapshot } from '../logic/inlineUserBubble';
+
+const INLINE_ACK_MESSAGES = [
+  'Perfecto, voy con ello.',
+  'Dame un momento y te lo preparo.',
+  'Recibido, me pongo con ello.',
+] as const;
 
 function pickInlineConversationalMessage(): string {
   const index = Math.floor(Math.random() * INLINE_ACK_MESSAGES.length);
@@ -243,6 +238,8 @@ type AppSessionContextValue = {
   devHistoryHidden?: boolean;
   devHideHistory?: () => void;
   devRestoreHistory?: () => void;
+  previewInlineGeneration?: () => void;
+  previewLoadingScreen?: () => void;
   handleNewMap: () => void;
   handleSelectHistory: (id: string) => void;
   beginContinueTransition: (id: string, chipRect: ContinueChipRect, chipLabel: string) => void;
@@ -408,6 +405,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
   const pendingDeletesRef = useRef<string[]>([]);
   const introTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const devPreviewTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -420,6 +418,22 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     inlineGenerationStatusRef.current = inlineGenerationStatus;
   }, [inlineGenerationStatus]);
+
+  const clearDevPreviewTimers = useCallback(() => {
+    for (const timer of devPreviewTimersRef.current) {
+      clearTimeout(timer);
+    }
+    devPreviewTimersRef.current = [];
+  }, []);
+
+  const scheduleDevPreview = useCallback((fn: () => void, delayMs: number) => {
+    const timer = setTimeout(fn, delayMs);
+    devPreviewTimersRef.current.push(timer);
+  }, []);
+
+  useEffect(() => {
+    return () => clearDevPreviewTimers();
+  }, [clearDevPreviewTimers]);
 
   const clearInlineAutoOpen = useCallback(() => {
     inlineAutoOpenCancelRef.current?.();
@@ -1042,6 +1056,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setTransformIncomplete(false);
     setAttachMenuOpen(false);
     clearComposerDraft();
+    clearDevPreviewTimers();
 
     const sourceKind = resolveTransformSourceKind(uploadedFile, urlDetection);
     const mapId = generateMapId();
@@ -1143,28 +1158,14 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       clearInlineAutoOpen();
       clearInlineReadyTimeout();
 
-      setInlineUserTurn({
-        text: inputText.trim() || null,
-        pastedText,
-        uploadedFile: uploadedFile
-          ? {
-              name: uploadedFile.name,
-              size: uploadedFile.size,
-              isPdf: uploadedFile.isPdf,
-              isImage: uploadedFile.isImage,
-              isVideo: uploadedFile.isVideo,
-            }
-          : null,
-        sourceLabel,
-        urlKind:
-          urlDetection?.kind === 'youtube'
-            ? 'youtube'
-            : urlDetection?.kind === 'link'
-              ? 'link'
-              : null,
-        linkTitle: null,
-        conversationalMessage: pickInlineConversationalMessage(),
-      });
+      setInlineUserTurn(
+        buildInlineUserTurnSnapshot({
+          inputText,
+          pastedText,
+          uploadedFile,
+          conversationalMessage: pickInlineConversationalMessage(),
+        })
+      );
       setInlineGenerationStatus('generating');
       inlineRetryPayloadRef.current = { body, headers, sourceKind };
 
@@ -1351,6 +1352,21 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setData(partialMap);
         setStreamLoadPhase(resolveStreamLoadPhase(partialMap));
 
+        const pageLabel = partialMap.sourceMetadata?.label?.trim();
+        const pageTitle = partialMap.title?.trim();
+        const resolvedTitle =
+          pageLabel && !/^https?:\/\//i.test(pageLabel)
+            ? pageLabel
+            : pageTitle || null;
+        if (resolvedTitle) {
+          setInlineUserTurn((current) => {
+            if (!current || (!current.urlKind && current.attachments.length === 0)) return current;
+            if (current.urlKind !== 'link' && current.urlKind !== 'youtube') return current;
+            if (current.linkTitle === resolvedTitle) return current;
+            return { ...current, linkTitle: resolvedTitle };
+          });
+        }
+
         if (partialMap.coreIdea?.trim()) {
           bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[2]);
         }
@@ -1409,6 +1425,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     }
   }, [
     bumpStreamProgressCap,
+    clearDevPreviewTimers,
     clearInlineAutoOpen,
     clearInlineGeneration,
     clearInlineReadyTimeout,
@@ -1577,6 +1594,157 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setDevHistoryHidden(false);
     resetToEmptyInput();
   }, [commitHistoryStore, flushPendingSessionPersist, resetToEmptyInput]);
+
+  const previewInlineGeneration = useCallback(() => {
+    if (!__DEV__) return;
+
+    clearDevPreviewTimers();
+    clearInlineAutoOpen();
+    clearInlineReadyTimeout();
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    resetStreamGenerationUi();
+    setError(null);
+    setTransformIncomplete(false);
+    setPhase('input');
+    setIsStreamGenerating(false);
+    setIsAnalyzingSource(false);
+    setCollectionGenerationProgress(null);
+    setData(null);
+    inlineResultEntryIdRef.current = null;
+
+    setInlineUserTurn(
+      buildInlineUserTurnSnapshot({
+        inputText:
+          'Texto de prueba para revisar el flujo inline de generación sin llamar al backend.',
+        pastedText: null,
+        uploadedFile: null,
+        conversationalMessage: pickInlineConversationalMessage(),
+      })
+    );
+    setInlineGenerationStatus('generating');
+    setIsAnalyzingSource(true);
+    streamProgressShared.value = 0;
+
+    scheduleDevPreview(() => {
+      setIsAnalyzingSource(false);
+      setIsStreamGenerating(true);
+      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[0]);
+      streamProgressShared.value = STREAM_PROGRESS_MILESTONES[0];
+      setStreamLoadPhase(0);
+    }, 700);
+
+    scheduleDevPreview(() => {
+      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[1]);
+    }, 1600);
+
+    scheduleDevPreview(() => {
+      setData({
+        ...DEMO_NUCLEO_DATA,
+        steps: [],
+      });
+      setStreamLoadPhase(1);
+      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[2]);
+    }, 2600);
+
+    scheduleDevPreview(() => {
+      setData(DEMO_NUCLEO_DATA);
+      setStreamLoadPhase(2);
+      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[3]);
+    }, 3600);
+
+    scheduleDevPreview(() => {
+      setIsStreamGenerating(false);
+      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[4]);
+      streamProgressShared.value = STREAM_PROGRESS_MILESTONES[4];
+
+      let store = historyStoreRef.current;
+      const existing = store.entries.find((entry) => entry.id === DEMO_NUCLEO_ID);
+      if (!existing) {
+        store = createEntry(
+          store,
+          {
+            data: DEMO_NUCLEO_DATA,
+            currentStep: 0,
+            isComplete: false,
+            viewAll: false,
+          },
+          'text',
+          DEMO_NUCLEO_ID
+        );
+      }
+      commitHistoryStore(store);
+      inlineResultEntryIdRef.current = DEMO_NUCLEO_ID;
+      setData(DEMO_NUCLEO_DATA);
+
+      scheduleDevPreview(() => {
+        if (inlineGenerationStatusRef.current !== 'generating') return;
+        setInlineGenerationStatus('ready');
+      }, INTRO_TRANSITION_BAR_MS);
+    }, 4600);
+  }, [
+    bumpStreamProgressCap,
+    clearDevPreviewTimers,
+    clearInlineAutoOpen,
+    clearInlineReadyTimeout,
+    commitHistoryStore,
+    resetStreamGenerationUi,
+    scheduleDevPreview,
+    streamProgressShared,
+  ]);
+
+  const previewLoadingScreen = useCallback(() => {
+    if (!__DEV__) return;
+
+    clearDevPreviewTimers();
+    clearInlineGeneration();
+    resetStreamGenerationUi();
+    setError(null);
+    setTransformIncomplete(false);
+    setPhase('loading');
+    setIsAnalyzingSource(false);
+    setIsStreamGenerating(true);
+    setCollectionGenerationProgress(null);
+    streamProgressShared.value = 0;
+
+    scheduleDevPreview(() => {
+      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[0]);
+      streamProgressShared.value = STREAM_PROGRESS_MILESTONES[0];
+    }, 200);
+
+    scheduleDevPreview(() => {
+      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[1]);
+      setStreamLoadPhase(0);
+    }, 1200);
+
+    scheduleDevPreview(() => {
+      setStreamLoadPhase(1);
+      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[2]);
+    }, 2400);
+
+    scheduleDevPreview(() => {
+      setStreamLoadPhase(2);
+      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[3]);
+    }, 3600);
+
+    scheduleDevPreview(() => {
+      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[4]);
+      streamProgressShared.value = 100;
+      setIsStreamGenerating(false);
+    }, 4800);
+
+    scheduleDevPreview(() => {
+      setPhase('input');
+      resetStreamGenerationUi();
+    }, 9000);
+  }, [
+    bumpStreamProgressCap,
+    clearDevPreviewTimers,
+    clearInlineGeneration,
+    resetStreamGenerationUi,
+    scheduleDevPreview,
+    streamProgressShared,
+  ]);
 
   const handleSelectHistory = useCallback(
     (id: string) => {
@@ -2119,7 +2287,15 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       removeUploadedFile,
       handleTransform,
       handleOpenDemoNucleo,
-      ...(__DEV__ ? { devHistoryHidden, devHideHistory, devRestoreHistory } : {}),
+      ...(__DEV__
+        ? {
+            devHistoryHidden,
+            devHideHistory,
+            devRestoreHistory,
+            previewInlineGeneration,
+            previewLoadingScreen,
+          }
+        : {}),
       handleNewMap,
       handleSelectHistory,
       beginContinueTransition,
@@ -2220,6 +2396,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       devHistoryHidden,
       devHideHistory,
       devRestoreHistory,
+      previewInlineGeneration,
+      previewLoadingScreen,
       handleNewMap,
       handleSelectHistory,
       beginContinueTransition,
