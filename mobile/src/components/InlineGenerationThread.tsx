@@ -247,7 +247,7 @@ export default function InlineGenerationThread() {
     (status === 'generating' || status === 'ready') && (phasesVisible || progressVisible);
 
   return (
-    <View className="w-full px-1">
+    <View className="w-full flex-1 px-1">
       <InlineUserBubble
         snapshot={snapshot}
         reduceMotion={reduceMotion}
@@ -296,34 +296,38 @@ export default function InlineGenerationThread() {
             </Animated.View>
           ) : null}
 
-          {orbVisible && status === 'ready' ? (
-            <Pressable
-              ref={orbBlockRef}
-              collapsable={false}
-              onPress={openResult}
-              accessibilityRole="button"
-              accessibilityLabel={`Abrir ${title}`}
-              className="mt-3 w-full flex-row items-center gap-3"
-              style={{ overflow: 'visible' }}
-            >
-              <Animated.View style={orbEntranceStyle}>
-                <NucleoOrb
-                  size={ORB_SIZE}
-                  state="complete"
-                  reduceMotion={reduceMotion}
-                />
-              </Animated.View>
-              <View className="min-w-0 flex-1">
-                <Text className="text-[17px] font-semibold leading-6 text-primary" numberOfLines={2}>
-                  {title}
-                </Text>
-                {metaLabel ? (
-                  <Text className="mt-1 text-[13px] text-secondary">{metaLabel}</Text>
-                ) : null}
-              </View>
-            </Pressable>
-          ) : null}
         </Animated.View>
+      ) : null}
+
+      {orbVisible && status === 'ready' ? (
+        <View className="flex-1 items-center justify-center py-8" style={{ minHeight: 220 }}>
+          <Pressable
+            ref={orbBlockRef}
+            collapsable={false}
+            onPress={openResult}
+            accessibilityRole="button"
+            accessibilityLabel={`Abrir ${title}`}
+            className="items-center justify-center"
+            style={{ overflow: 'visible', maxWidth: bubbleMaxWidth }}
+          >
+            <Animated.View style={orbEntranceStyle}>
+              <NucleoOrb
+                size={ORB_SIZE}
+                state="complete"
+                reduceMotion={reduceMotion}
+              />
+            </Animated.View>
+            <Text
+              className="mt-4 text-center text-[17px] font-semibold leading-6 text-primary"
+              numberOfLines={2}
+            >
+              {title}
+            </Text>
+            {metaLabel ? (
+              <Text className="mt-1 text-center text-[13px] text-secondary">{metaLabel}</Text>
+            ) : null}
+          </Pressable>
+        </View>
       ) : null}
     </View>
   );

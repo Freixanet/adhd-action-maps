@@ -16,6 +16,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import {
   CheckCircle2,
@@ -43,7 +44,7 @@ import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useViewAllScrollSpy } from '../hooks/useViewAllScrollSpy';
 import { getIntentLabel, getSourceTypeLabel } from '@shared/categories';
 import { formatReadingProgressLabel, getReadingSectionForStep } from '@shared/nucleoPipeline';
-import type { SourceReference } from '../logic/contracts';
+import type { SourceReference, StepContentBlock } from '../logic/contracts';
 import { debugTransitionLog } from '../logic/debugTransitionLog';
 
 const PREVIEW_TOP_INSET = initialWindowMetrics?.insets.top ?? 0;
@@ -227,8 +228,8 @@ export default function ResultScreen({
   }));
 
   const remainingMinutes = useMemo(() => {
-    if (session.viewAll || session.isComplete || session.currentStep < 1) return null;
-    return parseTotalMinutes(data?.steps?.slice(session.currentStep));
+    if (session.viewAll || session.isComplete || session.currentStep < 2) return null;
+    return parseTotalMinutes(data?.steps?.slice(session.currentStep - 1));
   }, [data?.steps, session.currentStep, session.isComplete, session.viewAll]);
   const remainingLabel =
     remainingMinutes && remainingMinutes > 0 ? `~${remainingMinutes} min restantes` : undefined;
@@ -242,7 +243,7 @@ export default function ResultScreen({
 
   useEffect(() => {
     canPrev.value = swipeEnabled && session.currentStep > 0;
-    canNext.value = swipeEnabled && session.currentStep < session.totalSteps;
+    canNext.value = swipeEnabled && session.currentStep < session.totalSteps + 1;
   }, [canNext, canPrev, session.currentStep, session.totalSteps, swipeEnabled]);
 
   const commitStep = useCallback(
@@ -349,11 +350,69 @@ export default function ResultScreen({
   const showStepSlide =
     isStepMode && !suppressStepTransitions && !session.isStreamGenerating;
 
+  useEffect(() => {
+    if (isStepMode) {
+      headerVisible.value = true;
+    }
+  }, [headerVisible, isStepMode, session.currentStep]);
+
+  const toggleStepHeader = useCallback(() => {
+    if (!isStepMode) return;
+    headerVisible.value = !headerVisible.value;
+    stepHaptic();
+  }, [headerVisible, isStepMode]);
+
+  const stepHeaderVisibleTopPadding = mapContentTopPadding(hideProgressLine);
+  const stepHeaderHiddenTopPadding = 20;
+  const stepPageChromeStyle = useAnimatedStyle(() => ({
+    paddingTop: withTiming(
+      headerVisible.value ? stepHeaderVisibleTopPadding : stepHeaderHiddenTopPadding,
+      { duration: reduceMotion ? 0 : 220 }
+    ),
+  }), [reduceMotion, stepHeaderHiddenTopPadding, stepHeaderVisibleTopPadding]);
+
   if (!data) return null;
 
   const isIntroStep = !session.isComplete && !session.viewAll && session.currentStep === 0;
+  const isStudyDocBeta = data.generationMode === 'study-doc-beta';
 
-  const renderResumen = (interactive = false) => (
+  const renderMapMeta = () => (
+    <View onLayout={handleMapMetaAnchorLayout} collapsable={false} className="mb-10">
+      <View className="flex-row items-center gap-2">
+        <Text className="text-xs font-bold uppercase tracking-[0.16em] text-secondary text-body shrink">
+          {data.title}
+        </Text>
+        {isStudyDocBeta ? (
+          <View className="rounded-full bg-accent/12 px-2 py-0.5">
+            <Text className="text-[10px] font-bold uppercase tracking-[0.12em] text-accent">
+              StudyDoc beta
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <Text className="mt-2 text-xs text-secondary">
+        {[
+          getSourceTypeLabel(
+            session.historyStore.entries.find(
+              (entry) => entry.id === session.historyStore.activeId
+            )?.sourceType ?? 'text',
+            data.sourceMetadata?.kind
+          ),
+          data.intent ? getIntentLabel(data.intent) : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      </Text>
+    </View>
+  );
+
+  const renderResumen = (
+    interactive = false,
+    options: { includeTldr?: boolean } = {}
+  ) => {
+    const includeTldr = options.includeTldr ?? true;
+
+    return (
     <Pressable
       disabled={!interactive}
       onPress={interactive ? () => session.goToStep(0, true) : undefined}
@@ -384,7 +443,7 @@ export default function ResultScreen({
         <SourceMetadataGlassCard sourceMetadata={data.sourceMetadata} />
       ) : null}
 
-      {data.tldr?.length ? (
+      {includeTldr && data.tldr?.length ? (
         <View className="mt-8 pt-8 border-t border-neutral-200 border-white/10">
           <Text className="text-xs font-bold uppercase tracking-widest text-secondary mb-6">
             En 60 segundos
@@ -405,6 +464,73 @@ export default function ResultScreen({
         </View>
       ) : null}
     </Pressable>
+    );
+  };
+
+  const renderHighlightCard = (
+    label: string,
+    text: string,
+    kind: StepContentBlock['kind'] = 'info'
+  ) => {
+    const accent =
+      kind === 'alert'
+        ? '#DC2626'
+        : kind === 'action'
+          ? '#0F766E'
+          : '#4338CA';
+
+    return (
+      <View className="rounded-card overflow-hidden bg-surface p-4" style={styles.fixedHighlightCard}>
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: accent, opacity: 0.06 }]}
+        />
+        <Text
+          className="text-[13px] font-semibold uppercase tracking-[0.08em]"
+          style={{ color: accent }}
+        >
+          {label}
+        </Text>
+        <Text className="mt-2 text-[17px] leading-[25px] text-body">{text}</Text>
+      </View>
+    );
+  };
+
+  const renderTldrPage = () => (
+    <View style={styles.fixedPage}>
+      <View>
+        <Text className="text-sm font-bold uppercase tracking-widest text-accent">
+          En 60 segundos
+        </Text>
+        <Text className="mt-3 text-2xl font-bold text-primary leading-9">
+          El mapa antes de entrar en los pasos
+        </Text>
+      </View>
+
+      <View style={styles.fixedTldrList}>
+        {data.tldr?.map((item, i) => (
+          <View key={`${item.title}-${i}`} className="flex-row gap-4 items-start">
+            <View className="w-8 h-8 rounded-full border-2 border-neutral-200 border-white/10 items-center justify-center">
+              <Text className="text-sm font-bold text-secondary">{i + 1}</Text>
+            </View>
+            <View className="flex-1">
+              <Text className="text-lg font-bold text-primary mb-1" numberOfLines={2}>
+                {item.title}
+              </Text>
+              <Text className="text-[15px] leading-[22px] text-body" numberOfLines={3}>
+                {item.desc}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {renderHighlightCard(
+        'Idea clave',
+        data.coreSupport || data.coreIdea,
+        'info'
+      )}
+    </View>
   );
 
   const renderStep = (stepIndex: number, interactive = false, isLastStep = false) => {
@@ -425,13 +551,17 @@ export default function ResultScreen({
       session.sectionCompleteCue != null
         ? getReadingSectionForStep(session.sectionCompleteCue, data.readingSections ?? null)
         : null;
+    const hasCallout = step.content?.some(
+      (block) => String(block.type || '').toLowerCase() === 'callout'
+    );
 
     return (
       <Pressable
         key={step.id || stepIndex}
         disabled={!interactive}
-        onPress={interactive ? () => session.goToStep(stepIndex, true) : undefined}
+        onPress={interactive ? () => session.goToStep(stepIndex + 1, true) : undefined}
         className={stepDividerClass}
+        style={!interactive ? styles.fixedPage : undefined}
       >
         {!interactive && session.sectionCompleteCue != null ? (
           <SectionCompleteCue
@@ -445,11 +575,30 @@ export default function ResultScreen({
           </Text>
           {step.time ? <Text className="text-sm text-secondary">{step.time}</Text> : null}
         </View>
-        <Text className="text-2xl font-bold text-primary leading-9 mb-4">{step.title}</Text>
+        <Text
+          className="text-2xl font-bold text-primary leading-9 mb-4"
+          numberOfLines={!interactive ? 2 : undefined}
+        >
+          {step.title}
+        </Text>
         {step.purpose ? (
-          <Text className="text-[17px] leading-[26px] text-body mb-4">{step.purpose}</Text>
+          <Text
+            className="text-[17px] leading-[26px] text-body mb-4"
+            numberOfLines={!interactive ? 3 : undefined}
+          >
+            {step.purpose}
+          </Text>
         ) : null}
-        <StepContentBlocks blocks={step.content} />
+        {!interactive && !hasCallout && (step.purpose || step.content?.[0]?.text) ? (
+          renderHighlightCard(
+            'Idea clave',
+            step.purpose || step.content?.[0]?.text || '',
+            'info'
+          )
+        ) : null}
+        <View style={!interactive ? styles.fixedStepBody : undefined}>
+          <StepContentBlocks blocks={step.content} />
+        </View>
         {step.selfCheck ? <StepSelfCheck question={step.selfCheck} /> : null}
         <ReferencesChips references={step.references} />
       </Pressable>
@@ -612,8 +761,11 @@ export default function ResultScreen({
     </View>
   );
 
-  const renderStepModeReading = (step: number) =>
-    step === 0 ? renderResumen(false) : renderStep(step, false);
+  const renderStepModeReading = (step: number) => {
+    if (step === 0) return renderResumen(false, { includeTldr: false });
+    if (step === 1) return renderTldrPage();
+    return renderStep(step - 1, false);
+  };
 
   const renderModeBody = () => {
     if (session.isComplete) {
@@ -669,14 +821,45 @@ export default function ResultScreen({
       <IncompleteTransformBanner />
 
       <View className="flex-1">
-        <GestureDetector gesture={swipeGesture}>
+        {isStepMode ? (
+          <GestureDetector gesture={swipeGesture}>
+            <Animated.View className="flex-1 px-5" style={stepPageChromeStyle}>
+              <Pressable className="flex-1" onPress={toggleStepHeader}>
+                {renderMapMeta()}
+                <Animated.View style={[styles.readingColumn, styles.fixedReadingColumn]}>
+                  {showStepSlide ? (
+                    <StepSlideTransition step={session.currentStep} reduceMotion={reduceMotion}>
+                      {renderStepModeReading}
+                    </StepSlideTransition>
+                  ) : (
+                    <Animated.View
+                      key={contentModeKey}
+                      entering={
+                        suppressStepTransitions || session.isStreamGenerating
+                          ? undefined
+                          : FadeIn.duration(reduceMotion ? 150 : 220)
+                      }
+                      exiting={
+                        suppressStepTransitions
+                          ? undefined
+                          : FadeOut.duration(reduceMotion ? 150 : 180)
+                      }
+                    >
+                      {renderModeBody()}
+                    </Animated.View>
+                  )}
+                </Animated.View>
+              </Pressable>
+            </Animated.View>
+          </GestureDetector>
+        ) : (
           <Animated.ScrollView
             ref={scrollRef}
             className="flex-1"
             contentContainerClassName="px-5"
             contentContainerStyle={{
               paddingTop: mapContentTopPadding(hideProgressLine),
-              paddingBottom: session.viewAll || session.isComplete ? 128 : 32,
+              paddingBottom: 128,
             }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={!isIntroStep}
@@ -686,50 +869,27 @@ export default function ResultScreen({
             scrollEventThrottle={16}
           >
             <View>
-              <View onLayout={handleMapMetaAnchorLayout} collapsable={false} className="mb-10">
-                <Text className="text-xs font-bold uppercase tracking-[0.16em] text-secondary text-body">
-                  {data.title}
-                </Text>
-                <Text className="mt-2 text-xs text-secondary">
-                  {[
-                    getSourceTypeLabel(
-                      session.historyStore.entries.find(
-                        (entry) => entry.id === session.historyStore.activeId
-                      )?.sourceType ?? 'text',
-                      data.sourceMetadata?.kind
-                    ),
-                    data.intent ? getIntentLabel(data.intent) : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </Text>
-              </View>
+              {renderMapMeta()}
               <Animated.View style={styles.readingColumn}>
-              {showStepSlide ? (
-                <StepSlideTransition step={session.currentStep} reduceMotion={reduceMotion}>
-                  {renderStepModeReading}
-                </StepSlideTransition>
-              ) : (
-              <Animated.View
-                key={contentModeKey}
-                entering={
-                  suppressStepTransitions || session.isStreamGenerating
-                    ? undefined
-                    : FadeIn.duration(reduceMotion ? 150 : 220)
-                }
-                exiting={
-                  suppressStepTransitions || session.viewAll
-                    ? undefined
-                    : FadeOut.duration(reduceMotion ? 150 : 180)
-                }
-              >
-                {renderModeBody()}
+                <Animated.View
+                  key={contentModeKey}
+                  entering={
+                    suppressStepTransitions || session.isStreamGenerating
+                      ? undefined
+                      : FadeIn.duration(reduceMotion ? 150 : 220)
+                  }
+                  exiting={
+                    suppressStepTransitions || session.viewAll
+                      ? undefined
+                      : FadeOut.duration(reduceMotion ? 150 : 180)
+                  }
+                >
+                  {renderModeBody()}
+                </Animated.View>
               </Animated.View>
-              )}
-            </Animated.View>
             </View>
           </Animated.ScrollView>
-        </GestureDetector>
+        )}
 
         <StepFooterNav />
       </View>
@@ -772,6 +932,28 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 640,
     alignSelf: 'center',
+  },
+  fixedReadingColumn: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  fixedPage: {
+    flex: 1,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    paddingBottom: 16,
+  },
+  fixedStepBody: {
+    flexShrink: 1,
+    overflow: 'hidden',
+  },
+  fixedTldrList: {
+    gap: 18,
+    marginTop: 24,
+    marginBottom: 24,
+  },
+  fixedHighlightCard: {
+    marginTop: 12,
   },
   completionActions: {
     width: '100%',

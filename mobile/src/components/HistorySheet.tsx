@@ -385,19 +385,40 @@ export default function HistorySheet({
                     : 'text-body'
                 }`}
               >
-                Índice del Núcleo
+                Idea central
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                onGoToStep?.(1);
+                onClose();
+              }}
+              className={`px-4 py-3 rounded-lg mb-1 ${
+                currentStep === 1 && !isComplete ? 'bg-accent/10 dark:bg-accent/100/10' : ''
+              }`}
+            >
+              <Text
+                className={`font-semibold ${
+                  currentStep === 1 && !isComplete
+                    ? 'text-accent'
+                    : 'text-body'
+                }`}
+              >
+                En 60s
               </Text>
             </Pressable>
 
             {data.steps?.map((step, idx) => {
               const stepNum = idx + 1;
-              const isActive = currentStep === stepNum && !isComplete;
-              const isPast = currentStep > stepNum || isComplete;
+              const pageStep = stepNum + 1;
+              const isActive = currentStep === pageStep && !isComplete;
+              const isPast = currentStep > pageStep || isComplete;
               return (
                 <Pressable
                   key={step.id || stepNum}
                   onPress={() => {
-                    onGoToStep?.(stepNum);
+                    onGoToStep?.(pageStep);
                     onClose();
                   }}
                   className={`px-4 py-3 rounded-lg mb-1 flex-row items-center justify-between ${

@@ -17,6 +17,7 @@ export default function StepFooterNav({ completeLabel = 'Completar Núcleo' }: S
   const session = useAppSession();
   const insets = useSafeAreaInsets();
   const showStepFooter = !session.viewAll && !session.isComplete;
+  const totalReadingPages = session.totalSteps + 1;
 
   if (!showStepFooter) return null;
 
@@ -45,7 +46,7 @@ export default function StepFooterNav({ completeLabel = 'Completar Núcleo' }: S
           ) : (
             <StepFooterGlassButton
               variant="primary"
-              label="Empezar a leer"
+              label="Ver En 60s"
               onPress={() => session.goToStep(1)}
             />
           )
@@ -59,7 +60,7 @@ export default function StepFooterNav({ completeLabel = 'Completar Núcleo' }: S
               />
             </View>
             <View style={styles.forwardSlot}>
-              {session.currentStep < session.totalSteps ? (
+              {session.currentStep < totalReadingPages ? (
                 <StepFooterGlassButton
                   variant="primary"
                   label="Siguiente"

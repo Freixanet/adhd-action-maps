@@ -5,9 +5,9 @@ import {
   FileText,
   Image as ImageIcon,
   Link2,
+  CirclePlay,
   Upload,
   Video,
-  Youtube,
   type LucideIcon,
 } from 'lucide-react-native';
 import { getEntrySourceLabel } from '@shared/categories';
@@ -19,7 +19,7 @@ type SourceVisual = SourceType | 'image' | 'video';
 const SOURCE_ICONS: Record<SourceVisual, LucideIcon> = {
   text: FileText,
   link: Link2,
-  youtube: Youtube,
+  youtube: CirclePlay,
   file: Upload,
   pdf: File,
   image: ImageIcon,

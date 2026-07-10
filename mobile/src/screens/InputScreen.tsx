@@ -26,6 +26,7 @@ import FloatingGlassButton from '../components/FloatingGlassButton';
 import GlassSurface from '../components/GlassSurface';
 import IntentSelector from '../components/IntentSelector';
 import MenuTwoLines from '../components/MenuTwoLines';
+import GenerationModeChip from '../components/GenerationModeChip';
 import ModelChip from '../components/ModelChip';
 import LoadingPreviewButton from '../components/LoadingPreviewButton';
 import OrbSkiaCompare from '../components/OrbSkiaCompare';
@@ -224,7 +225,7 @@ export default function InputScreen() {
               }}
             >
               {inlineActive ? (
-                <View className="w-full">
+                <View className="w-full flex-1">
                   <InlineGenerationThread />
                 </View>
               ) : (
@@ -434,6 +435,11 @@ export default function InputScreen() {
                           value={session.depthPreference}
                           onChange={session.setDepthPreference}
                           onOpenPaywall={session.openPaywall}
+                          disabled={session.phase === 'loading' || composerDisabled}
+                        />
+                        <GenerationModeChip
+                          value={session.generationMode}
+                          onChange={session.setGenerationMode}
                           disabled={session.phase === 'loading' || composerDisabled}
                         />
                       </View>

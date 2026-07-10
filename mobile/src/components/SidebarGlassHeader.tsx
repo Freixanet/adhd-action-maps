@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   searchPillContent: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

@@ -79,6 +79,8 @@ export function buildCollectionPartBody(
       preferredModel: base.preferredModel,
       intent: base.intent,
       depth: base.depth,
+      generationMode: base.generationMode,
+      userDisplayName: base.userDisplayName,
       outputLanguage: base.outputLanguage,
       sourceLabel: part.title,
       segmentTitle: part.title,

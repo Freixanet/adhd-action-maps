@@ -96,6 +96,7 @@ export function normalizeMapData(
     intent: raw.intent === 'study' || raw.intent === 'apply' ? raw.intent : 'understand',
     outputLanguage: raw.outputLanguage ? String(raw.outputLanguage) : 'es',
     mapVersion: Number.isFinite(raw.mapVersion) ? Number(raw.mapVersion) : 2,
+    generationMode: raw.generationMode === 'study-doc-beta' ? 'study-doc-beta' : 'classic',
     sourceMetadata: {
       kind: raw.sourceMetadata?.kind || 'text',
       label: raw.sourceMetadata?.label || 'Fuente analizada',

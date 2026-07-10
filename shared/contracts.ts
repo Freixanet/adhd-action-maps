@@ -6,6 +6,8 @@ export type MapDepth = 'rapido' | 'estandar' | 'profundo';
 
 export type OutputLanguagePreference = 'device' | 'es' | 'en';
 
+export type NucleoGenerationMode = 'classic' | 'study-doc-beta';
+
 export type SourceKind =
   | 'text'
   | 'link'
@@ -120,6 +122,7 @@ export type ActionMapData = {
   intent?: MapIntent;
   outputLanguage?: string;
   mapVersion?: number;
+  generationMode?: NucleoGenerationMode;
   sourceMetadata?: SourceMetadata;
   coverage?: Coverage;
   coreIdea: string;
@@ -163,7 +166,11 @@ export type TransformRequest = {
   outputLanguage?: string;
   sourceLabel?: string;
   mapId?: string;
+  /** Nombre visible opcional para personalizar el tono del Núcleo. No debe ser email. */
+  userDisplayName?: string;
   depth?: MapDepth;
+  /** Temporal: permite comparar el mapa actual con una generación tipo StudyDoc adaptada al renderer actual. */
+  generationMode?: NucleoGenerationMode;
   /** Si true, fuerza un único Núcleo con límites declarados (SPEC §6.7). */
   singleNucleoMode?: boolean;
   /** Parte concreta de una fuente larga (colección). */

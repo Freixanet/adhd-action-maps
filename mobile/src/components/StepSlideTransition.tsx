@@ -104,7 +104,7 @@ export default function StepSlideTransition({
   }));
 
   if (disabled || reduceMotion) {
-    return <View>{children(step)}</View>;
+    return <View style={styles.host}>{children(step)}</View>;
   }
 
   return (
@@ -127,9 +127,11 @@ export default function StepSlideTransition({
 
 const styles = StyleSheet.create({
   host: {
+    flex: 1,
     position: 'relative',
   },
   panel: {
+    flex: 1,
     width: '100%',
   },
   absolutePanel: {

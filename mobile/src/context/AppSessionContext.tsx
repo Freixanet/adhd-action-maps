@@ -10,7 +10,14 @@ import {
 import * as Sharing from 'expo-sharing';
 import * as Haptics from 'expo-haptics';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
-import type { ActionMapData, MapIntent, SourceAnalysisResponse, SourceType, TransformRequest } from '../logic/contracts';
+import type {
+  ActionMapData,
+  MapIntent,
+  NucleoGenerationMode,
+  SourceAnalysisResponse,
+  SourceType,
+  TransformRequest,
+} from '../logic/contracts';
 import {
   deleteCloudHistoryEntry,
   migrateLocalHistory,
@@ -112,14 +119,98 @@ import {
 export type { InlineUserTurnSnapshot } from '../logic/inlineUserBubble';
 
 const INLINE_ACK_MESSAGES = [
-  'Perfecto, voy con ello.',
-  'Dame un momento y te lo preparo.',
-  'Recibido, me pongo con ello.',
+  (name?: string) => (name ? `Perfecto ${name}, voy con ello.` : 'Perfecto, voy con ello.'),
+  (name?: string) => (name ? `Dame un momento ${name}; te lo preparo.` : 'Dame un momento y te lo preparo.'),
+  (name?: string) => (name ? `Recibido ${name}. Me pongo con ello.` : 'Recibido, me pongo con ello.'),
 ] as const;
 
-function pickInlineConversationalMessage(): string {
+function pickInlineConversationalMessage(displayName?: string | null): string {
+  const firstName = displayName?.trim().split(/\s+/)[0];
   const index = Math.floor(Math.random() * INLINE_ACK_MESSAGES.length);
-  return INLINE_ACK_MESSAGES[index] ?? INLINE_ACK_MESSAGES[0];
+  const template = INLINE_ACK_MESSAGES[index] ?? INLINE_ACK_MESSAGES[0];
+  return template(firstName);
+}
+
+function applyStudyDocBetaClientShape(map: ActionMapData): ActionMapData {
+  const knowledgeSections =
+    map.knowledgeSections?.length
+      ? map.knowledgeSections
+      : map.steps.slice(0, 9).map((step, index) => ({
+          title: step.shortNav || `Concepto ${index + 1}`,
+          summary: step.purpose || step.content?.[0]?.text || step.title,
+          references: step.references,
+        }));
+
+  const tldrFillers = [
+    ...map.tldr,
+    ...map.steps.map((step) => ({
+      title: step.shortNav || step.title,
+      desc: step.purpose || step.content?.[0]?.text || step.title,
+    })),
+  ].filter((item) => item.title && item.desc);
+
+  return {
+    ...map,
+    generationMode: 'study-doc-beta',
+    tags: Array.from(new Set([...(map.tags ?? []), 'StudyDoc beta'])),
+    tldr: tldrFillers.slice(0, 5),
+    knowledgeSections,
+    sourceMetadata: map.sourceMetadata
+      ? {
+          ...map.sourceMetadata,
+          limitations: [
+            ...(map.sourceMetadata.limitations ?? []).filter(
+              (item) => item !== 'Generado en modo StudyDoc beta adaptado al renderer actual.'
+            ),
+            'Generado en modo StudyDoc beta adaptado al renderer actual.',
+          ],
+        }
+      : map.sourceMetadata,
+    steps: map.steps.map((step, index) => {
+      const hasStudySignal = step.content.some((block) =>
+        /pretest|comprueba|explica con tus palabras|self/i.test(
+          `${block.text ?? ''} ${block.label ?? ''}`
+        )
+      );
+      const conceptName =
+        knowledgeSections[index % Math.max(knowledgeSections.length, 1)]?.title ||
+        step.shortNav ||
+        step.title;
+
+      return {
+        ...step,
+        title: /^Sección\s+\d+/i.test(step.title)
+          ? step.title
+          : `Sección ${index + 1}: ${step.title}`,
+        purpose: hasStudySignal
+          ? step.purpose
+          : 'Pretest: léelo buscando cómo explicar esta sección con tus palabras.',
+        content: hasStudySignal
+          ? step.content
+          : [
+              {
+                type: 'list' as const,
+                text: 'Pretest rápido',
+                kind: 'info' as const,
+                items: [
+                  {
+                    strong: 'Antes de leer',
+                    span: `¿Qué crees que significa "${conceptName}"?`,
+                  },
+                  {
+                    strong: 'Conecta',
+                    span: '¿Con qué idea anterior se relaciona?',
+                  },
+                ],
+              },
+              ...step.content,
+            ],
+        selfCheck:
+          step.selfCheck ||
+          `Explícale a alguien, sin mirar, qué aporta "${conceptName}" al Núcleo.`,
+      };
+    }),
+  };
 }
 
 const MAX_SYNCED_ENTRIES = 30;
@@ -204,6 +295,7 @@ type AppSessionContextValue = {
   setPaywallOpen: (open: boolean) => void;
   openPaywall: () => void;
   cloudUserEmail: string | null;
+  cloudUserDisplayName: string | null;
   cloudUserAvatarUrl: string | null;
   cloudSignedIn: boolean;
   isPro: boolean;
@@ -215,6 +307,8 @@ type AppSessionContextValue = {
   setModelPreference: (value: ModelPreference) => void;
   depthPreference: DepthPreference;
   setDepthPreference: (value: DepthPreference) => void;
+  generationMode: NucleoGenerationMode;
+  setGenerationMode: (value: NucleoGenerationMode) => void;
   totalSteps: number;
   canSubmit: boolean;
   hideTextInput: boolean;
@@ -357,6 +451,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [authOpen, setAuthOpen] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [cloudUserEmail, setCloudUserEmail] = useState<string | null>(null);
+  const [cloudUserDisplayName, setCloudUserDisplayName] = useState<string | null>(null);
   const [cloudUserAvatarUrl, setCloudUserAvatarUrl] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
@@ -366,6 +461,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [depthPreference, setDepthPreferenceState] = useState<DepthPreference>(() =>
     getInitialDepthPreference()
   );
+  const [generationMode, setGenerationModeState] = useState<NucleoGenerationMode>('classic');
   const [essentialsReview, setEssentialsReview] = useState(false);
   const [sectionCompleteCue, setSectionCompleteCue] = useState<number | null>(null);
   const [isStreamGenerating, setIsStreamGenerating] = useState(false);
@@ -641,9 +737,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const progressLabel = useMemo(() => {
     if (isComplete) return 'Núcleo completado';
     if (viewAll) return 'Vista completa';
-    if (currentStep === 0) return 'Introducción';
+    if (currentStep === 0) return 'Idea central';
+    if (currentStep === 1) return 'En 60s';
     return formatReadingProgressLabel(
-      currentStep,
+      currentStep - 1,
       totalSteps,
       data?.readingSections ?? null
     );
@@ -652,7 +749,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const stepProgress = useMemo(() => {
     if (isComplete || viewAll || !data || totalSteps === 0) return 0;
     if (currentStep === 0) return 0;
-    return Math.round((currentStep / totalSteps) * 100);
+    const totalReadingPages = totalSteps + 1;
+    return Math.round((Math.min(currentStep, totalReadingPages) / totalReadingPages) * 100);
   }, [currentStep, data, isComplete, totalSteps, viewAll]);
 
   const setModelPreference = useCallback((value: ModelPreference) => {
@@ -664,6 +762,11 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const setDepthPreference = useCallback((value: DepthPreference) => {
     setDepthPreferenceState(value);
     saveDepthPreference(value);
+    stepHaptic();
+  }, []);
+
+  const setGenerationMode = useCallback((value: NucleoGenerationMode) => {
+    setGenerationModeState(value);
     stepHaptic();
   }, []);
 
@@ -846,6 +949,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     const hydrateCloudHistory = async (user: Parameters<typeof toCloudUserProfile>[0] | null) => {
       const profile = user ? toCloudUserProfile(user) : null;
       const email = profile?.email ?? null;
+      setCloudUserDisplayName(profile?.displayName ?? null);
       setCloudUserEmail(email);
       setCloudUserAvatarUrl(profile?.avatarUrl ?? null);
       if (!email || (__DEV__ && isDevHistoryHidden())) return;
@@ -882,31 +986,34 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
   const goToStep = useCallback((idx: number, fromViewAll = false) => {
     const previousStep = currentStep;
+    const totalReadingPages = totalSteps + 1;
+    const safeIdx = Math.max(0, Math.min(idx, totalReadingPages));
     setIsComplete(false);
-    setCurrentStep(idx);
+    setCurrentStep(safeIdx);
     const nextViewAll = fromViewAll ? false : viewAll;
     if (fromViewAll) setViewAll(false);
-    persistSessionState(idx, false, nextViewAll);
+    persistSessionState(safeIdx, false, nextViewAll);
 
     if (
-      idx > previousStep &&
-      previousStep > 0 &&
+      safeIdx > previousStep &&
+      previousStep > 1 &&
       data?.readingSections?.length &&
-      isLastStepInReadingSection(previousStep, data.readingSections)
+      isLastStepInReadingSection(previousStep - 1, data.readingSections)
     ) {
-      setSectionCompleteCue(previousStep);
+      setSectionCompleteCue(previousStep - 1);
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       setTimeout(() => setSectionCompleteCue(null), 1200);
     } else {
       stepHaptic();
     }
-  }, [currentStep, data?.readingSections, persistSessionState, viewAll]);
+  }, [currentStep, data?.readingSections, persistSessionState, totalSteps, viewAll]);
 
   const syncReadingStep = useCallback((step: number) => {
+    const pageStep = step <= 0 ? 0 : step + 1;
     setCurrentStep((prev) => {
-      if (prev === step) return prev;
-      persistSessionState(step, isComplete, viewAll);
-      return step;
+      if (prev === pageStep) return prev;
+      persistSessionState(pageStep, isComplete, viewAll);
+      return pageStep;
     });
   }, [persistSessionState, isComplete, viewAll]);
 
@@ -1072,9 +1179,11 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         preferredModel: 'auto',
         intent,
         depth: depthPreference,
+        generationMode,
         outputLanguage: 'es',
         sourceLabel,
         mapId,
+        userDisplayName: cloudUserDisplayName ?? undefined,
       };
     } else if (uploadedFile?.isVideo && uploadedFile.fileData) {
       body = {
@@ -1084,9 +1193,11 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         preferredModel: 'auto',
         intent,
         depth: depthPreference,
+        generationMode,
         outputLanguage: 'es',
         sourceLabel,
         mapId,
+        userDisplayName: cloudUserDisplayName ?? undefined,
       };
       if (inputText.trim()) body.text = inputText.trim();
     } else if (uploadedFile?.isImage && uploadedFile.fileData) {
@@ -1097,9 +1208,11 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         preferredModel: 'auto',
         intent,
         depth: depthPreference,
+        generationMode,
         outputLanguage: 'es',
         sourceLabel,
         mapId,
+        userDisplayName: cloudUserDisplayName ?? undefined,
       };
       if (inputText.trim()) body.text = inputText.trim();
     } else if (urlDetection?.kind === 'youtube') {
@@ -1109,9 +1222,11 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         preferredModel: 'auto',
         intent,
         depth: depthPreference,
+        generationMode,
         outputLanguage: 'es',
         sourceLabel: urlDetection.url,
         mapId,
+        userDisplayName: cloudUserDisplayName ?? undefined,
       };
     } else if (urlDetection?.kind === 'link') {
       body = {
@@ -1120,9 +1235,11 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         preferredModel: 'auto',
         intent,
         depth: depthPreference,
+        generationMode,
         outputLanguage: 'es',
         sourceLabel: urlDetection.url,
         mapId,
+        userDisplayName: cloudUserDisplayName ?? undefined,
       };
     } else {
       body = {
@@ -1131,9 +1248,11 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         preferredModel: 'auto',
         intent,
         depth: depthPreference,
+        generationMode,
         outputLanguage: 'es',
         sourceLabel,
         mapId,
+        userDisplayName: cloudUserDisplayName ?? undefined,
       };
     }
 
@@ -1163,7 +1282,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           inputText,
           pastedText,
           uploadedFile,
-          conversationalMessage: pickInlineConversationalMessage(),
+          conversationalMessage: pickInlineConversationalMessage(cloudUserDisplayName),
         })
       );
       setInlineGenerationStatus('generating');
@@ -1257,7 +1376,11 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
             throw new Error(payload.error || GENERIC_TRANSFORM_ERROR);
           }
 
-          const normalized = normalizeMapData(await response.json());
+          const normalizedRaw = normalizeMapData(await response.json());
+          const normalized =
+            partBody.generationMode === 'study-doc-beta' && normalizedRaw
+              ? applyStudyDocBetaClientShape(normalizedRaw)
+              : normalizedRaw;
           if (!normalized) {
             throw new Error(GENERIC_TRANSFORM_ERROR);
           }
@@ -1319,8 +1442,12 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       };
 
       const saveCompletedMap = (normalized: ActionMapData) => {
+        const finalMap =
+          body.generationMode === 'study-doc-beta'
+            ? applyStudyDocBetaClientShape(normalized)
+            : normalized;
         const session = {
-          data: normalized,
+          data: finalMap,
           currentStep: 0,
           isComplete: false,
           viewAll: false,
@@ -1340,7 +1467,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           syncCloudEntry(createdEntry);
         }
 
-        setData(normalized);
+        setData(finalMap);
         setCurrentStep(0);
         setIsComplete(false);
         setViewAll(false);
@@ -1349,11 +1476,15 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       };
 
       const applyPartialMap = (partialMap: ActionMapData) => {
-        setData(partialMap);
-        setStreamLoadPhase(resolveStreamLoadPhase(partialMap));
+        const displayMap =
+          body.generationMode === 'study-doc-beta'
+            ? applyStudyDocBetaClientShape(partialMap)
+            : partialMap;
+        setData(displayMap);
+        setStreamLoadPhase(resolveStreamLoadPhase(displayMap));
 
-        const pageLabel = partialMap.sourceMetadata?.label?.trim();
-        const pageTitle = partialMap.title?.trim();
+        const pageLabel = displayMap.sourceMetadata?.label?.trim();
+        const pageTitle = displayMap.title?.trim();
         const resolvedTitle =
           pageLabel && !/^https?:\/\//i.test(pageLabel)
             ? pageLabel
@@ -1367,10 +1498,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           });
         }
 
-        if (partialMap.coreIdea?.trim()) {
+        if (displayMap.coreIdea?.trim()) {
           bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[2]);
         }
-        if ((partialMap.steps?.length ?? 0) > 0) {
+        if ((displayMap.steps?.length ?? 0) > 0) {
           bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[3]);
         }
       };
@@ -1430,8 +1561,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     clearInlineGeneration,
     clearInlineReadyTimeout,
     commitHistoryStore,
+    cloudUserDisplayName,
     depthPreference,
     failTransform,
+    generationMode,
     inputText,
     intent,
     modelPreference,
@@ -1619,7 +1752,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           'Texto de prueba para revisar el flujo inline de generación sin llamar al backend.',
         pastedText: null,
         uploadedFile: null,
-        conversationalMessage: pickInlineConversationalMessage(),
+        conversationalMessage: pickInlineConversationalMessage(cloudUserDisplayName),
       })
     );
     setInlineGenerationStatus('generating');
@@ -1687,6 +1820,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     clearDevPreviewTimers,
     clearInlineAutoOpen,
     clearInlineReadyTimeout,
+    cloudUserDisplayName,
     commitHistoryStore,
     resetStreamGenerationUi,
     scheduleDevPreview,
@@ -2256,6 +2390,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setPaywallOpen,
       openPaywall,
       cloudUserEmail,
+      cloudUserDisplayName,
       cloudUserAvatarUrl,
       cloudSignedIn,
       isPro,
@@ -2267,6 +2402,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setModelPreference,
       depthPreference,
       setDepthPreference,
+      generationMode,
+      setGenerationMode,
       totalSteps,
       canSubmit,
       hideTextInput,
@@ -2365,6 +2502,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       paywallOpen,
       openPaywall,
       cloudUserEmail,
+      cloudUserDisplayName,
       cloudUserAvatarUrl,
       cloudSignedIn,
       isPro,
@@ -2373,6 +2511,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       modelPreference,
       depthPreference,
       setDepthPreference,
+      generationMode,
+      setGenerationMode,
       totalSteps,
       canSubmit,
       hideTextInput,

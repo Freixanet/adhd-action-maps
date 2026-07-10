@@ -1451,6 +1451,7 @@ type TransformContext = {
   sourceLabel: string;
   type: TransformRequest["type"];
   mapId?: string;
+  userDisplayName?: string;
   maxOutputTokens: number;
   sourceInputLength: number;
   sourceTextPreview: string;
@@ -1464,7 +1465,21 @@ type TransformContext = {
   sourceTruncated?: boolean;
   singleNucleoMode?: boolean;
   segmentTitle?: string;
+  generationMode: NonNullable<TransformRequest["generationMode"]>;
 };
+
+function sanitizeUserDisplayName(input: unknown): string | undefined {
+  if (typeof input !== "string") return undefined;
+  const normalized = input
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized || normalized.includes("@")) return undefined;
+  if (normalized.length < 2) return undefined;
+  return normalized.slice(0, 48);
+}
 
 async function buildTransformContext(body: TransformRequest): Promise<TransformContext | { error: string; status: number }> {
   const {
@@ -1477,7 +1492,9 @@ async function buildTransformContext(body: TransformRequest): Promise<TransformC
     outputLanguage,
     sourceLabel,
     mapId,
+    userDisplayName,
     depth,
+    generationMode,
     singleNucleoMode,
     segmentTitle,
   } = body;
@@ -1490,8 +1507,11 @@ async function buildTransformContext(body: TransformRequest): Promise<TransformC
     intent === "study" || intent === "apply" ? intent : "understand";
   const resolvedDepth: TransformRequest["depth"] =
     depth === "rapido" || depth === "profundo" ? depth : "estandar";
+  const resolvedGenerationMode: NonNullable<TransformRequest["generationMode"]> =
+    generationMode === "study-doc-beta" ? "study-doc-beta" : "classic";
   const resolvedOutputLanguage =
     typeof outputLanguage === "string" && outputLanguage.trim() ? outputLanguage.trim() : "es";
+  const resolvedUserDisplayName = sanitizeUserDisplayName(userDisplayName);
 
   if (base64Size(fileData) > MAX_UPLOAD_BYTES) {
     return { error: "El archivo supera el tamaño permitido.", status: 413 };
@@ -1526,6 +1546,8 @@ async function buildTransformContext(body: TransformRequest): Promise<TransformC
     outputLanguage: resolvedOutputLanguage,
     sourceLabel,
     depth: resolvedDepth,
+    generationMode: resolvedGenerationMode,
+    userDisplayName: resolvedUserDisplayName,
     singleNucleoMode: Boolean(singleNucleoMode),
     segmentTitle: typeof segmentTitle === "string" ? segmentTitle.trim() : undefined,
   });
@@ -1590,6 +1612,7 @@ async function buildTransformContext(body: TransformRequest): Promise<TransformC
     sourceLabel: sourceLabel || "Fuente analizada",
     type,
     mapId,
+    ...(resolvedUserDisplayName ? { userDisplayName: resolvedUserDisplayName } : {}),
     maxOutputTokens: maxOutputTokensForDepth(resolvedDepth),
     sourceInputLength,
     sourceTextPreview,
@@ -1600,6 +1623,7 @@ async function buildTransformContext(body: TransformRequest): Promise<TransformC
     substantiveConceptCount: complexityProfile.substantiveConceptCount,
     combinesUnderstandAndApply: complexityProfile.combinesUnderstandAndApply,
     comparesMultipleConcepts: complexityProfile.comparesMultipleConcepts,
+    generationMode: resolvedGenerationMode,
     ...(sourceTruncated ? { sourceTruncated: true as const } : {}),
     ...(singleNucleoMode ? { singleNucleoMode: true as const } : {}),
     ...(typeof segmentTitle === "string" && segmentTitle.trim()
@@ -1651,7 +1675,94 @@ function parseAndNormalizeMapJson(
     singleNucleoMode: context.singleNucleoMode,
   });
   normalized.modelUsed = usedModel;
+  if (context.generationMode === "study-doc-beta") {
+    applyStudyDocBetaShape(normalized);
+  }
   return normalized;
+}
+
+function applyStudyDocBetaShape(map: ActionMapData): ActionMapData {
+  map.generationMode = "study-doc-beta";
+  map.tags = Array.from(new Set([...(map.tags ?? []), "StudyDoc beta"]));
+  map.sourceMetadata.limitations = [
+    ...(map.sourceMetadata.limitations ?? []).filter(
+      (item) => item !== "Generado en modo StudyDoc beta adaptado al renderer actual."
+    ),
+    "Generado en modo StudyDoc beta adaptado al renderer actual.",
+  ];
+
+  const tldrFillers = [
+    ...map.tldr,
+    ...map.steps.map((step) => ({
+      title: step.shortNav || step.title,
+      desc: step.purpose || step.content?.[0]?.text || step.title,
+    })),
+  ].filter((item) => item.title && item.desc);
+  map.tldr = tldrFillers.slice(0, 5);
+
+  map.knowledgeSections = map.knowledgeSections?.length
+    ? map.knowledgeSections
+    : map.steps.slice(0, 9).map((step, index) => ({
+        title: step.shortNav || `Concepto ${index + 1}`,
+        summary: step.purpose || step.content?.[0]?.text || step.title,
+        references: step.references,
+      }));
+
+  map.steps = map.steps.map((step, index) => {
+    const hasStudySignal = step.content.some((block) =>
+      /pretest|comprueba|explica con tus palabras|self/i.test(
+        `${block.text ?? ""} ${block.label ?? ""}`
+      )
+    );
+    if (hasStudySignal) {
+      return {
+        ...step,
+        title: /^Sección\s+\d+/i.test(step.title)
+          ? step.title
+          : `Sección ${index + 1}: ${step.title}`,
+      };
+    }
+
+    const conceptName =
+      map.knowledgeSections?.[index % Math.max(map.knowledgeSections.length, 1)]?.title ||
+      step.shortNav ||
+      step.title;
+    const studyBlocks = [
+      {
+        type: "list" as const,
+        text: "Pretest rápido",
+        kind: "info" as const,
+        items: [
+          {
+            strong: "Antes de leer",
+            span: `¿Qué crees que significa "${conceptName}"?`,
+          },
+          {
+            strong: "Conecta",
+            span: "¿Con qué idea anterior se relaciona?",
+          },
+        ],
+      },
+      ...step.content,
+    ];
+
+    return {
+      ...step,
+      title: /^Sección\s+\d+/i.test(step.title)
+        ? step.title
+        : `Sección ${index + 1}: ${step.title}`,
+      purpose:
+        step.purpose && /^Pretest:/i.test(step.purpose)
+          ? step.purpose
+          : `Pretest: léelo buscando cómo explicar esta sección con tus palabras.`,
+      content: studyBlocks,
+      selfCheck:
+        step.selfCheck ||
+        `Explícale a alguien, sin mirar, qué aporta "${conceptName}" al Núcleo.`,
+    };
+  });
+
+  return map;
 }
 
 async function parseMapJsonWithRetry(
@@ -1782,6 +1893,9 @@ async function finalizeMapJson(
       : countActionBlocks(outcome.map);
   }
 
+  if (context.generationMode === "study-doc-beta") {
+    applyStudyDocBetaShape(normalized);
+  }
   cacheMap(context.mapId, normalized);
   logTransformResultDebug(context, normalized, usedModel, qualityMeta, finalEvaluation, contract);
   return normalized;
@@ -1818,6 +1932,9 @@ async function handleTransformStream(
       sourceTruncated: context.sourceTruncated,
       singleNucleoMode: context.singleNucleoMode,
     });
+    if (context.generationMode === "study-doc-beta") {
+      applyStudyDocBetaShape(normalized);
+    }
 
     if (!isPartialMapRenderable(normalized)) return;
 
@@ -1965,6 +2082,8 @@ const schema = {
     },
     tldr: {
       type: Type.ARRAY,
+      description:
+        "Página propia 'En 60 segundos' del modo paso a paso. Debe contener puntos compactos y útiles, con suficiente densidad para ocupar una pantalla móvil sin scroll y sin relleno. En modo clásico usa 3-4; en StudyDoc beta usa exactamente 5.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -2005,6 +2124,8 @@ const schema = {
     },
     steps: {
       type: Type.ARRAY,
+      description:
+        "Páginas reales de lectura paso a paso. Cada step debe caber en una pantalla móvil sin scroll, incluir una unidad de comprensión completa y contener al menos un bloque callout destacado.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -2019,6 +2140,8 @@ const schema = {
           },
           content: {
             type: Type.ARRAY,
+            description:
+              "Usa 2-4 bloques por paso. Cada paso debe incluir al menos un bloque type='callout'. Distribuye contenido denso en más pasos antes que sobrecargar una página.",
             items: {
               type: Type.OBJECT,
               properties: {
@@ -2102,10 +2225,13 @@ Reglas obligatorias:
 7. La capa "tldr" orienta; no sustituye la lectura completa.
 8. Si falta parte del contenido, señálalo en "coverage" o "sourceMetadata.limitations" con honestidad.
 9. Los bloques callout deben usar labels editoriales sobrios acordes al intent activo: 'Idea clave', 'Matiz', 'Ejemplo', 'Precaución' o 'Para aplicarlo'.
-10. Devuelve solo JSON válido compatible con el esquema pedido.
-11. Filtra el ruido y cubre las ideas relevantes según el contrato de profundidad activo. La cobertura completa tiene prioridad salvo cuando depth activo sea rapido; en rapido debes sintetizar y agrupar, declarando omisiones en coverage.limitations si procede.
-12. El campo "intent" en el JSON debe coincidir exactamente con el intent activo del contrato (understand, study o apply).
-13. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).`;
+10. En modo paso a paso móvil no habrá scroll vertical: coreIdea, tldr y cada step deben funcionar como páginas separadas que caben en pantalla.
+11. No recortes ideas importantes para hacerlas caber. Si una unidad queda demasiado densa, divídela en otro step hasta el límite del contrato activo; si aun así algo no cabe, decláralo con honestidad en coverage.
+12. Cada step debe tener al menos un bloque callout con una tarjeta destacada y contenido específico.
+13. Devuelve solo JSON válido compatible con el esquema pedido.
+14. Filtra el ruido y cubre las ideas relevantes según el contrato de profundidad activo. La cobertura completa tiene prioridad salvo cuando depth activo sea rapido; en rapido debes sintetizar y agrupar, declarando omisiones en coverage.limitations si procede.
+15. El campo "intent" en el JSON debe coincidir exactamente con el intent activo del contrato (understand, study o apply).
+16. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).`;
 
 function getRepairGenerationConfig(maxOutputTokens: number) {
   return {
@@ -2286,6 +2412,7 @@ function normalizeMapData(
     intent: fallback.intent,
     outputLanguage: String(parsed?.outputLanguage || fallback.outputLanguage),
     mapVersion: Number.isFinite(parsed?.mapVersion) ? Number(parsed.mapVersion) : 2,
+    generationMode: parsed?.generationMode === "study-doc-beta" ? "study-doc-beta" : "classic",
     sourceMetadata: {
       kind: String(parsed?.sourceMetadata?.kind || fallback.sourceKind) as any,
       label: String(parsed?.sourceMetadata?.label || fallback.sourceLabel),
@@ -2396,6 +2523,8 @@ function buildTransformPrompt({
   outputLanguage,
   sourceLabel,
   depth = 'estandar',
+  generationMode = 'classic',
+  userDisplayName,
   singleNucleoMode = false,
   segmentTitle,
 }: {
@@ -2404,6 +2533,8 @@ function buildTransformPrompt({
   outputLanguage: string;
   sourceLabel?: string;
   depth?: TransformRequest["depth"];
+  generationMode?: TransformRequest["generationMode"];
+  userDisplayName?: string;
   singleNucleoMode?: boolean;
   segmentTitle?: string;
 }) {
@@ -2437,9 +2568,44 @@ function buildTransformPrompt({
         : "En 'knowledgeSections' resume las secciones mayores con granularidad media.";
 
   const tldrRule =
-    resolvedDepth === "rapido"
+    generationMode === "study-doc-beta"
+      ? "En 'tldr' entrega exactamente 5 puntos de estudio."
+      : resolvedDepth === "rapido"
       ? "En 'tldr' entrega exactamente 3 puntos breves."
       : "En 'tldr' entrega de 3 a 4 puntos.";
+
+  const mobilePaginationRule = [
+    "CONTRATO DE PAGINACIÓN MÓVIL SIN SCROLL:",
+    "El modo paso a paso se renderiza como páginas fijas: página 1 = coreIdea + coreSupport + tarjeta/fuente; página 2 = tldr ('En 60 segundos'); páginas siguientes = steps.",
+    "Ninguna página del modo paso a paso tendrá scroll vertical. Escribe cada step para que quepa en una pantalla móvil media: título breve, purpose de 1-2 frases, 2-4 bloques de contenido y un selfCheck corto si aporta valor.",
+    "Cada step debe incluir al menos un bloque type='callout' con label editorial ('Idea clave', 'Matiz', 'Ejemplo', 'Precaución' o 'Para aplicarlo'). Esa tarjeta debe contener lo más recordable o delicado de la página.",
+    "Evita páginas vacías: si una página queda pobre, añade matiz, ejemplo, relación causa/efecto o implicación útil extraída de la fuente, sin inventar ni rellenar.",
+    "Evita páginas sobrecargadas: si una página no cabría sin scroll, crea otro step y reparte la información. No omitas información importante solo por encaje visual.",
+    "En listas, usa 2-4 items concisos. En prose, evita párrafos largos. En callouts, una idea fuerte y específica.",
+  ].join("\n");
+
+  const studyDocBetaRule =
+    generationMode === "study-doc-beta"
+      ? [
+          "MODO TEMPORAL STUDYDOC BETA (ADAPTADO AL RENDERER ACTUAL):",
+          "No generes HTML ni UI. Genera el JSON del esquema ActionMapData, pero organiza el contenido como si fuera un StudyDoc nativo.",
+          "tldr debe tener exactamente 5 puntos y funcionar como resumen de estudio.",
+          "knowledgeSections debe representar 5-9 conceptos: title = nombre del concepto; summary = definición clara + por qué importa + confusión común si aplica.",
+          "steps debe representar secciones de estudio, no pasos narrativos sueltos. Cada step equivale a una section del futuro StudyDoc.",
+          "En cada step incluye: 1) un callout 'Idea clave' o 'Matiz'; 2) una lista breve de pretest con 2-3 preguntas si encaja; 3) prose/bodyMarkdown adaptado a lectura nativa; 4) checkQuestions en lista o prose; 5) selfCheck como selfExplainPrompt.",
+          "Incluye relaciones entre conceptos dentro de los pasos usando frases explícitas tipo 'X depende de Y', 'X contrasta con Y' o 'X explica Y'.",
+          "completionCard.takeaways debe funcionar como flashcards condensadas: frente implícito + respuesta clara en cada takeaway.",
+          "Mantén el contenido compatible con pantallas sin scroll por página: si queda denso, crea otra section/step.",
+        ].join("\n")
+      : "";
+
+  const personalizationRule = userDisplayName
+    ? [
+        `Personalización: el usuario se llama "${userDisplayName}".`,
+        "Menciona su nombre de forma natural 1 vez, idealmente en coreSupport, en el primer purpose o en una pregunta final.",
+        "No repitas el nombre en cada paso. No uses tono comercial ni excesivamente familiar.",
+      ].join("\n")
+    : "";
 
   return [
     "Los siguientes contratos activos prevalecen sobre cualquier instrucción genérica de cobertura, longitud o tono.",
@@ -2471,6 +2637,9 @@ function buildTransformPrompt({
     `Si no tienes confianza clara sobre la categoría, usa "${FALLBACK_MAP_CATEGORY}".`,
     "La coreIdea debe ser una frase corta y memorable; evita párrafos, matices largos o dos ideas en una.",
     tldrRule,
+    mobilePaginationRule,
+    studyDocBetaRule,
+    personalizationRule,
     knowledgeSectionsRule,
     "PRIMERO filtra el ruido: ignora relleno, repeticiones, divagaciones, saludos, autopromoción, patrocinios, navegación web y texto boilerplate. El ruido NO genera pasos.",
     "Identifica las UNIDADES de información relevante (ideas, tesis, argumentos, conceptos, procedimientos, secciones distintas). El número de pasos y de knowledgeSections debe ajustarse al contrato de profundidad activo y al número de unidades relevantes.",

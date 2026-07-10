@@ -13,6 +13,7 @@ export * from './apiBase';
 export * from './storage';
 export * from './atomGeometry';
 export * from './transformStream';
+export * from './studyDoc';
 export {
   MAX_SOURCE_CHARS,
   SOURCE_TRUNCATION_NOTICE,
