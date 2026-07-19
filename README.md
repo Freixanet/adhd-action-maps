@@ -84,4 +84,4 @@ Before production: register web/iOS/Android redirect URLs in Supabase and test O
 
 ## Author
 
-**Marcos Freixanet** · [github.com/Freixanet](https://github.com/Freixanet) · marcfreixanet@gmail.com
+**Marcos Freixanet** · [github.com/Freixanet](https://github.com/Freixanet) · mfreixanet@icloud.com
