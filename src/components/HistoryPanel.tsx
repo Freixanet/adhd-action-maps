@@ -1,5 +1,3 @@
-import { Capacitor } from '@capacitor/core';
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -58,20 +56,9 @@ function preventNativeSelection(event: SyntheticEvent): void {
 }
 
 function triggerHistoryItemHaptic(): void {
-  void (async () => {
-    try {
-      if (Capacitor.isNativePlatform()) {
-        await Haptics.impact({ style: ImpactStyle.Light });
-        return;
-      }
-    } catch {
-      // Native haptics unavailable; fall back to web vibration when supported.
-    }
-
-    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-      navigator.vibrate(12);
-    }
-  })().catch(() => {});
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    navigator.vibrate(12);
+  }
 }
 
 function sortPinnedEntries(entries: HistoryEntry[]) {
@@ -448,7 +435,7 @@ export default function HistoryPanel({
           {recentEntries.length > 0 && (
             <div>
               {pinnedEntries.length > 0 && (
-                <div className="flex items-center gap-2 px-2 py-1.5 mb-1 mt-1">
+                <div className="flex items-center gap-2 px-2 py-1.5 mb-1 mt-8">
                   <span className="text-xs font-bold tracking-wide text-neutral-500 dark:text-neutral-400">
                     Recientes
                   </span>

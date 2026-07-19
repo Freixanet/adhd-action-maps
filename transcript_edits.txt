@@ -1,0 +1,55 @@
+---
+TIME: 2026-06-29T15:14:22Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/components/ReadingProgressBar.tsx
+INSTRUCTION: Add safe area insets to ReadingProgressBar container style and import hook.
+CHUNKS SNIPPET: [{'AllowMultiple': False, 'EndLine': 15, 'ReplacementContent': "import { useTheme } from '../context/ThemeContext';\nimport { useSafeAreaInsets } from 'react-native-safe-area-context';", 'StartLine': 
+---
+TIME: 2026-06-29T15:14:39Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/screens/classic/ClassicResultScreen.tsx
+INSTRUCTION: Change pt-6 to pt-[76px] in ScrollView contentContainerClassName.
+CONTENT SNIPPET: '          contentContainerClassName="px-5 pt-[76px] pb-32"'
+---
+TIME: 2026-06-29T15:14:42Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/screens/ResultScreen.tsx
+INSTRUCTION: Change contentContainerClassName to px-5 pt-[76px] pb-32 in ResultScreen.tsx.
+CONTENT SNIPPET: '          contentContainerClassName="px-5 pt-[76px] pb-32"'
+---
+TIME: 2026-06-29T15:15:12Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/screens/ResultScreen.tsx
+INSTRUCTION: Wrap banners in a View with paddingTop if any banner is active, and dynamically adjust ScrollView padding.
+CONTENT SNIPPET: '      {session.error || session.transformIncomplete ? (\n        <View style={{ paddingTop: 64 }}>\n          <SessionErrorBanner className="px-5" />\n          <IncompleteTransformBanner />\n       
+---
+TIME: 2026-06-29T15:18:17Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/components/ReadingProgressBar.tsx
+INSTRUCTION: Update ReadingProgressBar to animate hide/show based on headerVisibleShared, and conditionally render progress line.
+CONTENT SNIPPET: 'import React, { useEffect } from \'react\';\nimport { Text, View } from \'react-native\';\nimport Animated, {\n  Easing,\n  SharedValue,\n  useAnimatedStyle,\n  useSharedValue,\n  withTiming,\n} from
+---
+TIME: 2026-06-29T15:18:51Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/screens/classic/ClassicResultScreen.tsx
+INSTRUCTION: Update ClassicResultScreen to use headerVisible logic, add padding, and nest ReadingProgressBar to respect safe area.
+CHUNKS SNIPPET: [{'AllowMultiple': False, 'EndLine': 9, 'ReplacementContent': "import Animated, {\n  FadeIn,\n  FadeOut,\n  runOnJS,\n  useAnimatedScrollHandler,\n  useSharedValue,\n} from 'react-native-reanimated';"
+---
+TIME: 2026-06-29T15:19:08Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/screens/ResultScreen.tsx
+INSTRUCTION: Add headerVisible logic to ResultScreen and safely nest ReadingProgressBar.
+CHUNKS SNIPPET: [{'AllowMultiple': False, 'EndLine': 79, 'ReplacementContent': '  const session = useAppSession();\n  const { data } = session;\n  const scrollProgress = useSharedValue(0);\n  const lastScrollY = useS
+---
+TIME: 2026-06-29T15:19:21Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/screens/ResultScreen.tsx
+INSTRUCTION: Fix contentContainerClassName to always apply pt-[76px] because ReadingProgressBar is absolute within the same container.
+CONTENT SNIPPET: '        <Animated.ScrollView\n          className="flex-1"\n          contentContainerClassName="px-5 pt-[76px] pb-8"\n          keyboardShouldPersistTaps="handled"\n          showsVerticalScrollIndi
+---
+TIME: 2026-06-29T15:21:07Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/screens/classic/ClassicResultScreen.tsx
+INSTRUCTION: Add overflow-hidden to clip the header, and animate footer to visually disable (opacity 0.4 + pointerEvents none) when scrolling down using headerVisible.
+CHUNKS SNIPPET: [{'AllowMultiple': False, 'EndLine': 141, 'ReplacementContent': '  const scrollHandler = useAnimatedScrollHandler(\n    {\n      onScroll: (event) => {\n        const currentY = event.contentOffset.y;
+---
+TIME: 2026-06-29T15:21:27Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/screens/classic/ClassicResultScreen.tsx
+INSTRUCTION: Add useAnimatedProps to disable pointerEvents when footer is faded out
+CHUNKS SNIPPET: [{'AllowMultiple': False, 'EndLine': 10, 'ReplacementContent': "import Animated, {\n  FadeIn,\n  FadeOut,\n  runOnJS,\n  useAnimatedProps,\n  useAnimatedScrollHandler,\n  useAnimatedStyle,\n  useShare
+---
+TIME: 2026-06-29T15:21:38Z
+FILE: /Users/mfreixanet/antigravity/Untitled-mobile-preview/mobile/src/screens/ResultScreen.tsx
+INSTRUCTION: Add useAnimatedProps to disable pointerEvents when footer is faded out in ResultScreen
+CHUNKS SNIPPET: [{'AllowMultiple': False, 'EndLine': 10, 'ReplacementContent': "import Animated, {\n  FadeIn,\n  FadeOut,\n  runOnJS,\n  useAnimatedProps,\n  useAnimatedScrollHandler,\n  useAnimatedStyle,\n  useShare

@@ -2,6 +2,22 @@
 
 Turn messy input into **navigable action maps**. Dense text, YouTube transcripts, web links, or PDFs become a structured, low-friction format: core idea, TL;DR, and timed next steps.
 
+## Canonical project status
+
+This is the single repository for the project previously known as
+`optimizador-tdah` and `tdah-optimizar-codex`.
+
+- **Current product UI:** `mobile/` (Expo / React Native)
+- **Visual signature:** Liquid Glass, top `Entender / Aplicar` pill, and no
+  model selector in the composer
+- **Backend and shared domain code:** `server.ts` and `shared/`
+- **Legacy/reference browser client:** `src/`
+
+Open the repository root in Codex, Cursor, Antigravity, or another editor. The
+tool-specific instruction files all point to the same project rules in
+[`AGENTS.md`](AGENTS.md). See [`docs/RECOVERY.md`](docs/RECOVERY.md) for the
+recovered version and historical names.
+
 ---
 
 ## What it does
@@ -17,17 +33,18 @@ Built for ADHD-friendly consumption: less wall-of-text, more executable structur
 
 ## Requirements
 
-- Node.js
+- Node.js 22.13.0 (see `.nvmrc`)
 - Gemini API key (`GEMINI_API_KEY`)
 
 ---
 
-## Run locally
+## Run the canonical app locally
 
-1. Install dependencies:
+1. Select Node and install backend/shared dependencies:
 
    ```bash
-   npm install
+   nvm use
+   npm ci
    ```
 
 2. Configure `.env`:
@@ -38,13 +55,23 @@ Built for ADHD-friendly consumption: less wall-of-text, more executable structur
    GEMINI_MODEL=gemini-3.5-flash
    ```
 
-3. Start development:
+3. Start the backend from the repository root:
 
    ```bash
    npm run dev
    ```
 
-4. Open [http://localhost:3000](http://localhost:3000)
+4. In a second terminal, install and start the Expo client:
+
+   ```bash
+   cd mobile
+   npm ci --legacy-peer-deps
+   cp .env.example .env
+   npm run start:dev-client
+   ```
+
+The server also exposes the legacy browser client at
+[http://localhost:3000](http://localhost:3000); it is not the canonical UI.
 
 ---
 
@@ -56,6 +83,8 @@ Built for ADHD-friendly consumption: less wall-of-text, more executable structur
 | `npm run build` | Frontend build + server bundle |
 | `npm run start` | Production server |
 | `npm run lint` | TypeScript typecheck |
+| `npm test` | Shared/backend test suite |
+| `npm run lint --prefix mobile` | Expo client typecheck |
 
 ---
 

@@ -1,0 +1,10 @@
+---
+description: Canonical ADHD Action Maps repository context
+alwaysApply: true
+---
+
+Read and follow `/AGENTS.md` before making changes. When working under
+`mobile/`, also follow `/mobile/AGENTS.md`.
+
+The canonical UI is `mobile/`: Liquid Glass, the top `Entender / Aplicar` pill,
+and no model selector in the composer. The root `src/` UI is legacy/reference.

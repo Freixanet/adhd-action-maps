@@ -21,8 +21,13 @@ Examples:
     --service-key eyJ...   # Settings → API → service_role (solo local)
 
 Redirect URLs to add in Supabase → Authentication → URL Configuration:
-  - http://localhost:3000
+  - http://localhost:3000/**
+  - http://127.0.0.1:3000/**
+  - nucleo://login-callback
+  - nucleo://**
+  - com.freixanet.nucleo://login-callback
   - com.nucleo.app://login-callback
+  - exp://**
 EOF
 }
 
@@ -66,7 +71,15 @@ write_env() {
   upsert_env "APP_URL" "$app_url"
   upsert_env "ALLOWED_ORIGINS" "${app_url},http://localhost:3000,http://127.0.0.1:3000"
 
+  mkdir -p "$ROOT/mobile"
+  cat >"$ROOT/mobile/.env" <<MOBILEEOF
+EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:3000
+EXPO_PUBLIC_SUPABASE_URL=${url}
+EXPO_PUBLIC_SUPABASE_ANON_KEY=${anon}
+MOBILEEOF
+
   echo "Variables Supabase escritas en .env"
+  echo "Variables Expo escritas en mobile/.env"
   echo "Reinicia npm run dev para aplicar los cambios."
 }
 

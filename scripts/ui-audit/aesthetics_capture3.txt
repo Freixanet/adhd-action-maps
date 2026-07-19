@@ -1,0 +1,55 @@
+# Part 3 — completion, loading dark, drawer dark, profile dark
+
+# Close drawer
+tap-xy:320,500
+wait:1
+
+# Complete map from step 2
+tap-label:Completar mapa
+wait:2
+screenshot:/tmp/aest_result_complete_top_light2.png
+swipe:201,700,201,200,0.35
+wait:1
+screenshot:/tmp/aest_result_complete_bottom_light2.png
+
+# Open drawer for dark toggle path
+tap-label~:Abrir navegación
+wait:1.2
+tap-label~:Cuenta y ajustes
+wait:1
+tap-label:Ajustes
+wait:1
+tap-label:Modo oscuro
+wait:1.5
+tap-xy:320,400
+wait:0.8
+tap-xy:320,400
+wait:0.8
+
+# Loading dark via dev preview on input
+tap-label~:Crear mapa
+wait:1.5
+tap-label~:Vista previa
+wait:2
+screenshot:/tmp/aest_loading_dark.png
+
+# Back to result complete dark
+tap-label~:Abrir navegación
+wait:1.2
+tap-label~:El Ciclo
+wait:2
+tap-scroll~:Completar mapa
+wait:0.5
+tap-scroll~:Completar mapa
+wait:2
+screenshot:/tmp/aest_result_complete_top_dark2.png
+
+# Drawer dark
+tap-label~:Abrir navegación
+wait:1.2
+screenshot:/tmp/aest_drawer_open_dark.png
+
+# Profile dark
+tap-label~:Cuenta y ajustes
+wait:1
+screenshot:/tmp/aest_profile_menu_dark.png

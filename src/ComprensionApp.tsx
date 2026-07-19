@@ -1,6 +1,4 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowRight,
@@ -29,18 +27,23 @@ import {
   Download,
   MessageSquareText,
   BookOpen,
-  GraduationCap,
   ListChecks,
+  Sparkles,
+  ChevronLeft,
+  Cpu,
   CircleAlert,
 } from 'lucide-react';
 import { apiUrl } from './apiBase';
 import HistoryPanel from './components/HistoryPanel';
 import AppIcon from './components/AppIcon';
-import NucleoIcon from './components/NucleoIcon';
+import AtomCanvasIcon from './components/AtomCanvasIcon';
+import MenuTwoLines from './components/MenuTwoLines';
 import ProfileAvatar from './components/ProfileAvatar';
 import LoadingState from './components/LoadingState';
 import ReadingProgressBar from './components/ReadingProgressBar';
 import BalancedText from './components/BalancedText';
+import { useKeyboardDismissOnSwipeDown } from './hooks/useDismissKeyboardOnPullDown';
+import { useNativeComposer, type NativeComposerMetrics } from './hooks/useNativeComposer';
 import type {
   ActionMapData,
   CalloutLabel,
@@ -57,6 +60,12 @@ import {
   saveModelPreference,
   type ModelPreference,
 } from './modelPreference';
+import {
+  DEPTH_OPTIONS,
+  getInitialDepthPreference,
+  saveDepthPreference,
+  type DepthPreference,
+} from './depthPreference';
 import {
   APP_VARIANT_OPTIONS,
   getAppVariant,
@@ -76,7 +85,12 @@ import {
   type SourceType,
   type HistoryEntry,
 } from './history';
-import { isYouTubeUrl } from '@/youtube';
+import { detectUrlInput, friendlyTransformError, type UrlInputDetection } from './urlInput';
+import {
+  fetchTransformWithProgress,
+  TRANSFORM_IDLE_TIMEOUT_MESSAGE,
+} from '@shared/transformStream';
+import { normalizeMapData } from '@shared/mapData';
 import {
   deleteCloudHistoryEntry,
   migrateLocalHistory,
@@ -104,6 +118,11 @@ type UploadedFile = {
 const DESKTOP_BREAKPOINT = 1024;
 const RECENT_IMAGES_KEY = 'nucleo-recent-images';
 const MAX_RECENT_IMAGES = 8;
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
+const MAX_UPLOAD_SIZE_MESSAGE =
+  'El archivo supera el límite de 15 MB. Prueba con un archivo más pequeño.';
+const LOCAL_FILE_READ_ERROR_MESSAGE =
+  'No se pudo leer el archivo en el dispositivo. Prueba con otro archivo.';
 const IMAGE_MAX_DIMENSION = 1024;
 const DEFAULT_CALLOUT_LABELS: Record<string, CalloutLabel> = {
   action: 'Para aplicarlo',
@@ -111,22 +130,16 @@ const DEFAULT_CALLOUT_LABELS: Record<string, CalloutLabel> = {
   alert: 'Precaución',
 };
 const INTENT_OPTIONS: Array<{
-  id: MapIntent;
+  id: Extract<MapIntent, 'understand' | 'apply'>;
   title: string;
   description: string;
   icon: typeof BookOpen;
 }> = [
   {
     id: 'understand',
-    title: 'Comprender',
+    title: 'Entender',
     description: 'Idea central, contexto, argumentos y matices.',
     icon: BookOpen,
-  },
-  {
-    id: 'study',
-    title: 'Estudiar',
-    description: 'Conceptos, relaciones y repaso para retener.',
-    icon: GraduationCap,
   },
   {
     id: 'apply',
@@ -195,9 +208,6 @@ async function processImageFile(
   }
 }
 const PAGE_BOTTOM_PAD_PX = 24;
-const TRANSFORM_TIMEOUT_MS = 150_000;
-const TRANSFORM_TIMEOUT_MESSAGE =
-  'La generación está tardando demasiado. Comprueba tu conexión e inténtalo de nuevo.';
 
 function throwIfAborted(signal?: AbortSignal | null): void {
   if (signal?.aborted) {
@@ -219,165 +229,20 @@ function generateMapId() {
 function getIntentLabel(intent: MapIntent | undefined) {
   if (intent === 'study') return 'Estudiar';
   if (intent === 'apply') return 'Aplicar';
-  return 'Comprender';
+  return 'Entender';
 }
 
 function getResolvedOutputLanguage() {
   return 'es';
 }
 
-function normalizeReferences(input: unknown): SourceReference[] {
-  if (!Array.isArray(input)) return [];
-  return input
-    .map((ref) => {
-      const value = ref as SourceReference;
-      if (!value?.label || !value?.locator) return null;
-      return {
-        label: String(value.label),
-        locator: String(value.locator),
-        locatorKind: value.locatorKind,
-        excerpt: value.excerpt ? String(value.excerpt) : undefined,
-        note: value.note ? String(value.note) : undefined,
-      } satisfies SourceReference;
-    })
-    .filter(Boolean) as SourceReference[];
-}
-
-function normalizeMapData(input: any): ActionMapData | null {
-  if (!input?.title || !Array.isArray(input?.steps) || !Array.isArray(input?.tldr)) return null;
-
-  const normalizedSteps = input.steps.map((step: any, index: number) => ({
-    id: String(step?.id || `step-${index + 1}`),
-    shortNav: String(step?.shortNav || step?.title || `Paso ${index + 1}`),
-    title: String(step?.title || `Paso ${index + 1}`),
-    time: String(step?.time || '~3 min'),
-    purpose: step?.purpose ? String(step.purpose) : undefined,
-    content: Array.isArray(step?.content)
-      ? step.content
-          .map((block: any) => ({
-            type: String(block?.type || 'prose') as 'prose' | 'callout' | 'list',
-            text: String(block?.text || '').trim(),
-            kind: block?.kind ? String(block.kind) : undefined,
-            label: block?.label
-              ? (String(block.label) as CalloutLabel)
-              : DEFAULT_CALLOUT_LABELS[String(block?.kind || 'info')] || 'Idea clave',
-            items: Array.isArray(block?.items)
-              ? block.items
-                  .map((item: any) =>
-                    item?.strong
-                      ? {
-                          strong: String(item.strong),
-                          span: item?.span ? String(item.span) : undefined,
-                        }
-                      : null
-                  )
-                  .filter(Boolean)
-              : undefined,
-            references: normalizeReferences(block?.references),
-          }))
-          .filter((block) => block.text || block.items?.length)
-      : [],
-    references: normalizeReferences(step?.references),
-  }));
-
-  const normalized = {
-    title: String(input.title),
-    category: input?.category ? String(input.category) : undefined,
-    intent: input?.intent === 'study' || input?.intent === 'apply' ? input.intent : 'understand',
-    outputLanguage: input?.outputLanguage ? String(input.outputLanguage) : 'es',
-    mapVersion: Number.isFinite(input?.mapVersion) ? Number(input.mapVersion) : 2,
-    sourceMetadata: {
-      kind: input?.sourceMetadata?.kind || 'text',
-      label: input?.sourceMetadata?.label || 'Fuente analizada',
-      title: input?.sourceMetadata?.title ? String(input.sourceMetadata.title) : undefined,
-      author: input?.sourceMetadata?.author ? String(input.sourceMetadata.author) : undefined,
-      language: input?.sourceMetadata?.language ? String(input.sourceMetadata.language) : undefined,
-      detected: Array.isArray(input?.sourceMetadata?.detected)
-        ? input.sourceMetadata.detected.map((item: unknown) => String(item))
-        : [],
-      limitations: Array.isArray(input?.sourceMetadata?.limitations)
-        ? input.sourceMetadata.limitations.map((item: unknown) => String(item))
-        : [],
-    },
-    coverage: {
-      summary: input?.coverage?.summary
-        ? String(input.coverage.summary)
-        : 'Lectura generada a partir del material disponible.',
-      notes: Array.isArray(input?.coverage?.notes)
-        ? input.coverage.notes
-            .map((note: any) =>
-              note?.label && note?.detail
-                ? {
-                    label: String(note.label),
-                    detail: String(note.detail),
-                    tone: note?.tone === 'warning' ? 'warning' : 'neutral',
-                  }
-                : null
-            )
-            .filter(Boolean)
-        : [],
-    },
-    coreIdea: String(input?.coreIdea || ''),
-    coreSupport: String(input?.coreSupport || ''),
-    tldr: input.tldr
-      .map((item: any) =>
-        item?.title && item?.desc
-          ? { title: String(item.title), desc: String(item.desc) }
-          : null
-      )
-      .filter(Boolean),
-    knowledgeSections: Array.isArray(input?.knowledgeSections)
-      ? input.knowledgeSections
-          .map((section: any) =>
-            section?.title && section?.summary
-              ? {
-                  title: String(section.title),
-                  summary: String(section.summary),
-                  references: normalizeReferences(section.references),
-                }
-              : null
-          )
-          .filter(Boolean)
-      : [],
-    steps: normalizedSteps,
-    references: normalizeReferences(input?.references),
-    completionCard: {
-      title: input?.completionCard?.title ? String(input.completionCard.title) : 'Mapa completado',
-      summary: input?.completionCard?.summary
-        ? String(input.completionCard.summary)
-        : 'Vuelve aquí para repasar lo esencial sin tener que releerlo todo.',
-      takeaways: Array.isArray(input?.completionCard?.takeaways)
-        ? input.completionCard.takeaways.map((item: unknown) => String(item)).filter(Boolean)
-        : [],
-      promptQuestion: input?.completionCard?.promptQuestion
-        ? String(input.completionCard.promptQuestion)
-        : undefined,
-    },
-    modelUsed: input?.modelUsed ? String(input.modelUsed) : undefined,
-  };
-
-  if (!normalized.sourceMetadata.detected.length) {
-    normalized.sourceMetadata.detected = [normalized.sourceMetadata.label];
-  }
-  if (!normalized.completionCard.takeaways.length) {
-    normalized.completionCard.takeaways = normalized.tldr
-      .slice(0, 5)
-      .map((item) => `${item.title}: ${item.desc}`);
-  }
-
-  return normalized;
-}
-
-function isSingleUrl(text: string): boolean {
-  return /^https?:\/\/\S+$/.test(text.trim());
-}
-
 function resolveSourceType(text: string, uploadedFile: UploadedFile | null): SourceType {
   if (uploadedFile?.isPdf) return 'pdf';
   if (uploadedFile) return 'file';
   const trimmed = text.trim();
-  if (isYouTubeUrl(trimmed)) return 'youtube';
-  if (isSingleUrl(trimmed)) return 'link';
+  const detected = detectUrlInput(text);
+  if (detected.kind === 'youtube') return 'youtube';
+  if (detected.kind === 'link') return 'link';
   if (/\[\d{1,2}:\d{2}/.test(trimmed)) return 'youtube';
   return 'text';
 }
@@ -446,8 +311,9 @@ function authErrorMessage(err: unknown): string {
 }
 
 export default function ComprensionApp() {
+  useKeyboardDismissOnSwipeDown();
   const initialHistory: HistoryStore =
-    typeof window !== 'undefined' ? loadHistory() : { activeId: null, entries: [] };
+    typeof window !== 'undefined' ? loadHistory() : { activeId: null, entries: [], collections: [] };
   const initialActive = getActiveEntry(initialHistory);
   const initialActiveData = initialActive ? normalizeMapData(initialActive.session.data) : null;
 
@@ -472,6 +338,7 @@ export default function ComprensionApp() {
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [modelPreference, setModelPreference] = useState<ModelPreference>(getInitialModelPreference);
   const [intent, setIntent] = useState<MapIntent>(initialActiveData?.intent ?? 'understand');
+  const [depthPreference, setDepthPreference] = useState<DepthPreference>(getInitialDepthPreference);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [cloudUser, setCloudUser] = useState<CloudUserProfile | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -488,20 +355,35 @@ export default function ComprensionApp() {
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [essentialsReview, setEssentialsReview] = useState(false);
+  const [profileMenuView, setProfileMenuView] = useState<'root' | 'settings'>('root');
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelPickerLeft, setModelPickerLeft] = useState(56);
+  const [depthPickerOpen, setDepthPickerOpen] = useState(false);
+  const [depthPickerLeft, setDepthPickerLeft] = useState(56);
   const [showStepFooter, setShowStepFooter] = useState(false);
+  const [isStreamGenerating, setIsStreamGenerating] = useState(false);
   const reduceMotion = useReducedMotion();
 
   const contentRef = useRef<HTMLElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const stepFooterRef = useRef<HTMLDivElement>(null);
   const [contentBottomPad, setContentBottomPad] = useState(PAGE_BOTTOM_PAD_PX);
+  const [nativeComposerReservedHeight, setNativeComposerReservedHeight] = useState(184);
   const abortControllerRef = useRef<AbortController | null>(null);
   const transformCancelledByUserRef = useRef(false);
+  const handleTransformRef = useRef<(textOverride?: string) => Promise<void>>(async () => {});
+  const inputTextRef = useRef(inputText);
+  const uploadedFileRef = useRef(uploadedFile);
+  inputTextRef.current = inputText;
+  uploadedFileRef.current = uploadedFile;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const attachMenuRef = useRef<HTMLDivElement>(null);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
+  const depthPickerRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const scrollSpyLockRef = useRef(false);
   const sidebarTouchStartRef = useRef<{ x: number; y: number; dragging: boolean; opening: boolean } | null>(null);
@@ -545,6 +427,62 @@ export default function ComprensionApp() {
   const [isSidebarSettling, setIsSidebarSettling] = useState(false);
   const sheetTransitionCompleteRef = useRef<(() => void) | null>(null);
 
+  const handleNativeComposerMetrics = useCallback((metrics: NativeComposerMetrics) => {
+    setNativeComposerReservedHeight(metrics.visible ? Math.max(120, metrics.height + 24) : PAGE_BOTTOM_PAD_PX);
+  }, []);
+
+  const triggerNativeSend = useCallback((text?: string) => {
+    if (text) {
+      inputTextRef.current = text;
+      setInputText(text);
+    }
+    queueMicrotask(() => {
+      void handleTransformRef.current(text);
+    });
+  }, []);
+
+  const { isNativeIOS, clearText, setLayout: setNativeComposerLayout } = useNativeComposer({
+    appState,
+    onChange: (text) => {
+      inputTextRef.current = text;
+      setInputText(text);
+    },
+    onSend: triggerNativeSend,
+    onAttach: () => fileInputRef.current?.click(),
+    onMenu: () => setProfileMenuOpen(true),
+    onMetricsChange: handleNativeComposerMetrics,
+    mainRef,
+    attachment: uploadedFile
+      ? {
+          name: uploadedFile.name,
+          previewUrl: uploadedFile.previewUrl,
+          isImage: uploadedFile.isImage,
+        }
+      : null,
+    visible:
+      appState === 'input' &&
+      !(profileMenuOpen || chatOpen),
+  });
+
+  const syncNativeComposerSheetLayout = useCallback(
+    (
+      offsetX: number,
+      options: { animated?: boolean; durationMs?: number; curve?: 'easeOut' | 'easeInOut' | 'linear' } = {}
+    ) => {
+      if (!isNativeIOS) return;
+      const mainWidth = mainRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+      setNativeComposerLayout({
+        mainOffsetX: offsetX,
+        mainWidth,
+        sidebarOpen: offsetX > 0.5,
+        animated: options.animated ?? false,
+        durationMs: options.durationMs,
+        curve: options.curve,
+      });
+    },
+    [isNativeIOS, setNativeComposerLayout]
+  );
+
   const totalSteps = data?.steps?.length ?? 0;
   const totalMinutes = useMemo(() => parseTotalMinutes(data?.steps ?? []), [data]);
   const activeMapId = historyStore.activeId;
@@ -566,8 +504,7 @@ export default function ComprensionApp() {
     return `${readerModeLabel} · Paso ${currentStep} de ${totalSteps}`;
   }, [currentStep, data, totalSteps, isComplete, readerModeLabel]);
 
-  const shouldShowStepFooter =
-    showStepFooter || (!isDesktop && currentStep === 0 && !viewAll && !isComplete);
+  const shouldShowStepFooter = !viewAll && !isComplete;
 
   React.useEffect(() => {
     historyStoreRef.current = historyStore;
@@ -621,12 +558,7 @@ export default function ComprensionApp() {
   }, [historyStore, cloudUser]);
 
   const scrollPageToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    const scrollRoot = contentRef.current;
-    if (scrollRoot) {
-      scrollRoot.scrollTo({ top: 0, left: 0, behavior });
-      return;
-    }
-    window.scrollTo({ top: 0, left: 0, behavior });
+    contentRef.current?.scrollTo({ top: 0, behavior });
   }, []);
 
   React.useEffect(() => {
@@ -640,16 +572,33 @@ export default function ComprensionApp() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [profileMenuOpen]);
 
+  React.useLayoutEffect(() => {
+    if (!modelPickerOpen || !modelPickerRef.current || !attachMenuRef.current) return;
+    const anchor = modelPickerRef.current.getBoundingClientRect();
+    const group = attachMenuRef.current.getBoundingClientRect();
+    setModelPickerLeft(Math.max(8, anchor.left - group.left));
+  }, [modelPickerOpen]);
+
+  React.useLayoutEffect(() => {
+    if (!depthPickerOpen || !depthPickerRef.current || !attachMenuRef.current) return;
+    const anchor = depthPickerRef.current.getBoundingClientRect();
+    const group = attachMenuRef.current.getBoundingClientRect();
+    setDepthPickerLeft(Math.max(8, anchor.left - group.left));
+  }, [depthPickerOpen]);
+
   React.useEffect(() => {
-    if (!attachMenuOpen) return;
+    if (!attachMenuOpen && !modelPickerOpen && !depthPickerOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (attachMenuRef.current && !attachMenuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (attachMenuRef.current && !attachMenuRef.current.contains(target)) {
         setAttachMenuOpen(false);
+        setModelPickerOpen(false);
+        setDepthPickerOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [attachMenuOpen]);
+  }, [attachMenuOpen, modelPickerOpen, depthPickerOpen]);
 
   React.useEffect(() => {
     if (appState !== 'result') return;
@@ -671,16 +620,9 @@ export default function ComprensionApp() {
 
   const triggerMobileSidebarHaptic = useCallback(() => {
     if (isDesktop) return;
-
-    void (async () => {
-      try {
-        if (Capacitor.isNativePlatform()) {
-          await Haptics.impact({ style: ImpactStyle.Light });
-        }
-      } catch {
-        // Haptics unavailable; fail silently.
-      }
-    })().catch(() => {});
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(12);
+    }
   }, [isDesktop]);
 
   const animateMainSheetTo = useCallback(
@@ -698,6 +640,7 @@ export default function ComprensionApp() {
         setIsSidebarSettling(false);
         setSidebarDragX(null);
         sidebarDragXRef.current = null;
+        syncNativeComposerSheetLayout(targetX, { animated: false });
         onComplete?.();
         return;
       }
@@ -707,13 +650,19 @@ export default function ComprensionApp() {
       sheetTransitionCompleteRef.current = onComplete ?? null;
       setSidebarDragX(currentX);
       sidebarDragXRef.current = currentX;
+      syncNativeComposerSheetLayout(currentX, { animated: false });
 
       requestAnimationFrame(() => {
         setSidebarDragX(targetX);
         sidebarDragXRef.current = targetX;
+        syncNativeComposerSheetLayout(targetX, {
+          animated: true,
+          durationMs: 300,
+          curve: 'easeOut',
+        });
       });
     },
-    [getMobileSidebarWidthPx, isDesktop, isMapOpen]
+    [getMobileSidebarWidthPx, isDesktop, isMapOpen, syncNativeComposerSheetLayout]
   );
 
   const closeMobileSidebar = useCallback(() => {
@@ -832,8 +781,9 @@ export default function ComprensionApp() {
         : Math.max(0, Math.min(width, width + deltaX));
       sidebarDragXRef.current = dragX;
       setSidebarDragX(dragX);
+      syncNativeComposerSheetLayout(dragX, { animated: false });
     },
-    [getMobileSidebarWidthPx, isDesktop, lockMainScroll]
+    [getMobileSidebarWidthPx, isDesktop, lockMainScroll, syncNativeComposerSheetLayout]
   );
 
   const handleMainTouchEnd = useCallback(() => {
@@ -901,7 +851,7 @@ export default function ComprensionApp() {
     }
 
     if (isSidebarUnderlayVisible) {
-      style.borderRadius = '48px';
+      style.borderRadius = '28px';
       style.boxShadow =
         theme === 'dark'
           ? '0 16px 48px rgba(0,0,0,0.55)'
@@ -934,16 +884,18 @@ export default function ComprensionApp() {
       if (event.propertyName !== 'transform' || !isSidebarSettling) return;
 
       const onComplete = sheetTransitionCompleteRef.current;
+      const finalX = sidebarDragXRef.current ?? 0;
       sheetTransitionCompleteRef.current = null;
       setIsSidebarSettling(false);
       setSidebarDragX(null);
       sidebarDragXRef.current = null;
+      syncNativeComposerSheetLayout(finalX, { animated: false });
       onComplete?.();
     };
 
     node.addEventListener('transitionend', handleTransitionEnd);
     return () => node.removeEventListener('transitionend', handleTransitionEnd);
-  }, [isDesktop, isSidebarSettling]);
+  }, [isDesktop, isSidebarSettling, syncNativeComposerSheetLayout]);
 
   React.useEffect(() => {
     const node = mainRef.current;
@@ -976,7 +928,7 @@ export default function ComprensionApp() {
     } else {
       document.documentElement.classList.remove('dark');
     }
-    const themeColor = theme === 'dark' ? '#1A1A1A' : '#FAFAFA';
+    const themeColor = theme === 'dark' ? '#181A1F' : '#FAFAFA';
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor);
     document
       .querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
@@ -1010,7 +962,18 @@ export default function ComprensionApp() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(MAX_UPLOAD_SIZE_MESSAGE);
+      return;
+    }
+
+    setError(null);
+    const handleLocalReadError = () => {
+      setError(LOCAL_FILE_READ_ERROR_MESSAGE);
+    };
 
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const isVideo = file.type.startsWith('video/');
@@ -1029,7 +992,7 @@ export default function ComprensionApp() {
           });
         })
         .catch(() => {
-          setError('No se pudo leer el vídeo seleccionado.');
+          setError(LOCAL_FILE_READ_ERROR_MESSAGE);
         });
     } else if (isPdf) {
       const reader = new FileReader();
@@ -1045,6 +1008,8 @@ export default function ComprensionApp() {
           mimeType: 'application/pdf',
         });
       };
+      reader.onerror = handleLocalReadError;
+      reader.onabort = handleLocalReadError;
       reader.readAsDataURL(file);
     } else {
       const reader = new FileReader();
@@ -1052,9 +1017,10 @@ export default function ComprensionApp() {
         setInputText(event.target?.result as string);
         setUploadedFile({ name: file.name, size: file.size });
       };
+      reader.onerror = handleLocalReadError;
+      reader.onabort = handleLocalReadError;
       reader.readAsText(file);
     }
-    e.target.value = '';
   };
 
   const persistRecentImages = (images: string[]) => {
@@ -1191,8 +1157,20 @@ export default function ComprensionApp() {
     setAppState('input');
   };
 
-  const handleTransform = async () => {
-    if (!inputText.trim() && !uploadedFile) return;
+  const handleTransform = async (textOverride?: string) => {
+    const activeText = textOverride ?? inputTextRef.current;
+    const trimmedText = activeText.trim();
+    const currentFile = uploadedFileRef.current;
+    if (!trimmedText && !currentFile) return;
+
+    let urlDetection: UrlInputDetection | null = null;
+    if (!currentFile && trimmedText) {
+      urlDetection = detectUrlInput(activeText);
+      if (urlDetection.kind === 'invalid') {
+        setError(urlDetection.message);
+        return;
+      }
+    }
 
     setAppState('loading');
     setError(null);
@@ -1200,88 +1178,91 @@ export default function ComprensionApp() {
     transformCancelledByUserRef.current = false;
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    const timeoutId = window.setTimeout(() => {
-      controller.abort();
-    }, TRANSFORM_TIMEOUT_MS);
 
     try {
       const mapId = generateMapId();
       const sourceLabel =
-        uploadedFile?.name || inputText.trim().split('\n')[0]?.slice(0, 80) || 'Fuente analizada';
+        currentFile?.name || trimmedText.split('\n')[0]?.slice(0, 80) || 'Fuente analizada';
       let body: TransformRequest;
-      if (uploadedFile?.isPdf && uploadedFile.fileData) {
+      if (currentFile?.isPdf && currentFile.fileData) {
         body = {
           type: 'pdf',
-          fileData: uploadedFile.fileData,
-          mimeType: uploadedFile.mimeType || 'application/pdf',
+          fileData: currentFile.fileData,
+          mimeType: currentFile.mimeType || 'application/pdf',
           preferredModel: modelPreference,
           intent,
+          depth: depthPreference,
           outputLanguage: resolvedOutputLanguage,
           sourceLabel,
           mapId,
         };
-      } else if (uploadedFile?.isVideo && uploadedFile.fileData) {
+      } else if (currentFile?.isVideo && currentFile.fileData) {
         body = {
           type: 'video',
-          fileData: uploadedFile.fileData,
-          mimeType: uploadedFile.mimeType || 'video/mp4',
+          fileData: currentFile.fileData,
+          mimeType: currentFile.mimeType || 'video/mp4',
           preferredModel: modelPreference,
           intent,
+          depth: depthPreference,
           outputLanguage: resolvedOutputLanguage,
           sourceLabel,
           mapId,
         };
-        if (inputText.trim()) body.text = inputText.trim();
-      } else if (uploadedFile?.isImage && uploadedFile.fileData) {
+        if (trimmedText) body.text = trimmedText;
+      } else if (currentFile?.isImage && currentFile.fileData) {
         body = {
           type: 'image',
-          fileData: uploadedFile.fileData,
-          mimeType: uploadedFile.mimeType || 'image/jpeg',
+          fileData: currentFile.fileData,
+          mimeType: currentFile.mimeType || 'image/jpeg',
           preferredModel: modelPreference,
           intent,
+          depth: depthPreference,
           outputLanguage: resolvedOutputLanguage,
           sourceLabel,
           mapId,
         };
-        if (inputText.trim()) body.text = inputText.trim();
-      } else if (uploadedFile && inputText.trim()) {
+        if (trimmedText) body.text = trimmedText;
+      } else if (currentFile && trimmedText) {
         body = {
-          text: inputText,
+          text: activeText,
           type: 'text',
           preferredModel: modelPreference,
           intent,
+          depth: depthPreference,
           outputLanguage: resolvedOutputLanguage,
           sourceLabel,
           mapId,
         };
       } else {
-        const trimmed = inputText.trim();
-        if (isYouTubeUrl(trimmed)) {
+        if (urlDetection?.kind === 'youtube') {
           body = {
-            text: trimmed,
+            text: urlDetection.url,
             type: 'youtube',
             preferredModel: modelPreference,
             intent,
+            depth: depthPreference,
             outputLanguage: resolvedOutputLanguage,
-            sourceLabel: trimmed,
+            sourceLabel: urlDetection.url,
             mapId,
           };
-        } else if (isSingleUrl(trimmed)) {
+        } else if (urlDetection?.kind === 'link') {
           body = {
-            text: trimmed,
+            text: urlDetection.url,
             type: 'link',
             preferredModel: modelPreference,
             intent,
+            depth: depthPreference,
             outputLanguage: resolvedOutputLanguage,
-            sourceLabel: trimmed,
+            sourceLabel: urlDetection.url,
             mapId,
           };
         } else {
           body = {
-            text: cleanTranscript(inputText),
+            text: cleanTranscript(activeText),
             type: 'text',
             preferredModel: modelPreference,
             intent,
+            depth: depthPreference,
             outputLanguage: resolvedOutputLanguage,
             sourceLabel,
             mapId,
@@ -1292,72 +1273,104 @@ export default function ComprensionApp() {
       const accessToken = supabase
         ? (await supabase.auth.getSession()).data.session?.access_token
         : undefined;
-      const response = (await fetchWithRetry(apiUrl('/api/transform'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      })) as Response;
+      const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
 
-      const parsed = await response.json();
-      if (parsed.error) throw new Error(parsed.error);
-      const parsedData = normalizeMapData(parsed);
-      if (!parsedData) throw new Error('No se pudo interpretar el mapa generado.');
+      let hasShownPartial = false;
+      setIsStreamGenerating(true);
 
-      const session: SavedSession = {
-        data: parsedData,
-        currentStep: 0,
-        isComplete: false,
-        viewAll: false,
+      const saveCompletedMap = (parsedData: ActionMapData) => {
+        const session: SavedSession = {
+          data: parsedData,
+          currentStep: 0,
+          isComplete: false,
+          viewAll: false,
+        };
+        const sourceType = resolveSourceType(activeText, currentFile);
+
+        setHistoryStore((prev) => {
+          const updated = createEntry(prev, session, sourceType, mapId);
+          if (!saveHistory(updated)) {
+            setStorageError('No se pudo guardar el historial. Espacio de almacenamiento lleno.');
+          }
+          return updated;
+        });
+
+        setData(parsedData);
+        setIntent(parsedData.intent ?? intent);
+        setChatHistory([]);
+        setChatInput('');
+        setChatError(null);
+        setChatOpen(false);
+        setAppState('result');
+        setCurrentStep(0);
+        setIsComplete(false);
+        setViewAll(false);
+        setIsIndexExpanded(true);
+        setIsMapOpen(isDesktop);
       };
-      const sourceType = resolveSourceType(inputText, uploadedFile);
 
-      setHistoryStore((prev) => {
-        const updated = createEntry(prev, session, sourceType, mapId);
-        if (!saveHistory(updated)) {
-          setStorageError('No se pudo guardar el historial. Espacio de almacenamiento lleno.');
-        }
-        return updated;
+      await fetchTransformWithProgress({
+        streamUrl: apiUrl('/api/transform/stream'),
+        fallbackUrl: apiUrl('/api/transform'),
+        body,
+        headers,
+        signal: controller.signal,
+        handlers: {
+          onPartial: (partialMap) => {
+            if (!hasShownPartial) {
+              hasShownPartial = true;
+              setAppState('result');
+              setCurrentStep(0);
+              setIsComplete(false);
+              setViewAll(false);
+              setIsIndexExpanded(true);
+              setIsMapOpen(isDesktop);
+              setChatHistory([]);
+              setChatInput('');
+              setChatError(null);
+              setChatOpen(false);
+            }
+            setData(partialMap);
+            setIntent(partialMap.intent ?? intent);
+          },
+          onDone: (finalMap) => {
+            saveCompletedMap(finalMap);
+          },
+          onError: (message) => {
+            throw new Error(message);
+          },
+        },
       });
-
-      setData(parsedData);
-      setIntent(parsedData.intent ?? intent);
-      setChatHistory([]);
-      setChatInput('');
-      setChatError(null);
-      setChatOpen(false);
-      setAppState('result');
-      setCurrentStep(0);
-      setIsComplete(false);
-      setViewAll(false);
-      setIsIndexExpanded(true);
-      setIsMapOpen(isDesktop);
     } catch (err: any) {
       if (err.name === 'AbortError') {
         if (transformCancelledByUserRef.current) {
           setAppState('input');
           return;
         }
-        setError(TRANSFORM_TIMEOUT_MESSAGE);
+        setError(TRANSFORM_IDLE_TIMEOUT_MESSAGE);
         setAppState('input');
         return;
       }
       console.error(err);
       const rawMessage = err.message || '';
-      const friendlyMessage = rawMessage.includes('did not match the expected pattern')
-        ? 'No se pudo conectar con el servidor. Comprueba tu conexión a internet e inténtalo de nuevo.'
-        : rawMessage ||
-          'No se pudo procesar el contenido. Revisa tu conexión o asegúrate de haber proveido una API KEY correcta en las variables de entorno.';
+      const transformSourceKind =
+        urlDetection?.kind === 'youtube' || urlDetection?.kind === 'link'
+          ? urlDetection.kind
+          : undefined;
+      const friendlyMessage =
+        friendlyTransformError(rawMessage, transformSourceKind) ||
+        'No se pudo procesar el contenido. Revisa tu conexión o asegúrate de haber proveido una API KEY correcta en las variables de entorno.';
       setError(friendlyMessage);
       setAppState('input');
     } finally {
-      window.clearTimeout(timeoutId);
+      setIsStreamGenerating(false);
       abortControllerRef.current = null;
     }
   };
+
+  React.useLayoutEffect(() => {
+    handleTransformRef.current = handleTransform;
+  });
 
   const handleNewMap = () => {
     setHistoryStore((prev) => {
@@ -1546,10 +1559,14 @@ export default function ComprensionApp() {
   const scrollToSection = useCallback((idx: number) => {
     const id = idx === 0 ? 'section-resumen' : `section-step-${idx}`;
     const el = document.getElementById(id);
-    if (!el) return;
+    const scrollRoot = contentRef.current;
+    if (!el || !scrollRoot) return;
 
     scrollSpyLockRef.current = true;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const rootRect = scrollRoot.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const scrollTop = scrollRoot.scrollTop + (elRect.top - rootRect.top);
+    scrollRoot.scrollTo({ top: scrollTop, behavior: 'smooth' });
     window.setTimeout(() => {
       scrollSpyLockRef.current = false;
     }, 700);
@@ -1580,10 +1597,7 @@ export default function ComprensionApp() {
     const scrollRoot = contentRef.current;
     if (!scrollRoot) return;
 
-    const previousScrollBehavior = scrollRoot.style.scrollBehavior;
-    scrollRoot.style.scrollBehavior = 'auto';
-    scrollRoot.scrollTop = 0;
-    scrollRoot.style.scrollBehavior = previousScrollBehavior;
+    scrollRoot.scrollTo({ top: 0, behavior: 'auto' });
 
     const SHOW_THRESHOLD = 8;
     const HIDE_THRESHOLD = 120;
@@ -1591,8 +1605,9 @@ export default function ComprensionApp() {
     let footerVisible = false;
 
     const evaluate = () => {
-      if (!scrollRoot) return;
-      const { scrollTop, scrollHeight, clientHeight } = scrollRoot;
+      const scrollHeight = scrollRoot.scrollHeight;
+      const clientHeight = scrollRoot.clientHeight;
+      const scrollTop = scrollRoot.scrollTop;
       const distanceFromBottom = scrollHeight - clientHeight - scrollTop;
 
       let nextVisible = footerVisible;
@@ -1627,9 +1642,6 @@ export default function ComprensionApp() {
 
     const resizeObserver = new ResizeObserver(evaluate);
     resizeObserver.observe(scrollRoot);
-    if (scrollRoot.firstElementChild) {
-      resizeObserver.observe(scrollRoot.firstElementChild);
-    }
 
     return () => {
       scrollRoot.removeEventListener('scroll', onScroll);
@@ -1734,48 +1746,20 @@ export default function ComprensionApp() {
     const positionClass =
       align === 'up' ? 'bottom-full left-0 mb-2' : 'left-full bottom-0 ml-2';
 
-    return (
-      <div
-        className={`absolute z-[60] w-72 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-xl overflow-hidden ${positionClass}`}
-        role="menu"
-      >
-        <div className="px-3 py-2.5 border-b border-neutral-200 dark:border-white/10">
-          <p className="text-[10px] font-bold tracking-widest uppercase text-neutral-400">Modelo</p>
-        </div>
-        <div className="py-1 max-h-52 overflow-y-auto">
-          {MODEL_OPTIONS.map((option) => {
-            const isActive = modelPreference === option.id;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                role="menuitemradio"
-                aria-checked={isActive}
-                disabled={appState === 'loading'}
-                onClick={() => {
-                  setModelPreference(option.id);
-                  saveModelPreference(option.id);
-                }}
-                className={`w-full text-left px-3 py-2.5 flex items-start gap-2 transition-colors disabled:opacity-50 ${
-                  isActive
-                    ? 'bg-indigo-50 dark:bg-indigo-500/10'
-                    : 'hover:bg-neutral-50 dark:hover:bg-white/5'
-                }`}
-              >
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-semibold text-neutral-800 dark:text-neutral-200">
-                    {option.label}
-                  </span>
-                  <span className="block text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                    {option.hint}
-                  </span>
-                </span>
-                {isActive && <Check className="w-4 h-4 shrink-0 text-indigo-600 dark:text-indigo-400 mt-0.5" />}
-              </button>
-            );
-          })}
-        </div>
-        <div className="border-t border-neutral-200 dark:border-white/10">
+    const glassMenuClass =
+      'absolute z-[60] w-72 rounded-[20px] overflow-hidden bg-white/80 dark:bg-neutral-900/80 backdrop-blur-2xl backdrop-saturate-150 shadow-[0_12px_40px_rgba(0,0,0,0.18),inset_0_1px_1px_rgba(255,255,255,0.6)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.08)]';
+
+    if (profileMenuView === 'settings') {
+      return (
+        <div className={`${glassMenuClass} ${positionClass}`} role="menu">
+          <button
+            type="button"
+            onClick={() => setProfileMenuView('root')}
+            className="w-full flex items-center gap-2 px-3 py-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50/80 dark:hover:bg-white/5 transition-colors border-b border-neutral-200/60 dark:border-white/10"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Ajustes
+          </button>
           <div className="px-3 py-2.5">
             <p className="text-[10px] font-bold tracking-widest uppercase text-neutral-400">Experiencia</p>
           </div>
@@ -1792,6 +1776,7 @@ export default function ComprensionApp() {
                   onClick={() => {
                     if (isActive) return;
                     setProfileMenuOpen(false);
+                    setProfileMenuView('root');
                     switchAppVariant(option.id);
                   }}
                   className={`w-full text-left px-3 py-2.5 flex items-start gap-2 transition-colors disabled:opacity-50 ${
@@ -1813,126 +1798,121 @@ export default function ComprensionApp() {
               );
             })}
           </div>
+          <div className="border-t border-neutral-200/60 dark:border-white/10 py-1">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => toggleTheme()}
+              className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors"
+            >
+              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+              {theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
+            </button>
+          </div>
         </div>
-        <div className="border-t border-neutral-200 dark:border-white/10 py-1">
-          {isCloudSyncConfigured && !cloudUser && (
-            <>
-              <p className="px-3 pt-2 text-[10px] font-bold tracking-widest uppercase text-neutral-400">Sincronización</p>
-              <div className="px-3 py-2 space-y-2">
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => void signInWith('google')}
-                  className="w-full rounded-lg border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 px-3 py-2.5 text-sm font-semibold text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors"
-                >
-                  Continuar con Google
-                </button>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 text-center leading-snug">
-                  Un clic. La sesión queda guardada en este navegador.
-                </p>
-              </div>
-              <form
-                className="px-3 py-2 space-y-2 border-t border-neutral-200 dark:border-white/10"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  setAuthError(null);
-                  setAuthBusy(true);
-                  const action = authIsSignUp
-                    ? signUpWithPassword(authEmail, authPassword)
-                    : signInWithPassword(authEmail, authPassword);
-                  void action
-                    .then(() => {
-                      setAuthPassword('');
-                      setProfileMenuOpen(false);
-                    })
-                    .catch((err) => setAuthError(authErrorMessage(err)))
-                    .finally(() => setAuthBusy(false));
-                }}
+      );
+    }
+
+    return (
+      <div className={`${glassMenuClass} ${positionClass}`} role="menu">
+        {isCloudSyncConfigured && !cloudUser && (
+          <>
+            <p className="px-3 pt-3 text-[10px] font-bold tracking-widest uppercase text-neutral-400">Sincronización</p>
+            <div className="px-3 py-2 space-y-2">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void signInWith('google')}
+                className="w-full rounded-lg border border-neutral-200/60 dark:border-white/10 bg-white/60 dark:bg-neutral-900/60 px-3 py-2.5 text-sm font-semibold text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors"
               >
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">O con email y contraseña</p>
-                <input
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={authEmail}
-                  onChange={(event) => setAuthEmail(event.target.value)}
-                  placeholder="tu@email.com"
-                  className="w-full rounded-lg border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 px-2.5 py-2 text-sm"
-                />
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  autoComplete={authIsSignUp ? 'new-password' : 'current-password'}
-                  value={authPassword}
-                  onChange={(event) => setAuthPassword(event.target.value)}
-                  placeholder="Contraseña (mín. 6)"
-                  className="w-full rounded-lg border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 px-2.5 py-2 text-sm"
-                />
-                <button
-                  type="submit"
-                  disabled={authBusy}
-                  className="w-full rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 px-2.5 py-2 text-sm font-medium disabled:opacity-50"
-                >
-                  {authBusy ? 'Entrando…' : authIsSignUp ? 'Crear cuenta' : 'Entrar'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthIsSignUp((value) => !value);
-                    setAuthError(null);
-                  }}
-                  className="w-full text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-                >
-                  {authIsSignUp ? '¿Ya tienes cuenta? Entrar' : '¿Primera vez? Crear cuenta'}
-                </button>
-                {authError && <p className="text-xs text-red-500">{authError}</p>}
-              </form>
-            </>
-          )}
-          {cloudUser && (
-            <div className="px-3 py-2">
-              <p className="text-[10px] font-bold tracking-widest uppercase text-emerald-600 dark:text-emerald-400">
-                Cuenta conectada
-              </p>
-              <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-300 truncate">
-                {cloudUser.email ?? 'tu cuenta'}
-              </p>
-              <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-                Tu historial se sincroniza entre dispositivos.
+                Continuar con Google
+              </button>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 text-center leading-snug">
+                Un clic. La sesión queda guardada en este navegador.
               </p>
             </div>
-          )}
+            <form
+              className="px-3 py-2 space-y-2 border-t border-neutral-200/60 dark:border-white/10"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setAuthError(null);
+                setAuthBusy(true);
+                const action = authIsSignUp
+                  ? signUpWithPassword(authEmail, authPassword)
+                  : signInWithPassword(authEmail, authPassword);
+                void action
+                  .then(() => {
+                    setAuthPassword('');
+                    setProfileMenuOpen(false);
+                    setProfileMenuView('root');
+                  })
+                  .catch((err) => setAuthError(authErrorMessage(err)))
+                  .finally(() => setAuthBusy(false));
+              }}
+            >
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">O con email y contraseña</p>
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                value={authEmail}
+                onChange={(event) => setAuthEmail(event.target.value)}
+                placeholder="tu@email.com"
+                className="w-full rounded-lg border border-neutral-200 dark:border-white/10 bg-white/80 dark:bg-neutral-900/80 px-2.5 py-2 text-sm"
+              />
+              <input
+                type="password"
+                required
+                minLength={6}
+                autoComplete={authIsSignUp ? 'new-password' : 'current-password'}
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                placeholder="Contraseña (mín. 6)"
+                className="w-full rounded-lg border border-neutral-200 dark:border-white/10 bg-white/80 dark:bg-neutral-900/80 px-2.5 py-2 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={authBusy}
+                className="w-full rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 px-2.5 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {authBusy ? 'Entrando…' : authIsSignUp ? 'Crear cuenta' : 'Entrar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthIsSignUp((value) => !value);
+                  setAuthError(null);
+                }}
+                className="w-full text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                {authIsSignUp ? '¿Ya tienes cuenta? Entrar' : '¿Primera vez? Crear cuenta'}
+              </button>
+              {authError && <p className="text-xs text-red-500">{authError}</p>}
+            </form>
+          </>
+        )}
+        <div className="py-1 border-t border-neutral-200/60 dark:border-white/10">
           <button
             type="button"
             role="menuitem"
-            onClick={() => {
-              toggleTheme();
-              setProfileMenuOpen(false);
-            }}
+            onClick={() => setProfileMenuView('settings')}
             className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors"
-          >
-            {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-            {theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled
-            className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 text-sm font-medium text-neutral-400 cursor-not-allowed"
           >
             <Settings className="w-4 h-4" />
-            Ajustes
+            <span className="flex-1">Ajustes</span>
+            <ChevronRight className="w-4 h-4 text-neutral-400" />
           </button>
-          {cloudUser && <button
-            type="button"
-            role="menuitem"
-            onClick={() => void signOut()}
-            className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            Cerrar sesión
-          </button>}
+          {cloudUser && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => void signOut()}
+              className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Cerrar sesión
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1946,7 +1926,12 @@ export default function ComprensionApp() {
     <div className="relative" ref={profileMenuRef}>
       <button
         type="button"
-        onClick={() => setProfileMenuOpen((open) => !open)}
+        onClick={() => {
+          setProfileMenuOpen((open) => {
+            if (open) setProfileMenuView('root');
+            return !open;
+          });
+        }}
         className={`rounded-xl transition-colors hover:bg-neutral-200/50 dark:hover:bg-white/5 ${
           variant === 'compact' ? 'p-1' : 'p-1'
         }`}
@@ -1998,8 +1983,8 @@ export default function ComprensionApp() {
     </div>
   );
 
-  const renderSidebarBrand = () => (
-    <div className="flex items-center justify-between gap-2 mb-10">
+  const renderSidebarBrand = (mobile = false) => (
+    <div className={`flex items-center justify-between gap-2${mobile ? '' : ' mb-10'}`}>
       <button
         type="button"
         onClick={handleNewMap}
@@ -2026,7 +2011,7 @@ export default function ComprensionApp() {
 
   const renderSidebar = () => (
     <aside
-      className={`fixed left-0 inset-y-0 z-10 shrink-0 bg-neutral-50 dark:bg-app-canvas border-r-0 lg:border-r lg:border-neutral-200 lg:dark:border-white/5 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] w-[var(--mobile-sidebar-width)] select-none [webkit-user-select:none] [webkit-touch-callout:none] lg:pt-0 lg:pb-0 lg:sticky lg:top-0 lg:bottom-auto lg:h-dvh lg:self-start lg:z-40 lg:w-auto ${
+      className={`fixed left-0 inset-y-0 z-10 shrink-0 bg-neutral-50 dark:bg-app-canvas border-r-0 lg:border-r lg:border-neutral-200 lg:dark:border-white/5 pb-[env(safe-area-inset-bottom)] w-[var(--mobile-sidebar-width)] select-none [webkit-user-select:none] [webkit-touch-callout:none] lg:pb-0 lg:sticky lg:top-0 lg:bottom-auto lg:h-dvh lg:self-start lg:z-40 lg:w-auto ${
         showSidebarExpanded
           ? `flex flex-col overflow-hidden lg:w-72${!isDesktop && !isMapOpen ? ' pointer-events-none' : ''}`
           : 'pointer-events-none lg:pointer-events-auto lg:overflow-visible lg:w-14'
@@ -2034,8 +2019,93 @@ export default function ComprensionApp() {
       aria-hidden={!showSidebarExpanded && !isDesktop}
     >
       {showSidebarExpanded ? (
-      <div className="flex flex-col h-full min-h-0 w-full lg:w-72">
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y px-6 pt-6 lg:pt-8 select-none [webkit-user-select:none] [webkit-touch-callout:none]">
+      <div className="sidebar-shell relative flex flex-col h-full min-h-0 w-full lg:w-72 isolate overflow-hidden">
+        <div className="mobile-sidebar relative flex-1 min-h-0 w-full lg:hidden">
+          <div className="sidebar-scroll overscroll-y-contain touch-pan-y select-none [webkit-user-select:none] [webkit-touch-callout:none]">
+            <div className="sidebar-list px-6">
+              {appState === 'result' && data && (
+                <div className="mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsIndexExpanded((prev) => !prev)}
+                    className="w-full flex items-center gap-2 mb-4 text-left rounded-lg -mx-2 px-2 py-1 hover:bg-neutral-200/50 dark:hover:bg-white/5 transition-colors"
+                    aria-expanded={isIndexExpanded}
+                  >
+                    <ChevronDown
+                      className={`w-4 h-4 shrink-0 text-neutral-400 transition-transform ${isIndexExpanded ? '' : '-rotate-90'}`}
+                    />
+                    <span className="text-xs font-bold tracking-widest uppercase text-neutral-400 dark:text-neutral-400">
+                      Índice
+                    </span>
+                  </button>
+
+                  {isIndexExpanded && (
+                    <>
+                  <nav className="flex flex-col gap-1">
+                    <button
+                      onClick={() => handleStepClick(0)}
+                      className={`text-left px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-between group ${currentStep === 0 && !isComplete ? 'bg-indigo-100/50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200/50 dark:hover:bg-white/5'}`}
+                    >
+                      <span>Idea central</span>
+                    </button>
+
+                    <div className="w-px h-6 bg-neutral-200 dark:bg-white/5 ml-8 my-1" />
+
+                    {data?.steps?.map((step: any, idx: number) => {
+                      const stepNum = idx + 1;
+                      const isActive = currentStep === stepNum && !isComplete;
+                      const isPast = currentStep > stepNum || isComplete;
+                      return (
+                        <button
+                          key={step.id}
+                          onClick={() => handleStepClick(stepNum)}
+                          className={`text-left px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-between group ${isActive ? 'bg-indigo-100/50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200/50 dark:hover:bg-white/5'}`}
+                        >
+                          <span className="flex items-center gap-3 min-w-0 lg:flex-1 lg:pr-8">
+                            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-neutral-200 dark:bg-white/10 flex items-center justify-center text-xs font-bold text-neutral-500 dark:text-neutral-400">
+                              {stepNum}
+                            </span>
+                            <span className="truncate">{step.shortNav}</span>
+                          </span>
+                          <CheckCircle2
+                            className={`w-4 h-4 shrink-0 ${
+                              isPast ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-400 dark:text-neutral-600'
+                            }`}
+                          />
+                        </button>
+                      );
+                    })}
+                  </nav>
+
+                  {!isComplete && renderViewModeToggle('mt-4')}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {storageError && (
+                <p className="text-xs text-amber-700 dark:text-amber-300 mb-4 px-1">{storageError}</p>
+              )}
+              {syncError && (
+                <p className="text-xs text-amber-700 dark:text-amber-300 mb-4 px-1">{syncError}</p>
+              )}
+
+              <HistoryPanel
+                entries={historyStore.entries}
+                activeId={historyStore.activeId}
+                disabled={appState === 'loading'}
+                showTopDivider={appState === 'result' && Boolean(data)}
+                onSelect={handleSelectHistory}
+                onDelete={handleDeleteHistory}
+                onTogglePin={handleTogglePinHistory}
+                onRename={handleRenameHistory}
+              />
+            </div>
+          </div>
+          <header className="sidebar-header px-6">{renderSidebarBrand(true)}</header>
+        </div>
+
+        <div className="hidden lg:flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-y-contain touch-pan-y px-6 pt-8 select-none [webkit-user-select:none] [webkit-touch-callout:none]">
           {renderSidebarBrand()}
 
           {appState === 'result' && data && (
@@ -2122,16 +2192,13 @@ export default function ComprensionApp() {
             {renderProfileTrigger('expanded')}
             <button
               onClick={handleNewMap}
-              className="group relative overflow-hidden flex items-center gap-2 py-2 px-4 rounded-full font-semibold text-[#1A1A1A] dark:text-[#EDEDED] bg-white/50 dark:bg-white/10 backdrop-blur-xl backdrop-saturate-150 border border-white/40 dark:border-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.6)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all duration-300 hover:bg-white/70 dark:hover:bg-white/15 hover:shadow-[0_6px_20px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.7)] active:scale-[0.97] shrink-0"
+              className="group relative overflow-hidden flex items-center gap-2 py-2.5 px-5 rounded-full font-bold text-neutral-800 dark:text-neutral-200 bg-white/30 dark:bg-white/[0.03] backdrop-blur-2xl backdrop-saturate-[1.5] shadow-[0_8px_32px_rgba(0,0,0,0.04),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,0.05)] transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:bg-white/50 dark:hover:bg-white/[0.06] hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] active:scale-[0.96] shrink-0"
               title="Nuevo mapa"
               aria-label="Nuevo mapa"
             >
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/50 to-transparent opacity-70 dark:from-white/20"
-              />
-              <SquarePen className="relative w-4 h-4" />
-              <span className="relative">Nuevo mapa</span>
+              <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 dark:from-white/10 pointer-events-none" />
+              <SquarePen className="relative z-10 w-4 h-4" />
+              <span className="relative z-10">Nuevo mapa</span>
             </button>
           </div>
         </div>
@@ -2249,13 +2316,19 @@ export default function ComprensionApp() {
       className={`animate-slide-up content-column scroll-mt-28 ${viewAll ? 'mb-20 pb-12 border-b border-neutral-200 dark:border-white/5' : ''}`}
     >
       <div className="mb-16">
-        <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-6">
           <div className="flex items-center gap-2">
             <AppIcon className="w-5 h-5 text-[#1A1A1A] dark:text-[#EDEDED]" />
             <span className="text-sm font-bold tracking-widest uppercase text-[#1A1A1A] dark:text-[#EDEDED]">
               Idea central
             </span>
           </div>
+          {!isComplete && totalMinutes !== null && (
+            <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+              <Clock className="w-4 h-4" aria-hidden="true" />
+              ~{totalMinutes} min
+            </p>
+          )}
         </div>
         <h2 className="heading-core text-[#1A1A1A] dark:text-[#EDEDED] mb-6">
           <BalancedText>{data?.coreIdea}</BalancedText>
@@ -2264,7 +2337,7 @@ export default function ComprensionApp() {
           {data?.coreSupport}
         </p>
         {data?.sourceMetadata && (
-          <div className="mt-8 rounded-2xl border border-neutral-200 dark:border-white/8 bg-white/70 dark:bg-white/[0.03] px-5 py-4">
+          <div className="mt-8 rounded-2xl bg-white/80 dark:bg-neutral-900/80 backdrop-blur-2xl backdrop-saturate-150 shadow-[0_12px_40px_rgba(0,0,0,0.12),inset_0_1px_1px_rgba(255,255,255,0.6)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.08)] overflow-hidden px-5 py-4">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
                 Fuente detectada
@@ -2453,7 +2526,7 @@ export default function ComprensionApp() {
     if (!chatOpen || !data) return null;
 
     return (
-      <div className="mt-10 rounded-3xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.03] overflow-hidden">
+      <div className="mt-10 rounded-[20px] bg-white/80 dark:bg-neutral-900/80 backdrop-blur-2xl backdrop-saturate-150 shadow-[0_12px_40px_rgba(0,0,0,0.12),inset_0_1px_1px_rgba(255,255,255,0.6)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.08)] overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-neutral-200 dark:border-white/8 px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
@@ -2506,8 +2579,8 @@ export default function ComprensionApp() {
                 key={`${turn.role}-${index}`}
                 className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                   turn.role === 'user'
-                    ? 'ml-auto max-w-[85%] bg-indigo-600 text-white'
-                    : 'max-w-[92%] bg-neutral-100 text-neutral-800 dark:bg-white/[0.05] dark:text-neutral-200'
+                    ? 'ml-auto max-w-[85%] bg-indigo-600 text-white rounded-[20px]'
+                    : 'max-w-[92%] bg-neutral-100 text-neutral-800 dark:bg-white/10 dark:text-neutral-200 rounded-[20px]'
                 }`}
               >
                 <p className="whitespace-pre-wrap">{turn.text}</p>
@@ -2543,6 +2616,53 @@ export default function ComprensionApp() {
     );
   };
 
+  const renderEssentialsReview = () => (
+    <div className="animate-fade-in content-column py-14">
+      <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">Repaso esencial</p>
+      <h2 className="mt-6 text-2xl sm:text-3xl font-extrabold text-[#1A1A1A] dark:text-[#EDEDED]">
+        {data?.coreIdea}
+      </h2>
+      {(data?.completionCard?.takeaways?.length ? data.completionCard.takeaways : data?.tldr?.map((t) => `${t.title}: ${t.desc}`) ?? []).length ? (
+        <div className="mt-8 rounded-3xl bg-white dark:bg-white/[0.03] px-5 py-5">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+            Para recordar
+          </p>
+          <ul className="mt-4 space-y-3">
+            {(data?.completionCard?.takeaways?.length
+              ? data.completionCard.takeaways
+              : data?.tldr?.map((t) => `${t.title}: ${t.desc}`) ?? []
+            )
+              .slice(0, 7)
+              .map((item, index) => (
+                <li key={`${item}-${index}`} className="flex gap-3 text-base leading-relaxed text-neutral-700 dark:text-neutral-200">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500" />
+                  <span>{item}</span>
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="mt-10 flex flex-wrap gap-3">
+        <button
+          onClick={() => setEssentialsReview(false)}
+          className="px-6 py-3 rounded-2xl font-semibold border border-neutral-200 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
+        >
+          Volver al mapa completado
+        </button>
+        <button
+          onClick={() => {
+            setEssentialsReview(false);
+            setIsComplete(false);
+            handleStepClick(0);
+          }}
+          className="px-6 py-3 rounded-2xl font-semibold border border-neutral-200 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
+        >
+          Volver al inicio
+        </button>
+      </div>
+    </div>
+  );
+
   const renderCompletion = () => (
     <div className="animate-fade-in content-column py-14">
       <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-400">
@@ -2574,13 +2694,20 @@ export default function ComprensionApp() {
 
       <div className="mt-10 grid gap-3 sm:grid-cols-2">
         <button
+          onClick={() => setEssentialsReview(true)}
+          className="px-6 py-4 rounded-2xl font-semibold border border-neutral-200 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
+        >
+          Repasar lo esencial
+        </button>
+        <button
           onClick={() => {
             setIsComplete(false);
+            setEssentialsReview(false);
             handleStepClick(0);
           }}
           className="px-6 py-4 rounded-2xl font-semibold border border-neutral-200 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
         >
-          Repasar lo esencial
+          Volver al inicio
         </button>
         <button
           onClick={() => void handleDownloadCheatsheet()}
@@ -2617,15 +2744,14 @@ export default function ComprensionApp() {
     />
   );
 
-  const renderResultHeader = (showReadingTime = false) => (
+  const renderResultHeader = () => (
     <div className="mb-12">
       <h1 className="text-xs sm:text-sm font-bold text-neutral-500 dark:text-neutral-300 uppercase tracking-[0.16em] min-w-0 leading-snug text-pretty">
         {data?.title}
       </h1>
-      {showReadingTime && totalMinutes !== null && (
-        <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
-          <Clock className="w-4 h-4" aria-hidden="true" />
-          ~{totalMinutes} min
+      {isStreamGenerating && (
+        <p className="mt-2 text-xs font-semibold text-indigo-600 dark:text-indigo-300 animate-pulse">
+          Generando mapa…
         </p>
       )}
     </div>
@@ -2641,31 +2767,38 @@ export default function ComprensionApp() {
     const hideTextInput = Boolean(uploadedFile?.isPdf);
 
     return (
-      <div className="relative flex-1 min-h-0 overflow-hidden flex flex-col bg-app-canvas">
+      <div
+        className="app-shell flex-1 relative flex flex-col bg-app-canvas"
+        style={
+          {
+            '--composer-reserved-height': `${isNativeIOS ? nativeComposerReservedHeight : 184}px`,
+          } as React.CSSProperties
+        }
+      >
         <button
           type="button"
           onClick={toggleSidebar}
-          className="absolute left-4 top-4 z-10 inline-flex lg:hidden p-2 rounded-lg text-neutral-600 hover:bg-neutral-200/70 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white transition-colors"
+          className="absolute left-6 top-4 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-neutral-500/10 text-neutral-600 shadow-[inset_0_1px_1px_rgba(255,255,255,0.5)] dark:bg-neutral-500/20 dark:text-neutral-400 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition-all duration-200 hover:bg-neutral-500/20 dark:hover:bg-white/10 hover:scale-105 active:scale-95 shrink-0"
           title="Abrir navegación"
           aria-label="Abrir navegación"
         >
-          <Menu className="w-5 h-5" />
+          <MenuTwoLines className="w-4.5 h-4.5" />
         </button>
-        <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-4 sm:px-8">
+        <div ref={contentRef} className="page-scroll flex-1 flex flex-col items-center justify-center px-4 sm:px-8">
           <div
             className="home-hero-copy text-center space-y-3 sm:space-y-4 max-w-2xl select-none"
             onSelectStart={(e) => e.preventDefault()}
           >
             <div className="inline-flex items-center justify-center mb-1">
-              <NucleoIcon className="text-[#1A1A1A] dark:text-[#EDEDED]" />
+              <AtomCanvasIcon />
             </div>
             <h1 className="text-3xl sm:text-5xl font-black tracking-tighter text-[#1A1A1A] dark:text-[#EDEDED] leading-[1.1]">
-              ¿Qué quieres entender?
+              Separa la señal del ruido.
             </h1>
             <p className="mx-auto max-w-xl text-sm sm:text-lg text-neutral-600 dark:text-neutral-300 leading-relaxed">
-              Pega, adjunta o enlaza una fuente. La convertiré en una lectura clara, completa y hecha para tu objetivo.
+              Convierte cualquier texto, enlace o PDF en un mapa cognitivo.
             </p>
-            <div className="mx-auto mt-6 grid max-w-3xl gap-3 sm:grid-cols-3">
+            <div className="mx-auto mt-6 grid max-w-3xl gap-3 sm:grid-cols-2">
               {INTENT_OPTIONS.map((option) => {
                 const Icon = option.icon;
                 const isActive = intent === option.id;
@@ -2674,18 +2807,21 @@ export default function ComprensionApp() {
                     key={option.id}
                     type="button"
                     onClick={() => setIntent(option.id)}
-                    className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+                    className={`group relative overflow-hidden rounded-[28px] px-5 py-5 text-left transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] backdrop-blur-2xl backdrop-saturate-[1.5] ${
                       isActive
-                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300'
-                        : 'border-neutral-200 bg-white/80 text-neutral-700 hover:border-neutral-300 dark:border-white/10 dark:bg-white/[0.03] dark:text-neutral-200'
+                        ? 'bg-indigo-50/70 text-indigo-900 shadow-[0_8px_32px_rgba(0,0,0,0.06),inset_0_1px_1px_rgba(255,255,255,1)] dark:bg-indigo-500/10 dark:text-indigo-200 dark:shadow-[0_8px_32px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.1)]'
+                        : 'bg-white/30 text-neutral-700 shadow-[0_8px_32px_rgba(0,0,0,0.04),inset_0_1px_1px_rgba(255,255,255,0.8)] hover:bg-white/50 hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] dark:bg-white/[0.03] dark:text-neutral-300 dark:shadow-[0_8px_32px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,0.05)] dark:hover:bg-white/[0.06]'
                     }`}
                     aria-pressed={isActive}
                   >
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-4 w-4 shrink-0" />
-                      <span className="text-sm font-semibold">{option.title}</span>
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 dark:from-white/10" />
+                    <div className="relative z-10 flex items-center gap-3">
+                      <div className={`flex items-center justify-center w-8 h-8 rounded-full shadow-[inset_0_1px_1px_rgba(255,255,255,0.5)] ${isActive ? 'bg-indigo-500/15 text-indigo-700 dark:bg-indigo-400/20 dark:text-indigo-300 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]' : 'bg-neutral-500/10 text-neutral-600 dark:bg-neutral-500/20 dark:text-neutral-400 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]'}`}>
+                        <Icon className="h-4 w-4 shrink-0" />
+                      </div>
+                      <span className="text-[15px] font-bold tracking-tight">{option.title}</span>
                     </div>
-                    <p className="mt-2 text-sm leading-relaxed text-current/80">
+                    <p className="relative z-10 mt-3 text-[13px] leading-relaxed text-current/70 font-medium">
                       {option.description}
                     </p>
                   </button>
@@ -2702,67 +2838,74 @@ export default function ComprensionApp() {
           )}
         </div>
 
-        <div className="shrink-0 px-4 sm:px-8 pb-[max(1rem,env(safe-area-inset-bottom))] bg-app-canvas">
+        {!isNativeIOS && (
+        <div className="composer-dock">
           <div className="max-w-3xl mx-auto">
-            <div className="rounded-3xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-app-canvas shadow-sm dark:shadow-none">
-              {uploadedFile && (
-                <div className="flex items-center gap-2 px-3 pt-3">
-                  {uploadedFile.isImage && uploadedFile.previewUrl ? (
-                    <div className="relative group">
-                      <img
-                        src={uploadedFile.previewUrl}
-                        alt={uploadedFile.name}
-                        className="w-16 h-16 rounded-xl object-cover border border-neutral-200 dark:border-white/10"
-                      />
-                      <button
-                        type="button"
-                        onClick={removeFile}
-                        className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-neutral-800 text-white shadow-md hover:bg-neutral-700 transition-colors"
-                        aria-label="Quitar imagen"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="inline-flex items-center gap-2 max-w-full px-3 py-1.5 rounded-full bg-neutral-100 dark:bg-white/5 text-sm text-neutral-700 dark:text-neutral-300">
-                      <File className="w-4 h-4 shrink-0 opacity-70" />
-                      <span className="truncate max-w-[220px]">{uploadedFile.name}</span>
-                      <button
-                        type="button"
-                        onClick={removeFile}
-                        className="p-0.5 rounded-full hover:bg-neutral-200 dark:hover:bg-white/10 transition-colors"
-                        aria-label="Quitar archivo"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+            <div className="relative overflow-visible group" ref={attachMenuRef}>
+              <div className="relative overflow-hidden rounded-[22px] bg-white/40 dark:bg-[#3F4142] backdrop-blur-3xl dark:backdrop-blur-[40px] backdrop-saturate-[1.5] dark:backdrop-saturate-[2] shadow-[0_12px_40px_rgba(0,0,0,0.06),inset_0_1px_1px_rgba(255,255,255,1)] dark:shadow-[0_2px_24px_rgba(0,0,0,0.25),inset_0_1px_0.5px_#626463,inset_0_-1px_0.5px_#626463] transition-all duration-500 hover:shadow-[0_16px_48px_rgba(0,0,0,0.08)]">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 dark:from-white/10 pointer-events-none" />
+                <div className="relative z-10">
+                  {uploadedFile && (
+                  <div className="flex items-center gap-2 px-6 pt-5 pb-1">
+                    {uploadedFile.isImage && uploadedFile.previewUrl ? (
+                      <div className="relative group">
+                        <img
+                          src={uploadedFile.previewUrl}
+                          alt={uploadedFile.name}
+                          className="w-16 h-16 rounded-xl object-cover border border-neutral-200 dark:border-white/10"
+                        />
+                        <button
+                          type="button"
+                          onClick={removeFile}
+                          className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-neutral-800 text-white shadow-md hover:bg-neutral-700 transition-colors"
+                          aria-label="Quitar imagen"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-2 max-w-full px-3 py-1.5 rounded-full bg-neutral-100 dark:bg-white/5 text-sm text-neutral-700 dark:text-neutral-300">
+                        <File className="w-4 h-4 shrink-0 opacity-70" />
+                        <span className="truncate max-w-[220px]">{uploadedFile.name}</span>
+                        <button
+                          type="button"
+                          onClick={removeFile}
+                          className="p-0.5 rounded-full hover:bg-neutral-200 dark:hover:bg-white/10 transition-colors"
+                          aria-label="Quitar archivo"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-              {!hideTextInput && (
-                <textarea
-                  ref={textareaRef}
-                  value={inputText}
-                  onChange={(e) => {
-                    setInputText(e.target.value);
-                    adjustComposerHeight(e.target);
-                  }}
-                  rows={1}
-                  placeholder={composerPlaceholder}
-                  className="w-full min-h-[4.75rem] max-h-[200px] px-4 py-3 bg-transparent resize-none outline-none text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 text-base leading-snug"
-                />
-              )}
+                {!hideTextInput && (
+                  <textarea
+                    ref={textareaRef}
+                    value={inputText}
+                    onChange={(e) => {
+                      setInputText(e.target.value);
+                      adjustComposerHeight(e.target);
+                    }}
+                    rows={1}
+                    placeholder={composerPlaceholder}
+                    className="w-full min-h-[5.5rem] max-h-[200px] px-6 pt-5 pb-2 bg-transparent resize-none outline-none text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 text-base leading-snug"
+                  />
+                )}
 
-              <div className="flex items-center justify-between px-2 pb-2 pt-1">
-                <div className="relative" ref={attachMenuRef}>
+                <div className="flex items-center justify-between px-4 pb-4 pt-1">
+                  <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setAttachMenuOpen((open) => !open)}
+                    onClick={() => {
+                      setModelPickerOpen(false);
+                      setAttachMenuOpen((open) => !open);
+                    }}
                     className={`p-2.5 rounded-full transition-colors ${
                       attachMenuOpen
                         ? 'bg-neutral-100 dark:bg-white/10 text-neutral-800 dark:text-neutral-200'
-                        : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5'
+                        : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10 dark:bg-white/10'
                     }`}
                     title="Adjuntar"
                     aria-label="Adjuntar"
@@ -2774,109 +2917,188 @@ export default function ComprensionApp() {
                     />
                   </button>
 
-                  {attachMenuOpen && (
-                    <div
-                      role="menu"
-                      className="absolute bottom-full left-0 mb-2 z-50 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-xl p-2 animate-fade-in"
+                  <div ref={depthPickerRef}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        setModelPickerOpen(false);
+                        setDepthPickerOpen((open) => !open);
+                      }}
+                      disabled={appState === 'loading'}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-neutral-500/10 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 disabled:opacity-50"
                     >
-                      <div className="px-1 pt-1 pb-2">
-                        <p className="px-1 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-                          Recientes
-                        </p>
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              imageInputRef.current?.click();
-                              setAttachMenuOpen(false);
-                            }}
-                            className="shrink-0 w-14 h-14 rounded-lg border border-dashed border-neutral-300 dark:border-white/20 flex items-center justify-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:border-neutral-400 dark:hover:border-white/30 transition-colors"
-                            title="Elegir imagen"
-                            aria-label="Elegir imagen"
-                          >
-                            <Plus className="w-5 h-5" />
-                          </button>
-                          {recentImages.map((url, idx) => (
-                            <button
-                              key={idx}
-                              type="button"
-                              onClick={() => attachRecentImage(url)}
-                              className="shrink-0 rounded-lg overflow-hidden border border-neutral-200 dark:border-white/10 hover:ring-2 hover:ring-indigo-400/50 transition-all"
-                              title="Adjuntar imagen reciente"
-                            >
-                              <img src={url} alt="" className="w-14 h-14 object-cover" />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {DEPTH_OPTIONS.find((o) => o.id === depthPreference)?.label ?? 'Estándar'}
+                    </button>
+                  </div>
 
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          cameraInputRef.current?.click();
-                          setAttachMenuOpen(false);
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
-                      >
-                        <Camera className="w-4 h-4 shrink-0 text-neutral-500 dark:text-neutral-400" />
-                        Cámara
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setAttachMenuOpen(false);
-                          fileInputRef.current?.click();
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
-                      >
-                        <Paperclip className="w-4 h-4 shrink-0 text-neutral-500 dark:text-neutral-400" />
-                        Añadir archivo o vídeo
-                      </button>
-                    </div>
-                  )}
+                  <div ref={modelPickerRef}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        setDepthPickerOpen(false);
+                        setModelPickerOpen((open) => !open);
+                      }}
+                      disabled={appState === 'loading'}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-neutral-500/10 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {MODEL_OPTIONS.find((o) => o.id === modelPreference)?.label ?? 'Automático'}
+                      <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                    </button>
+                  </div>
+                  </div>
+
+                  <button
+                    id="hidden-submit-btn"
+                    type="button"
+                    onClick={() => void handleTransform()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    disabled={!canSubmit || appState === 'loading'}
+                    className={`w-10 h-10 flex items-center justify-center rounded-full transition-all active:scale-95 disabled:opacity-40 select-none shrink-0 ${
+                      canSubmit && appState !== 'loading'
+                        ? 'bg-indigo-500/15 text-indigo-700 shadow-[inset_0_1px_1px_rgba(255,255,255,0.5)] dark:bg-indigo-400/20 dark:text-indigo-300 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]'
+                        : 'bg-neutral-500/10 text-neutral-400 shadow-[inset_0_1px_1px_rgba(255,255,255,0.5)] dark:bg-neutral-500/20 dark:text-neutral-500 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]'
+                    }`}
+                    title="Crear lectura"
+                    aria-label="Crear lectura"
+                  >
+                    <ArrowUp className="w-5 h-5" />
+                  </button>
                 </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".txt,.md,.csv,.rtf,.json,.html,.xml,.pdf,video/mp4,video/webm,video/quicktime"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  title="Subir archivo"
-                />
-                <input
-                  ref={cameraInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  title="Hacer una foto"
-                />
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  title="Elegir imagen"
-                />
-                <button
-                  type="button"
-                  onClick={handleTransform}
-                  disabled={!canSubmit || appState === 'loading'}
-                  className="w-9 h-9 flex items-center justify-center rounded-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white transition-all active:scale-95"
-                  title="Crear lectura"
-                  aria-label="Crear lectura"
-                >
-                  <ArrowUp className="w-5 h-5" />
-                </button>
+                </div>
               </div>
+
+              {depthPickerOpen && (
+                <div
+                  className="absolute bottom-full mb-2 z-[80] w-56 rounded-[20px] border border-neutral-200 dark:border-white/10 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-2xl shadow-xl py-1 overflow-hidden animate-fade-in"
+                  style={{ left: depthPickerLeft }}
+                >
+                  {DEPTH_OPTIONS.map((option) => {
+                    const isActive = depthPreference === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => {
+                          setDepthPreference(option.id);
+                          saveDepthPreference(option.id);
+                          setDepthPickerOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2.5 flex items-start gap-2 ${
+                          isActive ? 'bg-indigo-50 dark:bg-indigo-500/10' : 'hover:bg-neutral-50 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-semibold text-neutral-800 dark:text-neutral-200">{option.label}</span>
+                          <span className="block text-xs text-neutral-500 dark:text-neutral-400">{option.hint}</span>
+                        </span>
+                        {isActive && <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {modelPickerOpen && (
+                <div
+                  className="absolute bottom-full mb-2 z-[80] w-56 rounded-[20px] border border-neutral-200 dark:border-white/10 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-2xl shadow-xl py-1 overflow-hidden animate-fade-in"
+                  style={{ left: modelPickerLeft }}
+                >
+                  {MODEL_OPTIONS.map((option) => {
+                    const isActive = modelPreference === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => {
+                          setModelPreference(option.id);
+                          saveModelPreference(option.id);
+                          setModelPickerOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2.5 flex items-start gap-2 ${
+                          isActive ? 'bg-indigo-50 dark:bg-indigo-500/10' : 'hover:bg-neutral-50 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-semibold text-neutral-800 dark:text-neutral-200">{option.label}</span>
+                          <span className="block text-xs text-neutral-500 dark:text-neutral-400">{option.hint}</span>
+                        </span>
+                        {isActive && <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {attachMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute bottom-full left-2 mb-2 z-[80] w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-neutral-200 dark:border-white/10 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl shadow-xl p-2 animate-fade-in"
+                >
+                  <div className="px-1 pt-1 pb-2">
+                    <p className="px-1 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+                      Recientes
+                    </p>
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          imageInputRef.current?.click();
+                          setAttachMenuOpen(false);
+                        }}
+                        className="shrink-0 w-14 h-14 rounded-lg border border-dashed border-neutral-300 dark:border-white/20 flex items-center justify-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:border-neutral-400 dark:hover:border-white/30 transition-colors"
+                        title="Elegir imagen"
+                        aria-label="Elegir imagen"
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
+                      {recentImages.map((url, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => attachRecentImage(url)}
+                          className="shrink-0 rounded-lg overflow-hidden border border-neutral-200 dark:border-white/10 hover:ring-2 hover:ring-indigo-400/50 transition-all"
+                          title="Adjuntar imagen reciente"
+                        >
+                          <img src={url} alt="" className="w-14 h-14 object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      cameraInputRef.current?.click();
+                      setAttachMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
+                  >
+                    <Camera className="w-4 h-4 shrink-0 text-neutral-500 dark:text-neutral-400" />
+                    Cámara
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAttachMenuOpen(false);
+                      fileInputRef.current?.click();
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
+                  >
+                    <Paperclip className="w-4 h-4 shrink-0 text-neutral-500 dark:text-neutral-400" />
+                    Añadir archivo o vídeo
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
+        )}
       </div>
     );
   };
@@ -2957,12 +3179,14 @@ export default function ComprensionApp() {
                 className={mainScrollAreaClass}
               >
                 <div
-                  className="max-w-3xl mx-auto px-6 py-8 w-full"
+                  className={`max-w-3xl mx-auto px-6 w-full ${
+                    currentStep > 0 ? 'py-10 min-h-full flex flex-col justify-center' : 'py-8'
+                  }`}
                   style={{
                     paddingBottom: `${contentBottomPad}px`,
                   }}
                 >
-                  {currentStep === 0 && renderResultHeader(true)}
+                  {currentStep === 0 && renderResultHeader()}
 
                   {currentStep === 0 && renderResumen()}
                   {currentStep > 0 && renderStep(currentStep)}
@@ -2986,6 +3210,23 @@ export default function ComprensionApp() {
                 </motion.div>
               )}
             </div>
+
+            {!chatOpen && (
+              <button
+                type="button"
+                onClick={() => setChatOpen(true)}
+                className="fixed bottom-24 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg transition-transform active:scale-95 lg:right-8"
+                aria-label="Preguntar sobre este mapa"
+              >
+                <MessageSquareText className="h-5 w-5" />
+              </button>
+            )}
+
+            {chatOpen && (
+              <div className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-hidden px-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:px-8">
+                <div className="mx-auto max-w-3xl">{renderChatPanel()}</div>
+              </div>
+            )}
           </div>
         )}
 
@@ -3001,10 +3242,10 @@ export default function ComprensionApp() {
                     : 'pb-[calc(8rem+env(safe-area-inset-bottom))]'
                 }`}
               >
-                {renderResultHeader(!isComplete)}
+                {renderResultHeader()}
 
                 {isComplete ? (
-                  renderCompletion()
+                  essentialsReview ? renderEssentialsReview() : renderCompletion()
                 ) : (
                   <div className="animate-fade-in">
                     {renderResumen()}
@@ -3017,6 +3258,43 @@ export default function ComprensionApp() {
         )}
         </div>
       </main>
+
+      {/* Hidden inputs for file/image picking, kept outside conditional renders so native bridge can access them */}
+      {isNativeIOS && (
+        <button
+          type="button"
+          id="native-submit-bridge"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="fixed h-px w-px opacity-0 pointer-events-none overflow-hidden"
+          onClick={() => void handleTransform()}
+        />
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".txt,.md,.csv,.rtf,.json,.html,.xml,.pdf,video/mp4,video/webm,video/quicktime"
+        onChange={handleFileUpload}
+        className="hidden"
+        title="Subir archivo"
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleImageUpload}
+        className="hidden"
+        title="Hacer una foto"
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageUpload}
+        className="hidden"
+        title="Elegir imagen"
+      />
     </div>
   );
 }

@@ -1,0 +1,32 @@
+USER: <USER_REQUEST>
+Hay un bug. Toda la app se ha subido y ahora el header con el boton de abrir sidebar, vista completa, etc aparecen detras de la hora, el dynamic island, los simbolos de wifi, bateria etc, y no se puede interactuar con ello.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-29T11:13:37-04:00.
+</ADDITIONAL_METADATA>
+USER: <USER_REQUEST>
+Me has roto completamente la app. Ahora el header es translucido cuando antes no lo era y los botones inferiores desaparecen en vez de desactivarse como antes. En algun momento, no se cuando exactamente, se rompieron muchas cosas juntas.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-29T11:15:59-04:00.
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from Gemini 3.5 Flash (High) to Gemini 3.1 Pro (High). No need to 
+USER: <USER_REQUEST>
+ha vuelto a la normalidad pero a una fase muy atrasada. Habiamos hecho mejoras como lo de la barra de progreso, que en modo paso a paso no era visible en introduccion, el header que se cerraba con el scroll, los botones inferiores que se desactivaban, etc. Ademas estaba muy contento con esas mejoras.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-29T11:17:56-04:00.
+</ADDITIONAL_METADATA>
+USER: <USER_REQUEST>
+Me estas desesperando. Has perdido la logica perfecta que teniamos en el header, ahora lo que hace es subir el header a detras del dynamic island del movil y los botones inferiores no estan desactivados
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-29T11:20:32-04:00.
+</ADDITIONAL_METADATA>
+USER: <USER_REQUEST>
+Por dios, el header sigue con el mismo error y el efecto de desactivado de los botones no era ese. Busca por todas partes como era todo cuando funcionaba bien y no pares hasta arreglarlo. 
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-29T11:22:58-04:00.
+</ADDITIONAL_METADATA>

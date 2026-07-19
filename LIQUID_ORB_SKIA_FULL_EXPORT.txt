@@ -1,0 +1,676 @@
+================================================================================
+ LIQUID ORB SKIA — EXPORT COMPLETO (649 líneas)
+ Generado: 2026-07-04
+ Contiene los 2 archivos del orbe de producción Skia, sin omitir nada.
+================================================================================
+
+DEPENDENCIAS (no incluidas aquí; el orbe las importa):
+  - @shopify/react-native-skia
+  - react-native-reanimated
+  - @shared/uiTokens (BG_BASE)
+  - ../logic/skiaAvailability (isSkiaAvailable)
+  - ./ExactLiquidOrbWebView (fallback)
+
+USO EN PRODUCCIÓN:
+  <LiquidOrbSkia size={72} reduceMotion={reduceMotion} />
+
+ARCHIVOS ORIGINALES EN REPO:
+  mobile/src/components/liquidOrbLayout.ts
+  mobile/src/components/LiquidOrbSkia.tsx
+
+================================================================================
+ ARCHIVO 1/2: mobile/src/components/liquidOrbLayout.ts
+================================================================================
+
+/** Layout math extracted from ExactLiquidOrbWebView buildOrbHtml() CSS. */
+
+export function canvasDimension(orbSize: number): number {
+  return Math.round(Math.max(orbSize * 2.6, orbSize + 140));
+}
+
+export type LiquidOrbLayout = {
+  canvas: number;
+  stageOffset: number;
+  cx: number;
+  cy: number;
+  r: number;
+  glowR: number;
+  swirlR: number;
+  orbitScale: number;
+  specularCx: number;
+  specularCy: number;
+  specularW: number;
+  specularH: number;
+  causticsCx: number;
+  causticsCy: number;
+  causticsR: number;
+  nucleusSize: number;
+  shadowCx: number;
+  shadowCy: number;
+  shadowW: number;
+  shadowH: number;
+  glassGradientCx: number;
+  glassGradientCy: number;
+};
+
+export function liquidOrbLayout(orbSize: number): LiquidOrbLayout {
+  const canvas = canvasDimension(orbSize);
+  const stageOffset = (canvas - orbSize) / 2;
+  const cx = canvas / 2;
+  const cy = canvas / 2;
+  const r = orbSize / 2;
+
+  const glowR = (orbSize * 1.3) / 2;
+  const swirlR = (orbSize * 1.2) / 2;
+  const orbitScale = (orbSize * 1.3) / 100;
+
+  const specularX = stageOffset + orbSize * 0.18;
+  const specularY = stageOffset + orbSize * 0.1;
+  const specularW = orbSize * 0.4;
+  const specularH = orbSize * 0.2;
+
+  const causticsOffset = (orbSize / 96) * 16;
+  const causticsSize = (orbSize / 96) * 112;
+  const causticsCx = stageOffset - causticsOffset + causticsSize / 2;
+  const causticsCy = stageOffset - causticsOffset + causticsSize / 2;
+
+  const nucleusSize = orbSize * (1 - 2 * 0.35);
+
+  const shadowW = (orbSize / 96) * 64;
+  const shadowH = (orbSize / 96) * 8;
+  const shadowBottomOffset = (orbSize / 96) * 24;
+  const shadowCx = cx;
+  const shadowCy = stageOffset + orbSize + shadowBottomOffset - shadowH / 2;
+
+  const glassGradientCx = stageOffset + orbSize * 0.3;
+  const glassGradientCy = stageOffset + orbSize * 0.3;
+
+  return {
+    canvas,
+    stageOffset,
+    cx,
+    cy,
+    r,
+    glowR,
+    swirlR,
+    orbitScale,
+    specularCx: specularX + specularW / 2,
+    specularCy: specularY + specularH / 2,
+    specularW,
+    specularH,
+    causticsCx,
+    causticsCy,
+    causticsR: causticsSize / 2,
+    nucleusSize,
+    shadowCx,
+    shadowCy,
+    shadowW,
+    shadowH,
+    glassGradientCx,
+    glassGradientCy,
+  };
+}
+
+/** CSS border-radius percentages for nucleus-morph keyframes (0% / 50% / 100%). */
+export function nucleusCornerRadii(
+  size: number,
+  progress: number
+): { tlX: number; tlY: number; trX: number; trY: number; brX: number; brY: number; blX: number; blY: number } {
+  'worklet';
+  const lerp3 = (a: number, b: number, c: number, t: number) => {
+    if (t <= 0.5) return a + (b - a) * (t / 0.5);
+    return b + (c - b) * ((t - 0.5) / 0.5);
+  };
+
+  return {
+    tlX: lerp3(0.4, 0.6, 0.4, progress) * size,
+    trX: lerp3(0.6, 0.4, 0.6, progress) * size,
+    brX: lerp3(0.7, 0.3, 0.7, progress) * size,
+    blX: lerp3(0.3, 0.7, 0.3, progress) * size,
+    tlY: lerp3(0.4, 0.5, 0.4, progress) * size,
+    trY: lerp3(0.5, 0.6, 0.5, progress) * size,
+    brY: lerp3(0.6, 0.4, 0.6, progress) * size,
+    blY: lerp3(0.5, 0.5, 0.5, progress) * size,
+  };
+}
+
+================================================================================
+ ARCHIVO 2/2: mobile/src/components/LiquidOrbSkia.tsx
+================================================================================
+
+import React, { useEffect, useMemo } from 'react';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  BlurMask,
+  Canvas,
+  Circle,
+  DashPathEffect,
+  Group,
+  LinearGradient,
+  Oval,
+  Path,
+  RadialGradient,
+  Rect,
+  Skia,
+  SweepGradient,
+  processTransform3d,
+  vec,
+} from '@shopify/react-native-skia';
+import {
+  cancelAnimation,
+  Easing,
+  interpolate,
+  useAnimatedReaction,
+  useDerivedValue,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
+import { BG_BASE } from '@shared/uiTokens';
+import { isSkiaAvailable } from '../logic/skiaAvailability';
+import ExactLiquidOrbWebView from './ExactLiquidOrbWebView';
+import { liquidOrbLayout, nucleusCornerRadii } from './liquidOrbLayout';
+
+const ACCENT_08 = 'rgba(139, 143, 245, 0.8)';
+const ACCENT_06 = 'rgba(139, 143, 245, 0.6)';
+const ACCENT_05 = 'rgba(139, 143, 245, 0.5)';
+const ACCENT_04 = 'rgba(139, 143, 245, 0.4)';
+const ACCENT_03 = 'rgba(139, 143, 245, 0.3)';
+const ACCENT_015 = 'rgba(139, 143, 245, 0.15)';
+
+const ORBIT_ROTATIONS = [35, -45, 80] as const;
+const DEG = Math.PI / 180;
+
+type LiquidOrbSkiaProps = {
+  size?: number;
+  reduceMotion?: boolean;
+  style?: StyleProp<ViewStyle>;
+};
+
+function useOrbAnimations(reduceMotion: boolean, orbitScale: number) {
+  const loop4s = useSharedValue(0);
+  const swirlRotation = useSharedValue(0);
+  const dashA = useSharedValue(140 * orbitScale);
+  const dashB = useSharedValue(0);
+  const causticsProgress = useSharedValue(0);
+  const nucleusProgress = useSharedValue(0);
+  const animating = useSharedValue(reduceMotion ? 0 : 1);
+
+  const levitationY = useSharedValue(0);
+  const ambientScale = useSharedValue(1);
+  const ambientOpacity = useSharedValue(0.25);
+  const shadowScale = useSharedValue(0.9);
+  const shadowOpacity = useSharedValue(0.2);
+  const swirlRotateRad = useSharedValue(0);
+  const causticsRotateRad = useSharedValue(0);
+  const causticsScale = useSharedValue(1);
+  const nucleusScale = useSharedValue(0.95);
+  const nucleusOpacity = useSharedValue(0.75);
+  const nucleusRotateRad = useSharedValue(0);
+
+  useEffect(() => {
+    animating.value = reduceMotion ? 0 : 1;
+    cancelAnimation(loop4s);
+    cancelAnimation(swirlRotation);
+    cancelAnimation(dashA);
+    cancelAnimation(dashB);
+    cancelAnimation(causticsProgress);
+    cancelAnimation(nucleusProgress);
+
+    if (reduceMotion) {
+      loop4s.value = 0;
+      swirlRotation.value = 0;
+      dashA.value = 70 * orbitScale;
+      dashB.value = 70 * orbitScale;
+      causticsProgress.value = 0;
+      nucleusProgress.value = 0;
+      levitationY.value = 0;
+      ambientScale.value = 1;
+      ambientOpacity.value = 0.25;
+      shadowScale.value = 0.9;
+      shadowOpacity.value = 0.2;
+      swirlRotateRad.value = 0;
+      causticsRotateRad.value = 0;
+      causticsScale.value = 1;
+      nucleusScale.value = 0.95;
+      nucleusOpacity.value = 0.75;
+      nucleusRotateRad.value = 0;
+      return;
+    }
+
+    ambientOpacity.value = 0.15;
+    shadowScale.value = 1;
+    shadowOpacity.value = 0.3;
+    nucleusScale.value = 0.85;
+    nucleusOpacity.value = 0.6;
+
+    loop4s.value = withRepeat(
+      withTiming(1, { duration: 4000, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      false
+    );
+    swirlRotation.value = withRepeat(
+      withTiming(360, { duration: 4000, easing: Easing.linear }),
+      -1,
+      false
+    );
+    dashA.value = 140 * orbitScale;
+    dashA.value = withRepeat(
+      withTiming(0, { duration: 700, easing: Easing.linear }),
+      -1,
+      false
+    );
+    dashB.value = withRepeat(
+      withTiming(140 * orbitScale, { duration: 700, easing: Easing.linear }),
+      -1,
+      false
+    );
+    causticsProgress.value = withRepeat(
+      withTiming(1, { duration: 6000, easing: Easing.linear }),
+      -1,
+      false
+    );
+    nucleusProgress.value = withRepeat(
+      withTiming(1, { duration: 3500, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      false
+    );
+  }, [
+    ambientOpacity,
+    ambientScale,
+    animating,
+    causticsProgress,
+    causticsRotateRad,
+    causticsScale,
+    dashA,
+    dashB,
+    levitationY,
+    loop4s,
+    nucleusOpacity,
+    nucleusProgress,
+    nucleusRotateRad,
+    nucleusScale,
+    orbitScale,
+    reduceMotion,
+    shadowOpacity,
+    shadowScale,
+    swirlRotateRad,
+    swirlRotation,
+  ]);
+
+  useAnimatedReaction(
+    () => loop4s.value,
+    (value) => {
+      if (animating.value === 0) return;
+      levitationY.value = interpolate(value, [0, 0.5, 1], [0, -12, 0]);
+      ambientScale.value = interpolate(value, [0, 0.5, 1], [1, 1.08, 1]);
+      ambientOpacity.value = interpolate(value, [0, 0.5, 1], [0.15, 0.35, 0.15]);
+      shadowScale.value = interpolate(value, [0, 0.5, 1], [1, 0.8, 1]);
+      shadowOpacity.value = interpolate(value, [0, 0.5, 1], [0.3, 0.1, 0.3]);
+    }
+  );
+
+  useAnimatedReaction(
+    () => swirlRotation.value,
+    (value) => {
+      if (animating.value === 0) return;
+      swirlRotateRad.value = value * DEG;
+    }
+  );
+
+  useAnimatedReaction(
+    () => causticsProgress.value,
+    (value) => {
+      if (animating.value === 0) return;
+      causticsRotateRad.value = interpolate(value, [0, 0.5, 1], [0, -180, -360]) * DEG;
+      causticsScale.value = interpolate(value, [0, 0.5, 1], [1, 1.15, 1]);
+    }
+  );
+
+  useAnimatedReaction(
+    () => nucleusProgress.value,
+    (value) => {
+      if (animating.value === 0) return;
+      nucleusScale.value = interpolate(value, [0, 0.5, 1], [0.85, 1.05, 0.85]);
+      nucleusOpacity.value = interpolate(value, [0, 0.5, 1], [0.6, 0.9, 0.6]);
+      nucleusRotateRad.value = interpolate(value, [0, 0.5, 1], [0, 180, 0]) * DEG;
+    }
+  );
+
+  return {
+    levitationY,
+    ambientScale,
+    ambientOpacity,
+    shadowScale,
+    shadowOpacity,
+    swirlRotateRad,
+    dashA,
+    dashB,
+    causticsRotateRad,
+    causticsScale,
+    nucleusScale,
+    nucleusOpacity,
+    nucleusRotateRad,
+    nucleusProgress,
+    animating,
+  };
+}
+
+type OrbitLayerProps = {
+  cx: number;
+  cy: number;
+  orbitScale: number;
+  rotationDeg: number;
+  dashPhase: SharedValue<number>;
+};
+
+function OrbitLayer({ cx, cy, orbitScale, rotationDeg, dashPhase }: OrbitLayerProps) {
+  const rx = 38 * orbitScale;
+  const ry = 14 * orbitScale;
+  const strokeWidth = 4 * orbitScale;
+  const intervals = useMemo(() => [60 * orbitScale, 80 * orbitScale], [orbitScale]);
+
+  const path = useMemo(() => {
+    const p = Skia.Path.Make();
+    p.addOval({ x: cx - rx, y: cy - ry, width: rx * 2, height: ry * 2 });
+    return p;
+  }, [cx, cy, rx, ry]);
+
+  return (
+    <Group
+      origin={vec(cx, cy)}
+      transform={[{ rotate: rotationDeg * DEG }]}
+      blendMode="screen"
+    >
+      <Path
+        path={path}
+        style="stroke"
+        strokeWidth={strokeWidth}
+        color={ACCENT_08}
+        strokeCap="round"
+      >
+        <DashPathEffect intervals={intervals} phase={dashPhase} />
+        <BlurMask blur={4} style="normal" respectCTM={false} />
+      </Path>
+    </Group>
+  );
+}
+
+function LiquidOrbSkiaCanvas({
+  size,
+  reduceMotion,
+}: {
+  size: number;
+  reduceMotion: boolean;
+}) {
+  const layout = useMemo(() => liquidOrbLayout(size), [size]);
+  const {
+    canvas,
+    cx,
+    cy,
+    r,
+    glowR,
+    swirlR,
+    orbitScale,
+    specularCx,
+    specularCy,
+    specularW,
+    specularH,
+    causticsCx,
+    causticsCy,
+    causticsR,
+    nucleusSize,
+    shadowCx,
+    shadowCy,
+    shadowW,
+    shadowH,
+    glassGradientCx,
+    glassGradientCy,
+  } = layout;
+
+  const anim = useOrbAnimations(reduceMotion, orbitScale);
+
+  const clipPath = useMemo(() => {
+    const p = Skia.Path.Make();
+    p.addCircle(cx, cy, r);
+    return p;
+  }, [cx, cy, r]);
+
+  const nucleusPath = useDerivedValue(() => {
+    const progress = anim.animating.value === 0 ? 0 : anim.nucleusProgress.value;
+    const corners = nucleusCornerRadii(nucleusSize, progress);
+    const x = cx - nucleusSize / 2;
+    const y = cy - nucleusSize / 2;
+    const path = Skia.Path.Make();
+    path.addRRect({
+      rect: { x, y, width: nucleusSize, height: nucleusSize },
+      topLeft: { x: corners.tlX, y: corners.tlY },
+      topRight: { x: corners.trX, y: corners.trY },
+      bottomRight: { x: corners.brX, y: corners.brY },
+      bottomLeft: { x: corners.blX, y: corners.blY },
+    });
+    return path;
+  });
+
+  const shadowMatrix = useDerivedValue(() =>
+    processTransform3d([{ scale: anim.shadowScale.value }])
+  );
+  const levitationMatrix = useDerivedValue(() =>
+    processTransform3d([{ translateY: anim.levitationY.value }])
+  );
+  const ambientMatrix = useDerivedValue(() =>
+    processTransform3d([{ scale: anim.ambientScale.value }])
+  );
+  const swirlMatrix = useDerivedValue(() =>
+    processTransform3d([{ rotate: anim.swirlRotateRad.value }])
+  );
+  const causticsMatrix = useDerivedValue(() =>
+    processTransform3d([
+      { rotate: anim.causticsRotateRad.value },
+      { scale: anim.causticsScale.value },
+    ])
+  );
+  const nucleusMatrix = useDerivedValue(() =>
+    processTransform3d([
+      { scale: anim.nucleusScale.value },
+      { rotate: anim.nucleusRotateRad.value },
+    ])
+  );
+
+  return (
+    <Canvas style={{ width: canvas, height: canvas }}>
+      <Rect x={0} y={0} width={canvas} height={canvas} color={BG_BASE} />
+
+      {/* levitation-shadow — sibling of wrapper, not translated */}
+      <Group
+        origin={vec(shadowCx, shadowCy)}
+        matrix={shadowMatrix}
+        opacity={anim.shadowOpacity}
+      >
+        <Oval
+          x={shadowCx - shadowW / 2}
+          y={shadowCy - shadowH / 2}
+          width={shadowW}
+          height={shadowH}
+          color="#000000"
+        >
+          <BlurMask blur={4} style="normal" respectCTM={false} />
+        </Oval>
+      </Group>
+
+      {/* levitation-wrapper */}
+      <Group origin={vec(cx, cy)} matrix={levitationMatrix}>
+        {/* ambient-glow */}
+        <Group
+          origin={vec(cx, cy)}
+          matrix={ambientMatrix}
+          opacity={anim.ambientOpacity}
+        >
+          <Circle cx={cx} cy={cy} r={glowR} color={ACCENT_04}>
+            <BlurMask blur={16} style="normal" respectCTM={false} />
+          </Circle>
+        </Group>
+
+        {/* glass-shell clip */}
+        <Group clip={clipPath}>
+          {/* outer box-shadow: 0 10px 30px rgba(0,0,0,0.5) */}
+          <Oval
+            x={cx - r * 0.85}
+            y={cy + r * 0.15}
+            width={r * 1.7}
+            height={r * 0.55}
+            color="rgba(0, 0, 0, 0.5)"
+          >
+            <BlurMask blur={30} style="normal" respectCTM={false} />
+          </Oval>
+
+          {/* glass radial-gradient */}
+          <Circle cx={cx} cy={cy} r={r}>
+            <RadialGradient
+              c={vec(glassGradientCx, glassGradientCy)}
+              r={r}
+              colors={['rgba(255, 255, 255, 0.12)', ACCENT_015, 'rgba(0, 0, 0, 0.65)']}
+              positions={[0, 0.5, 1]}
+            />
+          </Circle>
+
+          {/* inset 4px 4px 12px rgba(255,255,255,0.4) */}
+          <Circle cx={cx - r * 0.22} cy={cy - r * 0.22} r={r * 0.55} color="rgba(255, 255, 255, 0.4)">
+            <BlurMask blur={6} style="inner" respectCTM={false} />
+          </Circle>
+
+          {/* inset -8px -8px 24px rgba(0,0,0,0.8) */}
+          <Circle cx={cx + r * 0.22} cy={cy + r * 0.22} r={r * 0.62} color="rgba(0, 0, 0, 0.8)">
+            <BlurMask blur={12} style="inner" respectCTM={false} />
+          </Circle>
+
+          {/* inset 0 0 24px rgba(139,143,245,0.5) */}
+          <Circle cx={cx} cy={cy} r={r * 0.72} color={ACCENT_05}>
+            <BlurMask blur={12} style="inner" respectCTM={false} />
+          </Circle>
+
+          {/* specular */}
+          <Group
+            origin={vec(specularCx, specularCy)}
+            transform={[{ rotate: -25 * DEG }]}
+          >
+            <Oval
+              x={specularCx - specularW / 2}
+              y={specularCy - specularH / 2}
+              width={specularW}
+              height={specularH}
+              color="rgba(255, 255, 255, 0.4)"
+            >
+              <BlurMask blur={2} style="normal" respectCTM={false} />
+            </Oval>
+          </Group>
+
+          {/* swirl — conic-gradient, screen, blur 6, opacity 0.7 */}
+          <Group
+            origin={vec(cx, cy)}
+            matrix={swirlMatrix}
+            opacity={0.7}
+            blendMode="screen"
+          >
+            <Circle cx={cx} cy={cy} r={swirlR}>
+              <SweepGradient
+                c={vec(cx, cy)}
+                colors={['transparent', ACCENT_06, 'transparent', 'transparent']}
+                positions={[0, 0.4, 0.6, 1]}
+              />
+              <BlurMask blur={6} style="normal" respectCTM={false} />
+            </Circle>
+          </Group>
+
+          {/* orbits */}
+          <Group blendMode="screen">
+            <OrbitLayer
+              cx={cx}
+              cy={cy}
+              orbitScale={orbitScale}
+              rotationDeg={ORBIT_ROTATIONS[0]}
+              dashPhase={anim.dashA}
+            />
+            <OrbitLayer
+              cx={cx}
+              cy={cy}
+              orbitScale={orbitScale}
+              rotationDeg={ORBIT_ROTATIONS[1]}
+              dashPhase={anim.dashB}
+            />
+            <OrbitLayer
+              cx={cx}
+              cy={cy}
+              orbitScale={orbitScale}
+              rotationDeg={ORBIT_ROTATIONS[2]}
+              dashPhase={anim.dashA}
+            />
+          </Group>
+
+          {/* caustics */}
+          <Group
+            origin={vec(causticsCx, causticsCy)}
+            matrix={causticsMatrix}
+            blendMode="screen"
+          >
+            <Circle cx={causticsCx} cy={causticsCy} r={causticsR} color={ACCENT_03}>
+              <BlurMask blur={24} style="normal" respectCTM={false} />
+            </Circle>
+          </Group>
+
+          {/* nucleus */}
+          <Group
+            origin={vec(cx, cy)}
+            matrix={nucleusMatrix}
+            opacity={anim.nucleusOpacity}
+          >
+            <Path path={nucleusPath} style="fill">
+              <LinearGradient
+                start={vec(cx - nucleusSize / 2, cy + nucleusSize / 2)}
+                end={vec(cx + nucleusSize / 2, cy - nucleusSize / 2)}
+                colors={['#c7d2fe', '#8B8FF5', '#1e1a4b']}
+              />
+              <BlurMask blur={5} style="normal" respectCTM={false} />
+            </Path>
+            <Circle cx={cx} cy={cy} r={nucleusSize * 0.55} color={ACCENT_06}>
+              <BlurMask blur={12} style="normal" respectCTM={false} />
+            </Circle>
+          </Group>
+        </Group>
+      </Group>
+    </Canvas>
+  );
+}
+
+export default function LiquidOrbSkia({
+  size = 96,
+  reduceMotion = false,
+  style,
+}: LiquidOrbSkiaProps) {
+  const canvas = liquidOrbLayout(size).canvas;
+
+  if (!isSkiaAvailable()) {
+    return <ExactLiquidOrbWebView size={size} reduceMotion={reduceMotion} style={style} />;
+  }
+
+  return (
+    <View
+      style={[styles.shell, { width: canvas, height: canvas, backgroundColor: BG_BASE }, style]}
+      pointerEvents="none"
+      collapsable={false}
+    >
+      <LiquidOrbSkiaCanvas size={size} reduceMotion={reduceMotion} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  shell: {
+    overflow: 'visible',
+    borderWidth: 0,
+    shadowOpacity: 0,
+    elevation: 0,
+    alignSelf: 'center',
+  },
+});

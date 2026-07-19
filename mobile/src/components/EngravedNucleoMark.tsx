@@ -1,0 +1,173 @@
+import React, { useMemo } from 'react';
+import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Canvas,
+  LinearGradient,
+  Shadow,
+  Text,
+  matchFont,
+  vec,
+} from '@shopify/react-native-skia';
+import { useTheme } from '../context/ThemeContext';
+
+export const ENGRAVED_NUCLEO_FONT_SIZE = 40;
+export const ENGRAVED_NUCLEO_COMPACT_FONT_SIZE = 28;
+
+const WORD = 'nucleo';
+const BASE_MARK_HEIGHT = 44;
+const BASE_LETTER_GAP = 4.5;
+const BASE_BASELINE_INSET = 5;
+
+type InsetPalette = {
+  gradient: [string, string, string];
+  innerShade: string;
+  innerHighlight: string;
+};
+
+export type EngravedNucleoTone = 'hero' | 'sidebar';
+
+function paletteForTheme(isDark: boolean): InsetPalette {
+  if (isDark) {
+    return {
+      gradient: ['#1e1e1e', '#2a2a2a', '#363636'],
+      innerShade: 'rgba(0, 0, 0, 0.32)',
+      innerHighlight: 'rgba(255, 255, 255, 0.16)',
+    };
+  }
+  return {
+    gradient: ['#fbfbfb', '#fcfcfc', '#fefefe'],
+    innerShade: 'rgba(0, 0, 0, 0.07)',
+    innerHighlight: 'rgba(255, 255, 255, 0.72)',
+  };
+}
+
+function paletteForSidebar(): InsetPalette {
+  return {
+    gradient: ['#e8e8e8', '#ffffff', '#f5f5f5'],
+    innerShade: 'rgba(0, 0, 0, 0.2)',
+    innerHighlight: 'rgba(255, 255, 255, 0.42)',
+  };
+}
+
+function getMarkMetrics(fontSize: number, rowHeight?: number) {
+  const scale = fontSize / ENGRAVED_NUCLEO_FONT_SIZE;
+  const naturalHeight = BASE_MARK_HEIGHT * scale;
+  const markHeight = rowHeight ?? naturalHeight;
+  const letterGap = BASE_LETTER_GAP * scale;
+  const baselineY =
+    rowHeight != null
+      ? markHeight / 2 + fontSize * 0.3
+      : markHeight - BASE_BASELINE_INSET * scale;
+
+  return {
+    markHeight,
+    letterGap,
+    baselineY,
+    scale,
+  };
+}
+
+type LetterLayout = {
+  letter: string;
+  x: number;
+  width: number;
+};
+
+function measureLetters(
+  font: ReturnType<typeof matchFont>,
+  letterGap: number
+): LetterLayout[] {
+  const layouts: LetterLayout[] = [];
+  let x = 0;
+
+  for (const letter of WORD) {
+    const width = font.measureText(letter).width;
+    layouts.push({ letter, x, width });
+    x += width + letterGap;
+  }
+
+  return layouts;
+}
+
+type EngravedNucleoMarkProps = {
+  style?: StyleProp<ViewStyle>;
+  fontSize?: number;
+  tone?: EngravedNucleoTone;
+  /** Locks canvas height and vertically centers glyphs (sidebar header). */
+  rowHeight?: number;
+};
+
+function EngravedNucleoMark({
+  style,
+  fontSize = ENGRAVED_NUCLEO_FONT_SIZE,
+  tone = 'hero',
+  rowHeight,
+}: EngravedNucleoMarkProps) {
+  const { isDark } = useTheme();
+  const palette =
+    tone === 'sidebar' ? paletteForSidebar() : paletteForTheme(isDark);
+  const { markHeight, letterGap, baselineY, scale } = useMemo(
+    () => getMarkMetrics(fontSize, rowHeight),
+    [fontSize, rowHeight]
+  );
+
+  const font = useMemo(
+    () =>
+      matchFont({
+        fontFamily: Platform.select({ ios: 'Helvetica Neue', default: 'sans-serif' }),
+        fontSize,
+        fontWeight: '200',
+      }),
+    [fontSize]
+  );
+
+  const { layouts, canvasWidth } = useMemo(() => {
+    const letterLayouts = measureLetters(font, letterGap);
+    const width =
+      letterLayouts.length === 0
+        ? 0
+        : letterLayouts[letterLayouts.length - 1].x + letterLayouts[letterLayouts.length - 1].width;
+    return { layouts: letterLayouts, canvasWidth: width };
+  }, [font, letterGap]);
+
+  if (canvasWidth === 0) {
+    return null;
+  }
+
+  return (
+    <View
+      style={style}
+      accessibilityRole="text"
+      accessibilityLabel="nucleo"
+      pointerEvents="none"
+    >
+      <Canvas style={{ width: canvasWidth, height: markHeight }}>
+        {layouts.map(({ letter, x, width }) => (
+          <Text key={`${letter}-${x}`} x={x} y={baselineY} text={letter} font={font}>
+            <LinearGradient
+              start={vec(x, baselineY - fontSize * 0.82)}
+              end={vec(x + width, baselineY)}
+              colors={palette.gradient}
+            />
+            <Shadow
+              dx={-1.15 * scale}
+              dy={-1.25 * scale}
+              blur={2.4 * scale}
+              color={palette.innerShade}
+              inner
+            />
+            <Shadow
+              dx={1.05 * scale}
+              dy={1.2 * scale}
+              blur={1.4 * scale}
+              color={palette.innerHighlight}
+              inner
+            />
+          </Text>
+        ))}
+      </Canvas>
+    </View>
+  );
+}
+
+export default React.memo(EngravedNucleoMark);

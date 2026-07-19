@@ -1,0 +1,409 @@
+diff --git a/mobile/src/components/ReadingProgressBar.tsx b/mobile/src/components/ReadingProgressBar.tsx
+index 9cf1575..c96bdbd 100644
+--- a/mobile/src/components/ReadingProgressBar.tsx
++++ b/mobile/src/components/ReadingProgressBar.tsx
+@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
+ import Animated, {
+   Easing,
+   SharedValue,
++  useAnimatedProps,
+   useAnimatedStyle,
+   useSharedValue,
+   withTiming,
+@@ -13,6 +14,8 @@ import MenuTwoLines from './MenuTwoLines';
+ import { SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
+ import { useTheme } from '../context/ThemeContext';
+ 
++export const READING_PROGRESS_BAR_HEIGHT = 60;
++
+ type ReadingProgressBarProps = {
+   viewAll: boolean;
+   isComplete: boolean;
+@@ -22,6 +25,8 @@ type ReadingProgressBarProps = {
+   onToggleViewMode?: () => void;
+   /** UI-thread scroll ratio for fluid view-all progress (0–1). */
+   scrollProgressShared?: SharedValue<number>;
++  headerVisibleShared?: SharedValue<boolean>;
++  hideProgressLine?: boolean;
+ };
+ 
+ export default function ReadingProgressBar({
+@@ -32,6 +37,8 @@ export default function ReadingProgressBar({
+   onToggleSidebar,
+   onToggleViewMode,
+   scrollProgressShared,
++  headerVisibleShared,
++  hideProgressLine,
+ }: ReadingProgressBarProps) {
+   const { isDark } = useTheme();
+   const navIconColor = isDark ? '#d4d4d4' : '#525252';
+@@ -52,13 +59,43 @@ export default function ReadingProgressBar({
+     };
+   });
+ 
++  const headerAnimatedStyle = useAnimatedStyle(() => {
++    if (!headerVisibleShared) {
++      return { transform: [{ translateY: 0 }], opacity: 1 };
++    }
++
++    return {
++      transform: [
++        {
++          translateY: withTiming(headerVisibleShared.value ? 0 : -READING_PROGRESS_BAR_HEIGHT, {
++            duration: 250,
++          }),
++        },
++      ],
++      opacity: withTiming(headerVisibleShared.value ? 1 : 0, { duration: 200 }),
++    };
++  });
++
++  const headerAnimatedProps = useAnimatedProps(() => {
++    if (!headerVisibleShared) {
++      return { pointerEvents: 'auto' as const };
++    }
++    return {
++      pointerEvents: headerVisibleShared.value ? ('auto' as const) : ('none' as const),
++    };
++  });
++
+   const viewModeIconColor = viewAll ? (isDark ? '#a5b4fc' : '#4f46e5') : isDark ? '#a3a3a3' : '#737373';
+   const viewModeLabelClass = viewAll
+     ? 'text-indigo-700 dark:text-indigo-300'
+     : 'text-neutral-600 dark:text-neutral-300';
+ 
+   return (
+-    <View className="shrink-0 bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-white/5">
++    <Animated.View
++      animatedProps={headerAnimatedProps}
++      style={headerAnimatedStyle}
++      className="absolute left-0 right-0 top-0 z-50 bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-white/5"
++    >
+       <View className="flex-row items-center justify-between gap-3 px-3 py-2.5">
+         <View className="min-w-0 flex-1 flex-row items-center gap-4">
+           <FloatingGlassButton
+@@ -89,13 +126,15 @@ export default function ReadingProgressBar({
+           </FloatingGlassButton>
+         ) : null}
+       </View>
+-      <View className="h-2 bg-neutral-200 dark:bg-neutral-800">
+-        <Animated.View
+-          style={barStyle}
+-          className="h-full bg-indigo-600 dark:bg-indigo-500 rounded-r-full"
+-          accessibilityRole="progressbar"
+-        />
+-      </View>
+-    </View>
++      {!hideProgressLine && (
++        <View className="h-2 bg-neutral-200 dark:bg-neutral-800">
++          <Animated.View
++            style={barStyle}
++            className="h-full bg-indigo-600 dark:bg-indigo-500 rounded-r-full"
++            accessibilityRole="progressbar"
++          />
++        </View>
++      )}
++    </Animated.View>
+   );
+ }
+diff --git a/mobile/src/components/StepFooterNav.tsx b/mobile/src/components/StepFooterNav.tsx
+index abbba45..5338fce 100644
+--- a/mobile/src/components/StepFooterNav.tsx
++++ b/mobile/src/components/StepFooterNav.tsx
+@@ -6,12 +6,14 @@ import StepFooterGlassButton from './StepFooterGlassButton';
+ import { useAppSession } from '../context/AppSessionContext';
+ 
+ type StepFooterNavProps = {
++  nextDisabled?: boolean;
+   completeLabel?: string;
+ };
+ 
+-export default function StepFooterNav({ completeLabel = 'Completar mapa' }: StepFooterNavProps) {
++export default function StepFooterNav({ completeLabel = 'Completar mapa', nextDisabled }: StepFooterNavProps) {
+   const session = useAppSession();
+   const showStepFooter = !session.viewAll && !session.isComplete;
++  const streamDimmed = session.isStreamGenerating;
+ 
+   if (!showStepFooter) return null;
+ 
+@@ -20,14 +22,20 @@ export default function StepFooterNav({ completeLabel = 'Completar mapa' }: Step
+       edges={['bottom']}
+       className="border-t border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-neutral-900"
+     >
+-      <View className="py-4 px-7">
++      <View
++        className="py-4 px-7"
++        style={streamDimmed ? { opacity: 0.5 } : undefined}
++        pointerEvents={streamDimmed ? 'none' : 'auto'}
++      >
+         {session.currentStep === 0 ? (
+-          <StepFooterGlassButton
+-            variant="primary"
+-            label="Empezar a leer"
+-            onPress={() => session.goToStep(1)}
+-            icon={<ArrowRight size={20} color="#fff" />}
+-          />
++          <View style={[nextDisabled && { opacity: 0.5 }]} pointerEvents={nextDisabled ? 'none' : 'auto'}>
++            <StepFooterGlassButton
++              variant="primary"
++              label="Empezar a leer"
++              onPress={() => session.goToStep(1)}
++              icon={<ArrowRight size={20} color="#fff" />}
++            />
++          </View>
+         ) : (
+           <View className="flex-row gap-3" style={styles.row}>
+             <View style={styles.backSlot}>
+@@ -37,7 +45,7 @@ export default function StepFooterNav({ completeLabel = 'Completar mapa' }: Step
+                 onPress={() => session.goToStep(session.currentStep - 1)}
+               />
+             </View>
+-            <View style={styles.forwardSlot}>
++            <View style={[styles.forwardSlot, nextDisabled && { opacity: 0.5 }]} pointerEvents={nextDisabled ? 'none' : 'auto'}>
+               {session.currentStep < session.totalSteps ? (
+                 <StepFooterGlassButton
+                   variant="primary"
+diff --git a/mobile/src/screens/ResultScreen.tsx b/mobile/src/screens/ResultScreen.tsx
+index 473535f..f7b4a91 100644
+--- a/mobile/src/screens/ResultScreen.tsx
++++ b/mobile/src/screens/ResultScreen.tsx
+@@ -1,4 +1,4 @@
+-import React, { useCallback, useEffect, useMemo } from 'react';
++import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+ import { NativeScrollEvent, NativeSyntheticEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+ import { SafeAreaView } from 'react-native-safe-area-context';
+ import Animated, {
+@@ -73,7 +73,20 @@ const VIEW_ALL_COMPLETION_SECTION = 'pt-8 pb-8 border-t border-neutral-200 dark:
+ export default function ResultScreen() {
+   const session = useAppSession();
+   const { data } = session;
++
+   const scrollProgress = useSharedValue(0);
++  const headerVisible = useSharedValue(true);
++  const lastScrollY = useSharedValue(0);
++
++  const [hasReachedBottom, setHasReachedBottom] = useState(false);
++  const scrollViewHeightRef = useRef<number>(0);
++
++  useEffect(() => {
++    setHasReachedBottom(false);
++    headerVisible.value = true;
++    lastScrollY.value = 0;
++  }, [session.currentStep, session.viewAll, headerVisible, lastScrollY]);
++
+   const syncReadingStep = useCallback(
+     (step: number) => session.syncReadingStep(step),
+     [session]
+@@ -113,15 +126,43 @@ export default function ResultScreen() {
+   const scrollHandler = useAnimatedScrollHandler(
+     {
+       onScroll: (event) => {
++        const currentY = event.contentOffset.y;
+         const maxScroll = event.contentSize.height - event.layoutMeasurement.height;
++        const isNearBottom = currentY >= maxScroll - 30;
++
++        if (currentY > lastScrollY.value + 5 && currentY > 50) {
++          headerVisible.value = false;
++        } else if ((currentY < lastScrollY.value - 5 || currentY <= 50) && !isNearBottom) {
++          headerVisible.value = true;
++        }
++        lastScrollY.value = currentY;
++
++        if (maxScroll <= 20 || isNearBottom) {
++          runOnJS(setHasReachedBottom)(true);
++        }
++
+         scrollProgress.value =
+-          maxScroll <= 0 ? 1 : Math.min(1, Math.max(0, event.contentOffset.y / maxScroll));
+-        runOnJS(reportScrollSpy)(event.contentOffset.y, event.contentSize.height);
++          maxScroll <= 0 ? 1 : Math.min(1, Math.max(0, currentY / maxScroll));
++        runOnJS(reportScrollSpy)(currentY, event.contentSize.height);
+       },
+     },
+     [reportScrollSpy]
+   );
+ 
++  const onScrollViewLayout = (e: any) => {
++    scrollViewHeightRef.current = e.nativeEvent.layout.height;
++    if (handleScrollViewLayout) {
++      handleScrollViewLayout(e);
++    }
++  };
++
++  const handleContentSizeChange = (w: number, h: number) => {
++    const layoutH = scrollViewHeightRef.current;
++    if (layoutH > 0 && h - layoutH <= 20) {
++      setHasReachedBottom(true);
++    }
++  };
++
+   const stepKey = useMemo(() => {
+     const parts = [
+       session.viewAll ? 'view-all' : 'step-mode',
+@@ -376,12 +417,15 @@ export default function ResultScreen() {
+ 
+   return (
+     <SafeAreaView className="flex-1 bg-neutral-50 dark:bg-neutral-900" edges={['top', 'left', 'right']}>
++      <View className="flex-1 relative overflow-hidden">
+       <ReadingProgressBar
+         viewAll={session.viewAll}
+         isComplete={session.isComplete}
+         stepProgress={session.stepProgress}
+         progressLabel={session.progressLabel}
+         scrollProgressShared={scrollProgress}
++        headerVisibleShared={headerVisible}
++        hideProgressLine={!session.viewAll && !session.isComplete && session.currentStep === 0}
+         onToggleSidebar={() => session.toggleHistoryDrawer()}
+         onToggleViewMode={session.isComplete ? undefined : session.toggleViewMode}
+       />
+@@ -393,11 +437,12 @@ export default function ResultScreen() {
+       <View className="flex-1">
+         <Animated.ScrollView
+           className="flex-1"
+-          contentContainerClassName="px-5 py-5 pb-8"
++          contentContainerClassName="px-5 pt-[76px] pb-32"
+           keyboardShouldPersistTaps="handled"
+           showsVerticalScrollIndicator={!isIntroStep}
+           scrollEnabled={!session.historyOpen}
+-          onLayout={handleScrollViewLayout}
++          onLayout={onScrollViewLayout}
++          onContentSizeChange={handleContentSizeChange}
+           onScroll={scrollHandler}
+           scrollEventThrottle={16}
+         >
+@@ -461,7 +506,7 @@ export default function ResultScreen() {
+           </Animated.View>
+         </Animated.ScrollView>
+ 
+-        <StepFooterNav />
++        <StepFooterNav nextDisabled={!hasReachedBottom} />
+       </View>
+ 
+       {session.historyStore.activeId ? (
+@@ -472,6 +517,7 @@ export default function ResultScreen() {
+           mapData={data}
+         />
+       ) : null}
++      </View>
+     </SafeAreaView>
+   );
+ }
+diff --git a/mobile/src/screens/classic/ClassicResultScreen.tsx b/mobile/src/screens/classic/ClassicResultScreen.tsx
+index 951f5dc..29df048 100644
+--- a/mobile/src/screens/classic/ClassicResultScreen.tsx
++++ b/mobile/src/screens/classic/ClassicResultScreen.tsx
+@@ -1,4 +1,4 @@
+-import React, { useCallback, useEffect, useMemo } from 'react';
++import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+ import { NativeScrollEvent, NativeSyntheticEvent, Pressable, Text, View } from 'react-native';
+ import { SafeAreaView } from 'react-native-safe-area-context';
+ import Animated, {
+@@ -43,7 +43,20 @@ const VIEW_ALL_COMPLETION_SECTION = 'pt-8 pb-8 border-t border-neutral-200 dark:
+ export default function ClassicResultScreen() {
+   const session = useAppSession();
+   const { data } = session;
++
+   const scrollProgress = useSharedValue(0);
++  const headerVisible = useSharedValue(true);
++  const lastScrollY = useSharedValue(0);
++
++  const [hasReachedBottom, setHasReachedBottom] = useState(false);
++  const scrollViewHeightRef = useRef<number>(0);
++
++  useEffect(() => {
++    setHasReachedBottom(false);
++    headerVisible.value = true;
++    lastScrollY.value = 0;
++  }, [session.currentStep, session.viewAll, headerVisible, lastScrollY]);
++
+   const syncReadingStep = useCallback(
+     (step: number) => session.syncReadingStep(step),
+     [session]
+@@ -83,15 +96,43 @@ export default function ClassicResultScreen() {
+   const scrollHandler = useAnimatedScrollHandler(
+     {
+       onScroll: (event) => {
++        const currentY = event.contentOffset.y;
+         const maxScroll = event.contentSize.height - event.layoutMeasurement.height;
++        const isNearBottom = currentY >= maxScroll - 30;
++
++        if (currentY > lastScrollY.value + 5 && currentY > 50) {
++          headerVisible.value = false;
++        } else if ((currentY < lastScrollY.value - 5 || currentY <= 50) && !isNearBottom) {
++          headerVisible.value = true;
++        }
++        lastScrollY.value = currentY;
++
++        if (maxScroll <= 20 || isNearBottom) {
++          runOnJS(setHasReachedBottom)(true);
++        }
++
+         scrollProgress.value =
+-          maxScroll <= 0 ? 1 : Math.min(1, Math.max(0, event.contentOffset.y / maxScroll));
+-        runOnJS(reportScrollSpy)(event.contentOffset.y, event.contentSize.height);
++          maxScroll <= 0 ? 1 : Math.min(1, Math.max(0, currentY / maxScroll));
++        runOnJS(reportScrollSpy)(currentY, event.contentSize.height);
+       },
+     },
+     [reportScrollSpy]
+   );
+ 
++  const onScrollViewLayout = (e: any) => {
++    scrollViewHeightRef.current = e.nativeEvent.layout.height;
++    if (handleScrollViewLayout) {
++      handleScrollViewLayout(e);
++    }
++  };
++
++  const handleContentSizeChange = (w: number, h: number) => {
++    const layoutH = scrollViewHeightRef.current;
++    if (layoutH > 0 && h - layoutH <= 20) {
++      setHasReachedBottom(true);
++    }
++  };
++
+   const stepKey = useMemo(() => {
+     const parts = [
+       session.viewAll ? 'view-all' : 'step-mode',
+@@ -251,12 +292,15 @@ export default function ClassicResultScreen() {
+ 
+   return (
+     <SafeAreaView className="flex-1 bg-neutral-50 dark:bg-neutral-900" edges={['top', 'left', 'right']}>
++      <View className="flex-1 relative overflow-hidden">
+       <ReadingProgressBar
+         viewAll={session.viewAll}
+         isComplete={session.isComplete}
+         stepProgress={session.stepProgress}
+         progressLabel={session.progressLabel}
+         scrollProgressShared={scrollProgress}
++        headerVisibleShared={headerVisible}
++        hideProgressLine={!session.viewAll && !session.isComplete && session.currentStep === 0}
+         onToggleSidebar={() => session.toggleHistoryDrawer()}
+         onToggleViewMode={session.isComplete ? undefined : session.toggleViewMode}
+       />
+@@ -264,11 +308,12 @@ export default function ClassicResultScreen() {
+       <View className="flex-1">
+         <Animated.ScrollView
+           className="flex-1"
+-          contentContainerClassName="px-5 py-5 pb-8"
++          contentContainerClassName="px-5 pt-[76px] pb-32"
+           keyboardShouldPersistTaps="handled"
+           showsVerticalScrollIndicator={!isIntroStep}
+           scrollEnabled={!session.historyOpen}
+-          onLayout={handleScrollViewLayout}
++          onLayout={onScrollViewLayout}
++          onContentSizeChange={handleContentSizeChange}
+           onScroll={scrollHandler}
+           scrollEventThrottle={16}
+         >
+@@ -314,8 +359,9 @@ export default function ClassicResultScreen() {
+           </Animated.View>
+         </Animated.ScrollView>
+ 
+-        <StepFooterNav completeLabel="Finalizar" />
++        <StepFooterNav completeLabel="Finalizar" nextDisabled={!hasReachedBottom} />
+       </View>
++    </View>
+     </SafeAreaView>
+   );
+ }

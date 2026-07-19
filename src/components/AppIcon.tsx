@@ -18,7 +18,7 @@ export default function AppIcon({ className, ...props }: AppIconProps) {
         rx="9.2"
         ry="3.7"
         stroke="currentColor"
-        strokeWidth="1.35"
+        strokeWidth="0.95"
         strokeLinecap="round"
       />
       <ellipse
@@ -27,7 +27,7 @@ export default function AppIcon({ className, ...props }: AppIconProps) {
         rx="9.2"
         ry="3.7"
         stroke="currentColor"
-        strokeWidth="1.35"
+        strokeWidth="0.95"
         strokeLinecap="round"
         transform="rotate(60 12 12)"
       />
@@ -37,11 +37,11 @@ export default function AppIcon({ className, ...props }: AppIconProps) {
         rx="9.2"
         ry="3.7"
         stroke="currentColor"
-        strokeWidth="1.35"
+        strokeWidth="0.95"
         strokeLinecap="round"
         transform="rotate(120 12 12)"
       />
-      <circle cx="12" cy="12" r="2.75" fill="currentColor" />
+      <circle cx="12" cy="12" r="2.35" fill="currentColor" />
     </svg>
   );
 }

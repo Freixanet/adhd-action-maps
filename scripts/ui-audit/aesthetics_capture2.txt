@@ -1,0 +1,73 @@
+# Part 2 — result states + drawer + profile + dark mode
+
+# Result intro (should be on result from previous script)
+screenshot:/tmp/aest_result_intro_light.png
+wait:0.5
+
+# Open drawer
+tap-label~:Abrir navegación
+wait:1.2
+screenshot:/tmp/aest_drawer_open_light.png
+
+# Profile menu
+tap-label~:Cuenta y ajustes
+wait:1
+screenshot:/tmp/aest_profile_menu_light.png
+
+# Settings submenu
+tap-label:Ajustes
+wait:1
+screenshot:/tmp/aest_settings_menu_light.png
+
+# Toggle dark mode
+tap-label~:Activar modo oscuro
+wait:1.5
+
+# Close menus - tap backdrop
+tap-xy:350,400
+wait:0.8
+tap-xy:350,400
+wait:0.8
+
+# Dark mode input
+tap-label~:Crear mapa
+wait:1.5
+screenshot:/tmp/aest_input_empty_dark.png
+wait:0.5
+
+# Dark attach menu
+tap-label~:Adjuntar
+wait:1
+screenshot:/tmp/aest_attach_menu_dark.png
+tap-xy:320,400
+wait:0.8
+
+# Dark model chip
+tap-label~:Modo:
+wait:1
+screenshot:/tmp/aest_model_chip_dark.png
+tap-xy:201,100
+wait:0.8
+
+# Go to result via history
+tap-label~:Abrir navegación
+wait:1.2
+tap-label~:El Ciclo
+wait:2
+screenshot:/tmp/aest_result_intro_dark.png
+
+# Step 1 - tap Empezar a leer then Siguiente
+tap-scroll~:Empezar a leer
+wait:1.5
+screenshot:/tmp/aest_result_step1_dark.png
+tap-scroll~:Siguiente
+wait:1.5
+screenshot:/tmp/aest_result_step2_dark.png
+
+# View all mode
+tap-label~:Mapa completo
+wait:1.5
+screenshot:/tmp/aest_result_viewall_top_dark2.png
+swipe:201,700,201,250,0.35
+wait:1
+screenshot:/tmp/aest_result_viewall_scrolled_dark2.png

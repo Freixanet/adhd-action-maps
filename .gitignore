@@ -8,8 +8,11 @@ coverage/
 !.env.example
 !.env.staging.example
 
+# Local browser automation profile (cache, cookies, login data)
+chrome-profile/
+
 # Native build artifacts
-android-native/.gradle/
+**/.gradle/
 android-native/build/
 android-native/app/build/
 android-native/local.properties

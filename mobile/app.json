@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Nucleo",
+    "slug": "nucleo",
+    "version": "1.0.0",
+    "scheme": "nucleo",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.freixanet.nucleo"
+    },
+    "android": {
+      "package": "com.freixanet.nucleo",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "assetBundlePatterns": [
+      "assets/**/*"
+    ],
+    "plugins": [
+      "expo-dev-client",
+      "expo-asset",
+      [
+        "expo-widgets",
+        {
+          "groupIdentifier": "group.com.freixanet.nucleo"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permite acceder a tus fotos para adjuntar imágenes y videos.",
+          "cameraPermission": "Permite usar la cámara para adjuntar fotos."
+        }
+      ],
+      "expo-web-browser",
+      "expo-sharing"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "50a15b7b-c758-471b-ac20-c630111dcfa2"
+      }
+    },
+    "owner": "mfreixanets-team"
+  }
+}

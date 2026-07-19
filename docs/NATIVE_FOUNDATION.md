@@ -2,43 +2,40 @@
 
 This document tracks the reversible native migration without replacing the web app.
 
-## Current status
+## Current status (2026-06-26)
 
 | Phase | Status | Notes |
 | --- | --- | --- |
-| Backup / safety | Ready | `scripts/backup-working-tree.sh` creates a dated tarball outside the repo, excluding secrets and build artifacts. |
-| Shared contract | Done | [`src/contracts.ts`](../src/contracts.ts) defines `MapRecord`, `SavedSession`, `TransformRequest`. |
-| Express / Railway | Done | [`server.ts`](../server.ts) keeps `/api/transform`, adds optional Supabase auth, rate limits, upload caps, `/health`. |
-| Supabase schema | Done | [`supabase/migrations/20260621_initial_sync.sql`](../supabase/migrations/20260621_initial_sync.sql) with RLS. Apply in **staging first**. |
-| Web cloud sync | Done (optional) | Web works offline with localStorage. With `VITE_SUPABASE_*`, profile menu offers Google or email/password sign-in, session persistence, and one-time local migration. |
-| iOS shell | Done (optional sync) | SwiftUI app in `ios/` calls `/api/transform`, caches maps with SwiftData. OAuth + cloud sync when `SUPABASE_ANON_KEY` is set. Redirect: `com.nucleo.app://login-callback`. |
-| Android shell | Done (optional sync) | Compose app in `android/` calls `/api/transform`, caches maps with Room. OAuth + cloud sync when `SUPABASE_ANON_KEY` is set in `BuildConfig`. Same redirect URL as iOS. |
+| Backup / safety | Ready | `scripts/backup-working-tree.sh` creates a dated tarball outside the repo. |
+| Shared contract | Done | [`shared/contracts.ts`](../shared/contracts.ts) is consumed by web (`src/`) and mobile (`mobile/`) via `@shared/*` alias. |
+| Express / Railway | Done | [`server.ts`](../server.ts) keeps `/api/transform`, optional Supabase auth, rate limits, `/health`. |
+| Supabase schema | Done | [`supabase/migrations/`](../supabase/migrations/) with RLS. Apply in **staging first**. |
+| Web cloud sync | Done (optional) | Web works offline with localStorage. With `VITE_SUPABASE_*`, profile menu offers sign-in and sync. |
+| **React Native (official mobile)** | **In progress** | Expo app in [`mobile/`](../mobile/): navigation stack, shared logic, drawer history, loading skeletons, reading progress, theme/model selectors, video attachments. |
+| Swift/Kotlin shells | **Archived** | Moved to [`archive/ios-native/`](../archive/ios-native/) and [`archive/android-native/`](../archive/android-native/). |
+
+## Architecture
+
+```
+shared/          ← pure TS logic (contracts, history, mapData, urlInput, …)
+src/             ← web React + Vite (unchanged UX)
+mobile/          ← Expo React Native + NativeWind (official iOS + Android)
+server.ts        ← Express API (unchanged)
+```
 
 ## Reversible rules
 
 - Do not remove the existing web flow or `/api/transform`.
-- Keep Supabase and Railway disabled until staging validation passes.
-- Prefer small commits: backend contract, Supabase, web sync, iOS, Android.
-- Revert any phase by abandoning the branch or reverting a single commit.
+- Prefer extending `shared/` over duplicating logic in `src/` and `mobile/`.
+- Do not publish to App Store, Play Store, Supabase prod, or Railway prod until explicitly approved.
 
-## Staging checklist (before production)
+## Mobile release (requires human setup)
 
-1. Apply the Supabase migration to a staging project.
-2. Configure OAuth redirect URLs for web, iOS, and Android.
-3. Deploy to Railway (see below).
-4. Set Railway env vars from [`.env.staging.example`](../.env.staging.example) or `./scripts/railway-env.sh`.
-5. Verify: web without Supabase, web with Supabase, OAuth, RLS isolation, local migration, offline cache on iOS/Android.
-6. Do not publish to App Store, Play Store, Supabase prod, or Railway prod until explicitly approved.
-
-## Deploy to Railway (staging)
-
-1. Push branch `codex/native-foundation-20260621` to GitHub.
-2. [railway.app](https://railway.app) → New Project → Deploy from GitHub → repo `Freixanet/optimizador-tdah`.
-3. Variables: run `./scripts/railway-env.sh` locally and paste into Railway. **VITE_*** must be set before the first build.
-4. After deploy, copy the `*.up.railway.app` URL and run:
-   `./scripts/setup-supabase.sh write-env --url https://oxvfiyuljzchdjotyshl.supabase.co --anon-key YOUR_ANON --app-url https://YOUR_APP.up.railway.app`
-   Redeploy on Railway so the frontend rebuilds with the correct `APP_URL`.
-5. Supabase → Authentication → URL Configuration: set Site URL to the Railway URL and add it to Redirect URLs.
+1. Sync env: `./scripts/setup-mobile-release.sh env`
+2. Expo: `cd mobile && npm run eas:login && npm run eas:init`
+3. Supabase redirects: `SUPABASE_ACCESS_TOKEN=... ./scripts/setup-mobile-release.sh supabase-redirects`
+4. Preview builds: `cd mobile && npm run build:preview`
+5. Follow [`mobile/QA_CHECKLIST.md`](../mobile/QA_CHECKLIST.md)
 
 ## Local commands
 
@@ -47,15 +44,10 @@ This document tracks the reversible native migration without replacing the web a
 npm install
 npm run dev
 
-# Backup current work
-./scripts/backup-working-tree.sh
+# Mobile (Expo)
+cd mobile && npm install && npx expo start
 
-# Supabase local env (preserves GEMINI_API_KEY)
-./scripts/setup-supabase.sh write-env --url https://YOUR_REF.supabase.co --anon-key eyJ...
-
-# iOS
-cd ios && xcodegen generate
-
-# Android (requires JDK)
-cd android && ./gradlew :app:assembleDebug
+# Type checks
+npm run lint
+cd mobile && npm run lint
 ```

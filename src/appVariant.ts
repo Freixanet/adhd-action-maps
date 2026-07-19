@@ -8,10 +8,10 @@ export type AppVariant = (typeof APP_VARIANT_OPTIONS)[number]['id'];
 const STORAGE_KEY = 'nucleo-app-variant';
 
 export function getAppVariant(): AppVariant {
-  if (typeof window === 'undefined') return 'classic';
+  if (typeof window === 'undefined') return 'comprension';
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored === 'classic' || stored === 'comprension') return stored;
-  return 'classic';
+  return 'comprension';
 }
 
 export function saveAppVariant(variant: AppVariant): void {
