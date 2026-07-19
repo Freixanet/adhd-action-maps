@@ -1,72 +1,87 @@
-# TDAH Optimizer
+# ADHD Action Maps
 
-Convierte **caos en mapas de acción**. Toma texto denso, transcripciones de YouTube, enlaces web o PDFs y los destila en un formato estructurado y fácil de consumir: núcleo, TL;DR y pasos navegables.
+Turn messy input into **navigable action maps**. Dense text, YouTube transcripts, web links, or PDFs become a structured, low-friction format: core idea, TL;DR, and timed next steps.
 
-## Qué hace
+---
 
-- **Texto / transcripción**: pega contenido caótico o una transcripción de YouTube.
-- **Enlace**: descarga la página en el servidor y extrae el texto legible.
-- **Archivo**: sube `.txt`, `.md`, `.csv` o `.pdf`.
-- **Resultado**: título, idea central, resumen rápido y pasos con tiempos estimados.
+## What it does
 
-## Requisitos
+- **Text / transcript** — paste chaotic notes or a YouTube transcript
+- **Link** — server-side page fetch + readable text extraction
+- **File** — upload `.txt`, `.md`, `.csv`, or `.pdf`
+- **Output** — title, central idea, quick summary, and steps with estimated time
+
+Built for ADHD-friendly consumption: less wall-of-text, more executable structure.
+
+---
+
+## Requirements
 
 - Node.js
-- Clave de API de Gemini (`GEMINI_API_KEY`)
+- Gemini API key (`GEMINI_API_KEY`)
 
-## Ejecutar en local
+---
 
-1. Instalar dependencias:
+## Run locally
+
+1. Install dependencies:
 
    ```bash
    npm install
    ```
 
-2. Configurar variables de entorno en `.env`:
+2. Configure `.env`:
 
    ```env
-   GEMINI_API_KEY=tu_clave_aqui
-   # Opcional:
+   GEMINI_API_KEY=your_key_here
+   # Optional:
    GEMINI_MODEL=gemini-3.5-flash
    ```
 
-3. Arrancar en desarrollo:
+3. Start development:
 
    ```bash
    npm run dev
    ```
 
-4. Abrir [http://localhost:3000](http://localhost:3000)
+4. Open [http://localhost:3000](http://localhost:3000)
+
+---
 
 ## Scripts
 
-| Comando        | Descripción                          |
-|----------------|--------------------------------------|
-| `npm run dev`  | Servidor Express + Vite (desarrollo) |
-| `npm run build`| Build de frontend + bundle del server|
-| `npm run start`| Servidor de producción               |
-| `npm run lint` | Comprobación de tipos TypeScript     |
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Express + Vite (development) |
+| `npm run build` | Frontend build + server bundle |
+| `npm run start` | Production server |
+| `npm run lint` | TypeScript typecheck |
+
+---
 
 ## Stack
 
 - React 19 + Vite + Tailwind CSS v4
-- Express (API `/api/transform`)
+- Express (`/api/transform`)
 - Google Gemini API (`@google/genai`)
+- Capacitor / native tracks for iOS & Android experiments
 
-## Apps nativas y sincronización (staging primero)
+---
 
-Consulta [`docs/NATIVE_FOUNDATION.md`](docs/NATIVE_FOUNDATION.md) para el estado del plan reversible, checkpoints y comandos locales.
+## Native apps & sync (staging first)
 
-- `ios/` contiene la app iOS 17+ en SwiftUI, con un puente UIKit para documentos.
-  Genera el proyecto local con `cd ios && xcodegen generate`; no incluye secretos.
-- `android/` contiene la base Android 10+ en Compose, Room y DataStore. Se necesita
-  un JDK local para compilarla con Gradle.
-- `supabase/migrations/` contiene una migración aditiva para aplicar **primero en un
-  proyecto de staging**. Las políticas RLS impiden que una cuenta acceda a mapas ajenos.
-- La web sigue funcionando sin Supabase. Con `VITE_SUPABASE_*`, el menú de perfil permite
-  entrar con **Google** (un clic, sesión persistente) o **email + contraseña**, y migra el
-  historial local al iniciar sesión.
-- Railway puede usar `railway.toml`; configura sus secretos en el panel, nunca en Git.
+See [`docs/NATIVE_FOUNDATION.md`](docs/NATIVE_FOUNDATION.md) for the reversible plan, checkpoints, and local commands.
 
-Antes de producción, registra las URLs de retorno de web/iOS/Android en Supabase y
-prueba OAuth, RLS, migración, uso offline y conflictos entre dispositivos en staging.
+- `ios/` — iOS 17+ SwiftUI app with a UIKit document bridge. Generate the Xcode project with `cd ios && xcodegen generate` (no secrets in git).
+- `android/` — Android 10+ Compose base with Room and DataStore. Requires a local JDK for Gradle.
+- `supabase/migrations/` — additive migration for **staging first**. RLS policies keep maps private per account.
+- Web works without Supabase. With `VITE_SUPABASE_*`, profile auth supports **Google** or **email + password**, and migrates local history on sign-in.
+- Railway can use `railway.toml`; set secrets in the dashboard, never in git.
+
+Before production: register web/iOS/Android redirect URLs in Supabase and test OAuth, RLS, migration, offline use, and multi-device conflicts in staging.
+
+---
+
+## Author
+
+**Marcos Freixanet** · [github.com/Freixanet](https://github.com/Freixanet) · mfreixanet@icloud.com
