@@ -416,6 +416,7 @@ export default function ResultScreen({
       onPress={interactive ? () => session.goToStep(0, true) : undefined}
       className={interactive ? VIEW_ALL_SECTION_DIVIDER : 'mb-8'}
     >
+      {renderMapMeta()}
       <View className="flex-row items-center flex-wrap gap-x-3 gap-y-2 mb-4">
         <View className="flex-row items-center gap-2">
           <AppIcon size={20} />
@@ -836,7 +837,6 @@ export default function ResultScreen({
           <GestureDetector gesture={swipeGesture}>
             <Animated.View className="flex-1 px-5" style={stepPageChromeStyle}>
               <Pressable className="flex-1" onPress={toggleStepHeader}>
-                {renderMapMeta()}
                 <Animated.View style={[styles.readingColumn, styles.fixedReadingColumn]}>
                   {showStepSlide ? (
                     <StepSlideTransition step={session.currentStep} reduceMotion={reduceMotion}>
@@ -880,7 +880,6 @@ export default function ResultScreen({
             scrollEventThrottle={16}
           >
             <View>
-              {renderMapMeta()}
               <Animated.View style={styles.readingColumn}>
                 <Animated.View
                   key={contentModeKey}
