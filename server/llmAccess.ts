@@ -21,8 +21,6 @@ const PREMIUM_MODEL_IDS = new Set([
 export function isPlaceholderSupabaseUrl(url: string | undefined): boolean {
   if (!url?.trim()) return true;
   if (/your-project\.supabase\.co/i.test(url)) return true;
-  // Retired project (NXDOMAIN) — treat as unset until a new project is wired.
-  if (/oxvfiyuljzchdjotyshl\.supabase\.co/i.test(url)) return true;
   return false;
 }
 
