@@ -22,7 +22,6 @@ import {
   normalizeTags,
   resolveMapCategory,
 } from "./shared/categories";
-import { isProUser } from "./shared/proEntitlement";
 import {
   analyzeSourceText,
   LONG_SOURCE_WORD_THRESHOLD,
@@ -42,10 +41,22 @@ import {
   wrapSourceText,
   SOURCE_TRUNCATION_NOTICE,
 } from "./shared/nucleoPipeline";
-
-type AuthenticatedRequest = express.Request & { userId?: string; userEmail?: string; isPro?: boolean };
+import {
+  authenticateOptional,
+  enforceProEntitlements,
+  enforceUsageQuota,
+  isPlaceholderSupabaseUrl,
+  isSupabaseAuthConfigured,
+  requireAuthEnabled,
+  requireLlmAccess,
+  PREMIUM_MODEL_IDS,
+  type AuthenticatedRequest,
+} from "./server/llmAccess";
+import { fetchUrlContent } from "./server/remoteContent";
+import { PRIVACY_HTML, TERMS_HTML } from "./server/legalPages";
 
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES ?? 15 * 1024 * 1024);
+const MAX_JSON_BODY = process.env.MAX_JSON_BODY ?? "20mb";
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX ?? 10);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 10 * 60 * 1000);
 const requestBuckets = new Map<string, { count: number; resetAt: number }>();
@@ -96,23 +107,6 @@ function consumeTransformRateLimit(ip: string, mapId?: string): boolean {
   return isWithinRateLimit(ip);
 }
 
-async function authenticateOptional(req: AuthenticatedRequest) {
-  const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-  if (!token || !supabaseUrl || !supabaseAnonKey) return;
-
-  const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
-    headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(5000),
-  });
-  if (!response.ok) return;
-  const user = (await response.json()) as { id?: string; email?: string };
-  req.userId = user.id;
-  req.userEmail = user.email;
-  req.isPro = isProUser(user.email);
-}
-
 function base64Size(data: unknown) {
   if (typeof data !== "string") return 0;
   return Math.floor((data.length * 3) / 4);
@@ -127,9 +121,9 @@ const analyzeAi = new GoogleGenAI({
   },
 });
 
-// Models tried in order, best capability first. All of these have a Gemini API
-// free tier, so the automatic fallback works without billing enabled. The model
-// configured via GEMINI_MODEL (if any) is always tried first.
+// Free chain stays on lighter Flash models. Premium (3.5 / Pro) is Pro-only.
+const FREE_MODEL_CHAIN = ["gemini-3-flash-preview", "gemini-3.1-flash-lite"];
+
 const DEFAULT_MODEL_CHAIN = [
   "gemini-3.5-flash",
   "gemini-3-flash-preview",
@@ -163,26 +157,31 @@ const mapCache = new Map<string, ActionMapData>();
 const READING_WORDS_PER_MINUTE = 200;
 const MAX_OUTPUT_TOKENS_FAST = 6144;
 const MAX_OUTPUT_TOKENS_STANDARD = 8192;
-const MAX_OUTPUT_TOKENS_DEEP = 32768;
+const MAX_OUTPUT_TOKENS_DEEP = 16384;
+const MAX_CHAT_OUTPUT_TOKENS = 2048;
 
-function resolveModelChain(preferred?: string): string[] {
-  if (!preferred || preferred === "auto") return MODEL_CHAIN;
+function resolveModelChain(preferred?: string, isPro = false): string[] {
+  const chain = isPro ? MODEL_CHAIN : FREE_MODEL_CHAIN;
+  if (!preferred || preferred === "auto") return chain;
+  if (!isPro && PREMIUM_MODEL_IDS.has(preferred)) return FREE_MODEL_CHAIN;
   if (preferred === "gemini-3.1-flash-lite") return ["gemini-3.1-flash-lite"];
   if (preferred === "gemini-3-flash-preview") {
     return ["gemini-3-flash-preview", "gemini-3.1-flash-lite"];
   }
-  if (preferred === "gemini-3.5-flash") return MODEL_CHAIN;
+  if (preferred === "gemini-3.5-flash") return isPro ? MODEL_CHAIN : FREE_MODEL_CHAIN;
   if (ALLOWED_MODELS.has(preferred)) return [preferred];
-  return MODEL_CHAIN;
+  return chain;
 }
 
 function resolveTransformModelChain(
   preferred?: string,
-  depth?: TransformRequest["depth"]
+  depth?: TransformRequest["depth"],
+  isPro = false
 ): string[] {
+  if (!isPro) return resolveModelChain(preferred, false);
   const isAuto = !preferred || preferred === "auto";
   if (isAuto && depth === "profundo") return DEEP_MODEL_CHAIN;
-  return resolveModelChain(preferred);
+  return resolveModelChain(preferred, true);
 }
 
 function maxOutputTokensForDepth(depth?: TransformRequest["depth"]): number {
@@ -1481,7 +1480,10 @@ function sanitizeUserDisplayName(input: unknown): string | undefined {
   return normalized.slice(0, 48);
 }
 
-async function buildTransformContext(body: TransformRequest): Promise<TransformContext | { error: string; status: number }> {
+async function buildTransformContext(
+  body: TransformRequest,
+  options?: { isPro?: boolean }
+): Promise<TransformContext | { error: string; status: number }> {
   const {
     text,
     type,
@@ -1498,6 +1500,7 @@ async function buildTransformContext(body: TransformRequest): Promise<TransformC
     singleNucleoMode,
     segmentTitle,
   } = body;
+  const isPro = Boolean(options?.isPro);
 
   if (!validateTransformType(type)) {
     return { error: "Tipo de fuente no válido.", status: 400 };
@@ -1592,7 +1595,8 @@ async function buildTransformContext(body: TransformRequest): Promise<TransformC
 
   const modelChain = resolveTransformModelChain(
     typeof preferredModel === "string" ? preferredModel : undefined,
-    resolvedDepth
+    resolvedDepth,
+    isPro
   );
 
   const sourceTextPreview = resolveSourceTextPreview(body, contents);
@@ -2682,76 +2686,6 @@ Reglas:
 4. Devuelve solo JSON válido.
 5. Incluye citas solo si están realmente respaldadas por el mapa recibido.`;
 
-function htmlToText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-async function fetchUrlContent(url: string): Promise<string> {
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(url);
-    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-      throw new Error("Solo se permiten URLs http o https.");
-    }
-  } catch {
-    throw new Error("URL inválida. Ingresa un enlace completo (https://...).");
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-
-  try {
-    const response = await fetch(parsedUrl.toString(), {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; TDAH-Optimizer/1.0)",
-        Accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `No se pudo acceder al enlace (${response.status}). Verifica que la URL sea pública.`
-      );
-    }
-
-    const contentType = response.headers.get("content-type") || "";
-    const body = await response.text();
-
-    if (contentType.includes("text/html") || body.trim().startsWith("<")) {
-      const text = htmlToText(body);
-      if (text.length < 50) {
-        throw new Error("La página no contiene suficiente texto legible para procesar.");
-      }
-      return text;
-    }
-
-    const plain = body.trim();
-    if (plain.length < 50) {
-      throw new Error("El enlace no contiene suficiente texto para procesar.");
-    }
-    return plain;
-  } catch (err: any) {
-    if (err.name === "AbortError") {
-      throw new Error("La descarga del enlace tardó demasiado. Inténtalo de nuevo.");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function fetchYouTubeTranscript(url: string): Promise<string> {
   const videoId = extractYouTubeVideoId(url);
   if (!videoId) {
@@ -2909,7 +2843,7 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT ?? 3000);
 
-  app.use(express.json({ limit: "50mb" }));
+  app.use(express.json({ limit: MAX_JSON_BODY }));
 
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -2927,7 +2861,70 @@ async function startServer() {
   });
 
   app.get("/health", (_req, res) => {
-    res.status(200).json({ status: "ok" });
+    res.status(200).json({
+      status: "ok",
+      authRequired: requireAuthEnabled(),
+      supabaseConfigured: isSupabaseAuthConfigured(),
+    });
+  });
+
+  app.get("/privacidad", (_req, res) => {
+    res.type("html").send(PRIVACY_HTML);
+  });
+  app.get("/terminos", (_req, res) => {
+    res.type("html").send(TERMS_HTML);
+  });
+
+  app.post("/api/account/delete", async (req: AuthenticatedRequest, res) => {
+    try {
+      await authenticateOptional(req);
+      if (!req.userId) {
+        return res.status(401).json({ error: "Inicia sesión para eliminar la cuenta.", code: "auth_required" });
+      }
+
+      const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!supabaseUrl || !serviceKey || isPlaceholderSupabaseUrl(supabaseUrl)) {
+        return res.status(503).json({
+          error: "El borrado de cuenta no está configurado en el servidor (falta SUPABASE_SERVICE_ROLE_KEY).",
+          code: "delete_not_configured",
+        });
+      }
+
+      const mapsUrl = `${supabaseUrl}/rest/v1/maps?owner_id=eq.${encodeURIComponent(req.userId)}`;
+      const deleteMaps = await fetch(mapsUrl, {
+        method: "DELETE",
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+          Prefer: "return=minimal",
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!deleteMaps.ok) {
+        console.error("[account/delete] maps purge failed", deleteMaps.status);
+        return res.status(502).json({ error: "No se pudo borrar el historial en la nube." });
+      }
+
+      const deleteUser = await fetch(`${supabaseUrl}/auth/v1/admin/users/${req.userId}`, {
+        method: "DELETE",
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!deleteUser.ok) {
+        const detail = await deleteUser.text().catch(() => "");
+        console.error("[account/delete] user delete failed", deleteUser.status, detail.slice(0, 200));
+        return res.status(502).json({ error: "No se pudo eliminar la cuenta de autenticación." });
+      }
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[account/delete]", err);
+      return res.status(500).json({ error: "No se pudo eliminar la cuenta." });
+    }
   });
 
   const pdfAnalyzeSchema = {
@@ -3021,7 +3018,8 @@ async function startServer() {
 
   app.post("/api/transform/analyze", async (req: AuthenticatedRequest, res) => {
     try {
-      await authenticateOptional(req);
+      if (!(await requireLlmAccess(req, res))) return;
+      // Analyze is a preflight; it does not consume the daily transform quota.
       const body = req.body as TransformRequest;
 
       console.log("[analyze] request", {
@@ -3109,14 +3107,17 @@ async function startServer() {
       if (!consumeTransformRateLimit(ip, mapId)) {
         return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
       }
-      await authenticateOptional(req);
+      if (!(await requireLlmAccess(req, res))) return;
+      const body = req.body as TransformRequest;
+      if (!enforceProEntitlements(req, res, body)) return;
+      if (!enforceUsageQuota(req, res, "transform")) return;
 
-      const contextResult = await buildTransformContext(req.body as TransformRequest);
+      const contextResult = await buildTransformContext(body, { isPro: Boolean(req.isPro) });
       if ("error" in contextResult) {
         return res.status(contextResult.status).json({ error: contextResult.error });
       }
 
-      logTransformEntryDebug(req.body as TransformRequest, contextResult, "/api/transform");
+      logTransformEntryDebug(body, contextResult, "/api/transform");
 
       const { response, model: usedModel } = await generateWithFallback(
         { contents: contextResult.contents },
@@ -3155,14 +3156,17 @@ async function startServer() {
       if (!consumeTransformRateLimit(ip, mapId)) {
         return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
       }
-      await authenticateOptional(req);
+      if (!(await requireLlmAccess(req, res))) return;
+      const body = req.body as TransformRequest;
+      if (!enforceProEntitlements(req, res, body)) return;
+      if (!enforceUsageQuota(req, res, "transform")) return;
 
-      const contextResult = await buildTransformContext(req.body as TransformRequest);
+      const contextResult = await buildTransformContext(body, { isPro: Boolean(req.isPro) });
       if ("error" in contextResult) {
         return res.status(contextResult.status).json({ error: contextResult.error });
       }
 
-      logTransformEntryDebug(req.body as TransformRequest, contextResult, "/api/transform/stream");
+      logTransformEntryDebug(body, contextResult, "/api/transform/stream");
 
       await handleTransformStream(contextResult, res, req);
     } catch (err: any) {
@@ -3180,12 +3184,14 @@ async function startServer() {
     }
   });
 
-  app.post("/api/maps/:id/chat", async (req, res) => {
+  app.post("/api/maps/:id/chat", async (req: AuthenticatedRequest, res) => {
     try {
       const ip = req.ip || req.socket.remoteAddress || "unknown";
       if (!isWithinRateLimit(ip)) {
         return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
       }
+      if (!(await requireLlmAccess(req, res))) return;
+      if (!enforceUsageQuota(req, res, "chat")) return;
 
       const mapId = req.params.id;
       const payload = req.body as MapChatRequest;
@@ -3221,6 +3227,7 @@ async function startServer() {
           responseSchema: chatResponseSchema as any,
           temperature: 0.2,
           topP: 0.85,
+          maxOutputTokens: MAX_CHAT_OUTPUT_TOKENS,
         },
       });
 
@@ -3240,7 +3247,8 @@ async function startServer() {
     }
   });
 
-  app.post("/api/maps/:id/cheatsheet.prepare", (req, res) => {
+  app.post("/api/maps/:id/cheatsheet.prepare", async (req: AuthenticatedRequest, res) => {
+    if (!(await requireLlmAccess(req, res))) return;
     const mapId = req.params.id;
     const map = req.body?.map;
 
@@ -3259,8 +3267,9 @@ async function startServer() {
     res.json({ ok: true });
   });
 
-  app.get("/api/maps/:id/cheatsheet.pdf", async (req, res) => {
+  app.get("/api/maps/:id/cheatsheet.pdf", async (req: AuthenticatedRequest, res) => {
     try {
+      if (!(await requireLlmAccess(req, res))) return;
       const mapId = req.params.id;
       let map = mapCache.get(mapId);
 
@@ -3269,7 +3278,7 @@ async function startServer() {
         const supabaseUrl = process.env.SUPABASE_URL;
         const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
-        if (token && supabaseUrl && supabaseAnonKey) {
+        if (token && supabaseUrl && supabaseAnonKey && !isPlaceholderSupabaseUrl(supabaseUrl)) {
           const targetUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/maps?id=eq.${encodeURIComponent(mapId)}&select=session`;
           const response = await fetch(targetUrl, {
             headers: {
@@ -3311,7 +3320,8 @@ async function startServer() {
     }
   });
 
-  app.post("/api/maps/:id/cheatsheet.pdf", (req, res) => {
+  app.post("/api/maps/:id/cheatsheet.pdf", async (req: AuthenticatedRequest, res) => {
+    if (!(await requireLlmAccess(req, res))) return;
     const payload = req.body as { map?: ActionMapData };
     const map = payload.map || mapCache.get(req.params.id);
     if (!map) {

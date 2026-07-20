@@ -62,7 +62,7 @@ export default function CompletionGlassButton({
       <GlassSurface
         liquid
         liquidBorder="none"
-        borderRadius={RADII.md}
+        borderRadius={RADII.lg}
         style={styles.shell}
         tintColor={isAccent ? accentTint : undefined}
         overlayClassName={isAccent ? accentOverlay : neutralOverlay}
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
   },
   shell: {
     width: '100%',
-    borderRadius: RADII.md,
+    borderRadius: RADII.lg,
     overflow: 'hidden',
   },
   content: {

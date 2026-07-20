@@ -95,7 +95,7 @@ function ReadingProgressBar({
 
   return (
     <div
-      className="shrink-0 bg-neutral-50 dark:bg-app-canvas border-b border-neutral-200 dark:border-white/5"
+      className="shrink-0 bg-app-canvas border-b border-white/10"
       role="region"
       aria-label="Progreso de lectura"
     >
@@ -104,28 +104,28 @@ function ReadingProgressBar({
           <button
             type="button"
             onClick={onToggleSidebar}
-            className="inline-flex lg:hidden ml-1 flex items-center justify-center w-8 h-8 rounded-full bg-neutral-500/10 text-neutral-600 shadow-[inset_0_1px_1px_rgba(255,255,255,0.5)] dark:bg-neutral-500/20 dark:text-neutral-400 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition-all duration-200 hover:bg-neutral-500/20 dark:hover:bg-white/10 hover:scale-105 active:scale-95 shrink-0"
+            className="inline-flex lg:hidden ml-1 flex items-center justify-center w-8 h-8 rounded-full bg-white/[0.06] text-neutral-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] transition-all duration-200 hover:bg-white/10 hover:scale-105 active:scale-95 shrink-0"
             title="Abrir navegación"
             aria-label="Abrir navegación"
           >
             <MenuTwoLines className="w-4.5 h-4.5" />
           </button>
           <div className="min-w-0">
-            <p className="truncate text-xs sm:text-sm font-bold text-neutral-800 dark:text-neutral-100">
+            <p className="truncate text-xs sm:text-sm font-bold text-neutral-100">
               {progressLabel}
             </p>
           </div>
         </div>
         <span
-          className="shrink-0 text-xs sm:text-sm font-bold text-indigo-700 dark:text-indigo-300"
+          className="shrink-0 text-xs sm:text-sm font-bold text-[#8B8FF5]"
           aria-live="polite"
         >
           {shownPercent}%
         </span>
       </div>
-      <div className="h-2 bg-neutral-200 dark:bg-neutral-800">
+      <div className="h-1 bg-white/10">
         <motion.div
-          className={`h-full bg-indigo-600 dark:bg-indigo-500 rounded-r-full${viewAll ? ' w-full origin-left will-change-transform' : ' transition-all duration-500 ease-out'}`}
+          className={`h-full bg-[#6A6FE0] rounded-r-full${viewAll ? ' w-full origin-left will-change-transform' : ' transition-all duration-500 ease-out'}`}
           style={
             viewAll
               ? { scaleX: reduceMotion ? viewAllProgress : smoothViewAllProgress }

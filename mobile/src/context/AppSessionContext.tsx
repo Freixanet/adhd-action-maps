@@ -19,6 +19,7 @@ import type {
   TransformRequest,
 } from '../logic/contracts';
 import {
+  deleteAllCloudHistory,
   deleteCloudHistoryEntry,
   migrateLocalHistory,
   pullCloudHistory,
@@ -52,7 +53,7 @@ import {
   formatReadingProgressLabel,
   isLastStepInReadingSection,
 } from '@shared/nucleoPipeline';
-import { isProUser } from '@shared/proEntitlement';
+import { resolveClientIsPro } from '@shared/proEntitlement';
 import { normalizeMapData } from '../logic/mapData';
 import {
   getInitialModelPreference,
@@ -105,6 +106,7 @@ import {
   type ContinueChipRect,
   type ContinueTransitionSnapshot,
 } from '../logic/continueTransition';
+import { useRevenueCatPro } from '../hooks/useRevenueCatPro';
 import { debugTransitionLog } from '../logic/debugTransitionLog';
 
 export type AppPhase = 'input' | 'loading' | 'result';
@@ -373,6 +375,7 @@ type AppSessionContextValue = {
   dismissTransformIncomplete: () => void;
   persistComposerDraft: () => void;
   handleSignOut: () => Promise<void>;
+  handleDeleteAccount: () => Promise<void>;
   inlineGenerationStatus: InlineGenerationStatus;
   inlineUserTurn: InlineUserTurnSnapshot | null;
   cancelInlineAutoOpen: () => void;
@@ -449,10 +452,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   );
   const [chatOpen, setChatOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
-  const [paywallOpen, setPaywallOpen] = useState(false);
   const [cloudUserEmail, setCloudUserEmail] = useState<string | null>(null);
   const [cloudUserDisplayName, setCloudUserDisplayName] = useState<string | null>(null);
   const [cloudUserAvatarUrl, setCloudUserAvatarUrl] = useState<string | null>(null);
+  const { revenueCatPro, paywallOpen, setPaywallOpen, openPaywall } = useRevenueCatPro(cloudUserEmail);
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [modelPreference, setModelPreferenceState] = useState<ModelPreference>(() =>
@@ -658,7 +661,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
   const pendingAuthRef = useRef(false);
   const cloudSignedIn = Boolean(cloudUserEmail);
-  const isPro = useMemo(() => isProUser(cloudUserEmail), [cloudUserEmail]);
+  const isPro = useMemo(
+    () => resolveClientIsPro({ email: cloudUserEmail, revenueCatPro }),
+    [cloudUserEmail, revenueCatPro]
+  );
 
   const totalSteps = data?.steps.length ?? 0;
   const composerBodyText = pastedText?.trim() ?? inputText.trim();
@@ -924,14 +930,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setHistoryOpen(false);
   }, []);
 
-  const openPaywall = useCallback(() => {
-    setPaywallOpen(true);
-    Alert.alert(
-      'Profundo llega con Pro',
-      'La profundidad Profundo estará disponible con el plan Pro. Por ahora puedes usar Rápido y Estándar.'
-    );
-  }, []);
-
   const revealPendingAuth = useCallback(() => {
     if (!pendingAuthRef.current) return;
     pendingAuthRef.current = false;
@@ -1034,6 +1032,15 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       console.error('Transform failed:', { message, sourceKind, offline });
       clearInlineReadyTimeout();
       clearInlineAutoOpen();
+
+      const isFreeLimit =
+        /3 N[uú]cleos gratis/i.test(message) ||
+        /free_limit/i.test(message) ||
+        /l[ií]mite diario/i.test(message);
+      if (isFreeLimit) {
+        setPaywallOpen(true);
+      }
+
       if (partialShown) {
         setTransformIncomplete(true);
         clearInlineGeneration();
@@ -1684,6 +1691,61 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     } catch (err) {
       console.error('Error al cerrar sesión remota:', err);
       throw err;
+    }
+  }, [commitHistoryStore, flushPendingSessionPersist]);
+
+  const handleDeleteAccount = useCallback(async () => {
+    flushPendingSessionPersist();
+    const accessToken = supabase
+      ? (await supabase.auth.getSession()).data.session?.access_token
+      : undefined;
+
+    if (accessToken) {
+      const response = await fetchWithTimeout(apiUrl('/api/account/delete'), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          code?: string;
+        };
+        if (payload.code === 'delete_not_configured') {
+          try {
+            await deleteAllCloudHistory();
+          } catch (err) {
+            console.warn('Cloud history purge during account delete failed:', err);
+          }
+        } else {
+          throw new Error(payload.error || 'No se pudo eliminar la cuenta.');
+        }
+      }
+    }
+
+    setHistoryOpen(false);
+    setChatOpen(false);
+    setAuthOpen(false);
+    setData(null);
+    setInputText('');
+    inputTextRef.current = '';
+    setPastedText(null);
+    setUploadedFile(null);
+    setPhase('input');
+    setError(null);
+    setTransformIncomplete(false);
+    setCurrentStep(0);
+    setIsComplete(false);
+    setViewAll(false);
+    setCloudUserEmail(null);
+    setCloudUserAvatarUrl(null);
+    commitHistoryStore({ entries: [], activeId: null, collections: [] });
+
+    try {
+      await signOut();
+    } catch (err) {
+      console.error('Error al cerrar sesión tras borrar cuenta:', err);
     }
   }, [commitHistoryStore, flushPendingSessionPersist]);
 
@@ -2471,6 +2533,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       dismissTransformIncomplete,
       persistComposerDraft,
       handleSignOut,
+      handleDeleteAccount,
       inlineGenerationStatus,
       inlineUserTurn,
       cancelInlineAutoOpen,
@@ -2575,6 +2638,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       dismissTransformIncomplete,
       persistComposerDraft,
       handleSignOut,
+      handleDeleteAccount,
       inlineGenerationStatus,
       inlineUserTurn,
       cancelInlineAutoOpen,

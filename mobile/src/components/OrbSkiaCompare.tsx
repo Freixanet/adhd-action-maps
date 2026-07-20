@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import ExactLiquidOrbWebView from './ExactLiquidOrbWebView';
-import LiquidOrbSkia from './LiquidOrbSkia';
+import { AccessibilityInfo, Modal, Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BG_BASE } from '@shared/uiTokens';
 import NucleoOrb from './NucleoOrb';
-import OrbHtmlIterationWebView from './OrbHtmlIterationWebView';
+import NucleoGlyphOrb from './NucleoGlyphOrb';
 
 const COMPARE_SIZE = 72;
 
@@ -12,34 +12,12 @@ type OrbSkiaCompareProps = {
   onClose: () => void;
 };
 
-function ComparePanel({
-  label,
-  subtitle,
-  backgroundClassName,
-  children,
-}: {
-  label: string;
-  subtitle?: string;
-  backgroundClassName: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View className="min-w-0 flex-1 items-center">
-      <Text className="mb-0.5 text-center text-[11px] font-medium text-secondary">{label}</Text>
-      {subtitle ? (
-        <Text className="mb-2 text-center text-[10px] text-secondary/70">{subtitle}</Text>
-      ) : (
-        <View className="mb-2 h-[14px]" />
-      )}
-      <View className={`w-full items-center justify-center rounded-2xl p-2 ${backgroundClassName}`}>
-        {children}
-      </View>
-    </View>
-  );
-}
-
-/** Dev-only side-by-side WebView vs Skia vs HTML iteration validation. */
+/**
+ * Dev preview: keeps the current Three.js / atom production orb for comparison,
+ * side-by-side with the loading glyph orb.
+ */
 export default function OrbSkiaCompare({ visible, onClose }: OrbSkiaCompareProps) {
+  const insets = useSafeAreaInsets();
   const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
@@ -51,62 +29,42 @@ export default function OrbSkiaCompare({ visible, onClose }: OrbSkiaCompareProps
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View className="flex-1 bg-base/95">
-        <ScrollView
-          contentContainerClassName="items-center px-3 py-10"
-          showsVerticalScrollIndicator={false}
+      <View className="flex-1" style={{ backgroundColor: BG_BASE }}>
+        <View
+          className="absolute left-0 right-0 z-10 items-center px-3"
+          style={{ top: insets.top + 16 }}
+          pointerEvents="box-none"
         >
-          <Text className="mb-2 text-center text-[15px] font-semibold text-primary">
-            Orb compare
+          <Text className="text-center text-[15px] font-semibold text-primary">Orb preview</Text>
+          <Text className="mt-1 text-center text-[12px] text-secondary">
+            Carga (glifo) · Three.js (actual)
           </Text>
-          <Text className="mb-6 text-center text-[12px] text-secondary">
-            Producción · Legacy · Skia · HTML iter.
-          </Text>
+        </View>
 
-          <View className="mb-6 w-full max-w-[420px] flex-row items-start justify-center gap-2">
-            <ComparePanel label="Producción" subtitle="Three.js" backgroundClassName="bg-base">
-              <NucleoOrb size={COMPARE_SIZE} state="thinking" glow reduceMotion={reduceMotion} />
-            </ComparePanel>
-            <ComparePanel label="WebView legacy" backgroundClassName="bg-base">
-              <ExactLiquidOrbWebView size={COMPARE_SIZE} reduceMotion={reduceMotion} />
-            </ComparePanel>
-            <ComparePanel label="Skia" backgroundClassName="bg-base">
-              <LiquidOrbSkia size={COMPARE_SIZE} reduceMotion={reduceMotion} />
-            </ComparePanel>
+        <View className="flex-1 items-center justify-center gap-14 px-6">
+          <View className="items-center">
+            <NucleoGlyphOrb size={COMPARE_SIZE} reduceMotion={reduceMotion} />
+            <Text className="mt-3 text-[12px] text-secondary">Glifo · carga</Text>
           </View>
-
-          <View className="mb-6 w-full max-w-[280px] flex-row items-start justify-center gap-2">
-            <ComparePanel
-              label="HTML iter."
-              subtitle="tap fondo"
-              backgroundClassName="bg-base"
-            >
-              <OrbHtmlIterationWebView size={COMPARE_SIZE} reduceMotion={false} />
-            </ComparePanel>
+          <View className="items-center">
+            <NucleoOrb size={COMPARE_SIZE} state="thinking" reduceMotion={reduceMotion} />
+            <Text className="mt-3 text-[12px] text-secondary">Three.js · conservado</Text>
           </View>
+        </View>
 
-          <View className="mb-6 w-full max-w-[320px] flex-row items-start justify-center gap-2">
-            <ComparePanel label="Skia · card" backgroundClassName="border border-white/10 bg-surface-2">
-              <LiquidOrbSkia size={COMPARE_SIZE} reduceMotion={reduceMotion} />
-            </ComparePanel>
-            <ComparePanel
-              label="HTML iter. · card"
-              subtitle="tap fondo"
-              backgroundClassName="border border-white/10 bg-surface-2"
-            >
-              <OrbHtmlIterationWebView size={COMPARE_SIZE} reduceMotion={false} />
-            </ComparePanel>
-          </View>
-
+        <View
+          className="absolute left-0 right-0 items-center px-3"
+          style={{ bottom: insets.bottom + 24 }}
+        >
           <Pressable
             onPress={onClose}
             accessibilityRole="button"
-            accessibilityLabel="Cerrar comparación de orbe"
+            accessibilityLabel="Cerrar vista previa del orbe"
             className="rounded-full bg-surface-2 px-5 py-2.5 active:opacity-80"
           >
             <Text className="text-[14px] font-medium text-primary">Cerrar</Text>
           </Pressable>
-        </ScrollView>
+        </View>
       </View>
     </Modal>
   );

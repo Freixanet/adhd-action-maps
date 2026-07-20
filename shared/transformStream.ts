@@ -32,7 +32,11 @@ export function isNonRetryableTransformError(message: string): boolean {
     /Error 429/i.test(message) ||
     /Error 503/i.test(message) ||
     /quota|RESOURCE_EXHAUSTED/i.test(message) ||
-    /plan gratuito de Gemini/i.test(message)
+    /plan gratuito de Gemini/i.test(message) ||
+    /Inicia sesi[oó]n/i.test(message) ||
+    /3 N[uú]cleos gratis/i.test(message) ||
+    /l[ií]mite diario/i.test(message) ||
+    /exclusiva? de Pro/i.test(message)
   );
 }
 

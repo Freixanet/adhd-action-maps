@@ -42,3 +42,15 @@ export function isProUser(email: string | null | undefined): boolean {
   const normalized = normalizeProEmail(email);
   return getProEmailAllowlist().includes(normalized);
 }
+
+/**
+ * Client Pro resolution: RevenueCat entitlement is the product source of truth;
+ * email allowlist remains a team/dev fallback until billing is fully live.
+ */
+export function resolveClientIsPro(options: {
+  email?: string | null;
+  revenueCatPro?: boolean;
+}): boolean {
+  if (options.revenueCatPro) return true;
+  return isProUser(options.email);
+}

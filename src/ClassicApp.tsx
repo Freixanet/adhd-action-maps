@@ -1,3 +1,7 @@
+/**
+ * LEGACY / REFERENCE ONLY — not the product UI.
+ * Canonical client: `mobile/`. See `src/LEGACY.md`.
+ */
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {

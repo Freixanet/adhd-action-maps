@@ -11,6 +11,7 @@ const SLIDE_PX = 24;
 const ENTER_MS = 250;
 const EXIT_MS = 250;
 const EXIT_OPACITY_MS = 180;
+const REDUCED_FADE_MS = 150;
 
 type StepSlideTransitionProps = {
   step: number;
@@ -41,7 +42,7 @@ export default function StepSlideTransition({
   }, [frontIsA]);
 
   useEffect(() => {
-    if (disabled || reduceMotion) {
+    if (disabled) {
       setStepA(step);
       setStepB(step);
       setFrontIsA(true);
@@ -68,6 +69,32 @@ export default function StepSlideTransition({
       frontIsARef.current = true;
       setFrontIsA(true);
     };
+
+    // SPEC: reduced motion = fade 150ms, no slide.
+    if (reduceMotion) {
+      const enterMs = REDUCED_FADE_MS;
+      const exitMs = REDUCED_FADE_MS;
+      if (frontIsARef.current) {
+        setStepB(step);
+        opacityA.value = withTiming(0, { duration: exitMs });
+        translateA.value = 0;
+        translateB.value = 0;
+        opacityB.value = 0;
+        opacityB.value = withTiming(1, { duration: enterMs }, (finished) => {
+          if (finished) runOnJS(markFrontB)();
+        });
+        return;
+      }
+      setStepA(step);
+      opacityB.value = withTiming(0, { duration: exitMs });
+      translateA.value = 0;
+      translateB.value = 0;
+      opacityA.value = 0;
+      opacityA.value = withTiming(1, { duration: enterMs }, (finished) => {
+        if (finished) runOnJS(markFrontA)();
+      });
+      return;
+    }
 
     if (frontIsARef.current) {
       setStepB(step);
@@ -103,7 +130,7 @@ export default function StepSlideTransition({
     transform: [{ translateX: translateB.value }],
   }));
 
-  if (disabled || reduceMotion) {
+  if (disabled) {
     return <View style={styles.host}>{children(step)}</View>;
   }
 

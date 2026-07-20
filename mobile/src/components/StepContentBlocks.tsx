@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { SEM_ALERTA, SEM_CLAVE, SEM_EJEMPLO, SEM_MATIZ } from '@shared/uiTokens';
 import type { StepContentBlock } from '../logic/contracts';
 
@@ -41,7 +41,7 @@ function BlockReferences({ references }: { references?: StepContentBlock['refere
       {references.slice(0, 3).map((reference, idx) => (
         <View
           key={`${reference.label}-${reference.locator}-${idx}`}
-          className="rounded-full border border-neutral-300 dark:border-white/12 px-2.5 py-1"
+          className="rounded-full border border-white/12 px-2.5 py-1"
         >
           <Text className="text-[11px] font-medium text-body">
             <Text className="text-secondary">{reference.label} </Text>
@@ -53,6 +53,52 @@ function BlockReferences({ references }: { references?: StepContentBlock['refere
   );
 }
 
+/**
+ * Semantic callouts — typography + short rule under the label.
+ * No left color stripe / tinted panel (reads as generic AI chrome).
+ */
+function SemanticCallout({
+  label,
+  text,
+  tone,
+  references,
+}: {
+  label: string;
+  text: string;
+  tone: SemTone;
+  references?: StepContentBlock['references'];
+}) {
+  const color = TONE_COLOR[tone];
+
+  return (
+    <View className="my-7">
+      <Text
+        className="text-[12px] font-semibold uppercase tracking-[0.14em]"
+        style={{ color }}
+        maxFontSizeMultiplier={1.35}
+      >
+        {label}
+      </Text>
+      <View
+        className="mt-2.5 mb-3"
+        style={{
+          width: 28,
+          height: 1.5,
+          borderRadius: 1,
+          backgroundColor: color,
+          opacity: 0.7,
+        }}
+      />
+      {text ? (
+        <Text className="text-[17px] leading-[26px] text-body" maxFontSizeMultiplier={1.35}>
+          {text}
+        </Text>
+      ) : null}
+      <BlockReferences references={references} />
+    </View>
+  );
+}
+
 function renderBlock(block: StepContentBlock, idx: number) {
   const type = String(block.type || 'prose').toLowerCase();
   const textContent = block.text || '';
@@ -60,28 +106,16 @@ function renderBlock(block: StepContentBlock, idx: number) {
   if (type === 'callout') {
     const kind = String(block.kind || 'info').toLowerCase();
     const tone = KIND_TO_TONE[kind] ?? 'clave';
-    const color = TONE_COLOR[tone];
     const label = String(block.label || TONE_LABEL[tone]);
 
     return (
-      <View key={idx} className="my-6 rounded-card overflow-hidden">
-        <View className="bg-surface p-4">
-          <View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: 0.05 }]}
-          />
-          <Text
-            className="text-[13px] font-semibold uppercase tracking-[0.08em]"
-            style={{ color }}
-          >
-            {label}
-          </Text>
-          {textContent ? (
-            <Text className="mt-2 text-[17px] leading-[26px] text-body">{textContent}</Text>
-          ) : null}
-          <BlockReferences references={block.references} />
-        </View>
-      </View>
+      <SemanticCallout
+        key={idx}
+        label={label}
+        text={textContent}
+        tone={tone}
+        references={block.references}
+      />
     );
   }
 
@@ -93,7 +127,7 @@ function renderBlock(block: StepContentBlock, idx: number) {
         ) : null}
         {block.items?.map((item, i) => (
           <View key={i} className="flex-row gap-3 items-start mb-4">
-            <View className="w-2 h-2 rounded-full bg-accent mt-2.5 shrink-0" />
+            <View className="w-1.5 h-1.5 rounded-full bg-secondary/70 mt-2.5 shrink-0" />
             <Text className="flex-1 text-[17px] leading-[26px] text-body">
               <Text className="font-bold text-primary">{item.strong}</Text>
               {item.span ? <Text className="text-body"> {item.span}</Text> : null}

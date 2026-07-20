@@ -57,7 +57,7 @@ export function FloatingGlassShell({
     if (isCircle) {
       const radius = size / 2;
       return (
-        <View style={[styles.shadow, styles.accentShadow, circleSizeStyle]}>
+        <View style={circleSizeStyle}>
           <GlassSurface
             liquid
             liquidBorder="none"

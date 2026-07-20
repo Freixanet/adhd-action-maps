@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AuthSheet from './src/components/AuthSheet';
+import PaywallSheet from './src/components/PaywallSheet';
 import OAuthRedirectListener from './src/components/OAuthRedirectListener';
 import { AppSessionProvider, useAppSession } from './src/context/AppSessionContext';
 import { ThemeProvider } from './src/context/ThemeContext';
@@ -29,6 +30,16 @@ function AuthHost() {
   );
 }
 
+function PaywallHost() {
+  const session = useAppSession();
+  return (
+    <PaywallSheet
+      visible={session.paywallOpen}
+      onClose={() => session.setPaywallOpen(false)}
+    />
+  );
+}
+
 function AppShell() {
   return (
     <View className="dark flex-1" style={{ flex: 1 }}>
@@ -37,6 +48,7 @@ function AppShell() {
         <View style={{ flex: 1 }}>
           <ComprensionApp />
           <AuthHost />
+          <PaywallHost />
           <OAuthRedirectListener />
         </View>
       </AppSessionProvider>
