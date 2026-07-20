@@ -1,18 +1,20 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { LogIn, LogOut } from 'lucide-react-native';
+import { Alert, Dimensions, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FileText, LogIn, LogOut, Trash2 } from 'lucide-react-native';
 import ProfileAvatar from './ProfileAvatar';
 import GlassSurface from './GlassSurface';
 import { FloatingGlassShell, FLOATING_CIRCLE_SIZE } from './FloatingGlassButton';
 import { useAppSession, stepHaptic } from '../context/AppSessionContext';
-import { TEXT_PRIMARY } from '@shared/uiTokens';
+import { privacyPolicyUrl, termsOfUseUrl } from '../logic/legalUrls';
+import { TEXT_BODY, TEXT_PRIMARY } from '@shared/uiTokens';
+import { useTheme } from '../context/ThemeContext';
 
 type ProfileMenuProps = {
   placement?: 'topRight' | 'bottomLeft';
   floating?: boolean;
 };
 
-const MENU_WIDTH = 168;
+const MENU_WIDTH = 196;
 const MENU_GAP = 10;
 const SCREEN = Dimensions.get('window');
 
@@ -25,6 +27,7 @@ type MenuAnchor = {
 
 export default function ProfileMenu({ placement = 'topRight', floating = false }: ProfileMenuProps) {
   const session = useAppSession();
+  const { isDark } = useTheme();
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<MenuAnchor | null>(null);
@@ -47,6 +50,37 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
     updateAnchor();
   }, [open, updateAnchor]);
 
+  const openLegalUrl = useCallback(async (url: string, label: string) => {
+    closeMenu();
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('No se pudo abrir', `No se pudo abrir ${label}.`);
+    }
+  }, [closeMenu]);
+
+  const confirmDeleteAccount = useCallback(() => {
+    closeMenu();
+    Alert.alert(
+      'Eliminar cuenta',
+      'Se borrarán tu cuenta y el historial en la nube. Esta acción no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => {
+            void session.handleDeleteAccount().catch((err: unknown) => {
+              const message =
+                err instanceof Error ? err.message : 'No se pudo eliminar la cuenta.';
+              Alert.alert('Error', message);
+            });
+          },
+        },
+      ]
+    );
+  }, [closeMenu, session]);
+
   const menuPosition = anchor
     ? placement === 'bottomLeft'
       ? {
@@ -62,7 +96,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
         }
     : null;
 
-  const menuIconColor = TEXT_PRIMARY;
+  const menuIconColor = isDark ? TEXT_PRIMARY : TEXT_BODY;
   const iconStroke = 2.25;
 
   return (
@@ -119,7 +153,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                       }}
                       accessibilityRole="menuitem"
                       accessibilityLabel="Cerrar sesión"
-                      className="px-2.5 py-4 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+                      className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
                     >
                       <LogOut size={20} color={menuIconColor} strokeWidth={iconStroke} />
                       <Text className="text-base font-semibold text-body">Cerrar sesión</Text>
@@ -133,10 +167,51 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                       }}
                       accessibilityRole="menuitem"
                       accessibilityLabel="Iniciar sesión"
-                      className="px-2.5 py-4 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+                      className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
                     >
                       <LogIn size={20} color={menuIconColor} strokeWidth={iconStroke} />
                       <Text className="text-base font-semibold text-body">Iniciar sesión</Text>
+                    </Pressable>
+                  ) : null}
+
+                  <Pressable
+                    onPress={() => {
+                      void openLegalUrl(privacyPolicyUrl(), 'Privacidad');
+                      stepHaptic();
+                    }}
+                    accessibilityRole="menuitem"
+                    accessibilityLabel="Privacidad"
+                    className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+                  >
+                    <FileText size={20} color={menuIconColor} strokeWidth={iconStroke} />
+                    <Text className="text-base font-semibold text-body">Privacidad</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => {
+                      void openLegalUrl(termsOfUseUrl(), 'Términos');
+                      stepHaptic();
+                    }}
+                    accessibilityRole="menuitem"
+                    accessibilityLabel="Términos de uso"
+                    className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+                  >
+                    <FileText size={20} color={menuIconColor} strokeWidth={iconStroke} />
+                    <Text className="text-base font-semibold text-body">Términos</Text>
+                  </Pressable>
+
+                  {session.cloudSignedIn ? (
+                    <Pressable
+                      onPress={() => {
+                        confirmDeleteAccount();
+                        stepHaptic();
+                      }}
+                      accessibilityRole="menuitem"
+                      accessibilityLabel="Eliminar cuenta"
+                      className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+                    >
+                      <Trash2 size={20} color={menuIconColor} strokeWidth={iconStroke} />
+                      <Text className="text-base font-semibold text-body">Eliminar cuenta</Text>
                     </Pressable>
                   ) : null}
                 </View>

@@ -8,7 +8,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import NucleoOrb from './NucleoOrb';
+import NucleoGlyphOrb from './NucleoGlyphOrb';
 import InlineUserBubble from './InlineUserBubble';
 import SessionErrorBanner from './SessionErrorBanner';
 import {
@@ -311,11 +311,7 @@ export default function InlineGenerationThread() {
             style={{ overflow: 'visible', maxWidth: bubbleMaxWidth }}
           >
             <Animated.View style={orbEntranceStyle}>
-              <NucleoOrb
-                size={ORB_SIZE}
-                state="complete"
-                reduceMotion={reduceMotion}
-              />
+              <NucleoGlyphOrb size={ORB_SIZE} reduceMotion={reduceMotion} />
             </Animated.View>
             <Text
               className="mt-4 text-center text-[17px] font-semibold leading-6 text-primary"

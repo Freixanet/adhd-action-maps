@@ -6,6 +6,7 @@ import Animated, {
   Extrapolation,
   interpolate,
   runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
@@ -17,13 +18,13 @@ import HistorySheet from './HistorySheet';
 import {
   SidebarBrandHeader,
   SidebarOcclusionFade,
-  SIDEBAR_OCCLUSION,
   sidebarHeaderSolidHeight,
   sidebarSearchStackHeight,
 } from './SidebarGlassHeader';
 import { APP_DARK_BACKGROUND } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
 import { DRAWER_WIDTH, MAIN_SHEET_CORNER_RADIUS, SCREEN_WIDTH } from './sidebarLayout';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import type { Coleccion } from '@shared/collections';
 import type { ActionMapData } from '../logic/contracts';
 import type { HistoryEntry } from '../logic/history';
@@ -34,8 +35,11 @@ export { DRAWER_WIDTH, MAIN_SHEET_CORNER_RADIUS } from './sidebarLayout';
 const SPRING = { damping: 26, stiffness: 280 } as const;
 const EDGE_SWIPE_TOP_INSET = 140;
 
-const SEARCH_TIMING = { duration: 320, easing: Easing.out(Easing.cubic) } as const;
-
+/** Single curve for clip + pill + sheet — no derived dual-easing hitch. */
+const SEARCH_TIMING = {
+  duration: 260,
+  easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+} as const;
 type HistoryDrawerProps = {
   open: boolean;
   entries: HistoryEntry[];
@@ -82,13 +86,18 @@ export default function HistoryDrawer({
   children,
 }: HistoryDrawerProps) {
   const { isDark } = useTheme();
+  const { reduceMotion } = useGlassAccessibility();
   const insets = useSafeAreaInsets();
   const [searchActive, setSearchActive] = useState(false);
+  /** After React commits filters/index layout, flip this to start the morph. */
+  const [searchMorphPending, setSearchMorphPending] = useState(false);
+  const [searchFieldFocusToken, setSearchFieldFocusToken] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilters, setSearchFilters] = useState<ReactNode>(null);
   const [openHistoryMenuEntryId, setOpenHistoryMenuEntryId] = useState<string | null>(null);
   const offsetX = useSharedValue(open ? DRAWER_WIDTH : 0);
   const sidebarClipWidth = useSharedValue(DRAWER_WIDTH);
+  const searchProgress = useSharedValue(0);
   const openShared = useSharedValue(open);
   const searchActiveShared = useSharedValue(false);
   const dragStartX = useSharedValue(0);
@@ -102,9 +111,78 @@ export default function HistoryDrawer({
   const brandHeaderHeight = searchActive ? searchStackHeight : headerSolidHeight;
   const sidebarCanvasColor = isDark ? APP_DARK_BACKGROUND : '#f0f0f0';
 
+  const bumpSearchFocus = useCallback(() => {
+    setSearchFieldFocusToken((token) => token + 1);
+  }, []);
+
+  const finishCloseSearch = useCallback(() => {
+    setSearchActive(false);
+    searchActiveShared.value = false;
+  }, [searchActiveShared]);
+
+  // Keep clip width in lockstep with the same progress the pill uses.
+  useAnimatedReaction(
+    () => searchProgress.value,
+    (p) => {
+      if (!searchActiveShared.value && p <= 0.001) return;
+      sidebarClipWidth.value = DRAWER_WIDTH + (SCREEN_WIDTH - DRAWER_WIDTH) * p;
+    }
+  );
+
+  const openSearch = useCallback(() => {
+    // 1) Commit index-hide + categories + header height on the JS/layout thread.
+    // 2) Start the morph only after that paint — otherwise React's re-render
+    //    lands mid-withTiming and the bar visibly stalls.
+    searchActiveShared.value = true;
+    setSearchActive(true);
+    if (reduceMotion) {
+      searchProgress.value = 1;
+      offsetX.value = SCREEN_WIDTH;
+      sidebarClipWidth.value = SCREEN_WIDTH;
+      bumpSearchFocus();
+      return;
+    }
+    setSearchMorphPending(true);
+  }, [
+    bumpSearchFocus,
+    offsetX,
+    reduceMotion,
+    searchActiveShared,
+    searchProgress,
+    sidebarClipWidth,
+  ]);
+
   useEffect(() => {
-    searchActiveShared.value = searchActive;
-  }, [searchActive, searchActiveShared]);
+    if (!searchMorphPending) return;
+    setSearchMorphPending(false);
+    searchProgress.value = withTiming(1, SEARCH_TIMING, (finished) => {
+      if (finished) runOnJS(bumpSearchFocus)();
+    });
+    offsetX.value = withTiming(SCREEN_WIDTH, SEARCH_TIMING);
+  }, [bumpSearchFocus, offsetX, searchMorphPending, searchProgress]);
+
+  const closeSearch = useCallback(() => {
+    setSearchQuery('');
+    setSearchMorphPending(false);
+    if (reduceMotion) {
+      searchProgress.value = 0;
+      offsetX.value = DRAWER_WIDTH;
+      sidebarClipWidth.value = DRAWER_WIDTH;
+      finishCloseSearch();
+      return;
+    }
+    // Morph back first; drop categories/index only when the bar is done.
+    searchProgress.value = withTiming(0, SEARCH_TIMING, (finished) => {
+      if (finished) runOnJS(finishCloseSearch)();
+    });
+    offsetX.value = withTiming(DRAWER_WIDTH, SEARCH_TIMING);
+  }, [
+    finishCloseSearch,
+    offsetX,
+    reduceMotion,
+    searchProgress,
+    sidebarClipWidth,
+  ]);
 
   useEffect(() => {
     if (!open) {
@@ -124,26 +202,22 @@ export default function HistoryDrawer({
     openShared.value = open;
     if (!open) {
       setSearchActive(false);
+      setSearchMorphPending(false);
       setSearchQuery('');
+      searchActiveShared.value = false;
+      searchProgress.value = 0;
       offsetX.value = withSpring(0, SPRING);
       sidebarClipWidth.value = DRAWER_WIDTH;
       return;
     }
 
-    if (searchActive) {
-      offsetX.value = withTiming(SCREEN_WIDTH, SEARCH_TIMING);
-      sidebarClipWidth.value = withTiming(SCREEN_WIDTH, SEARCH_TIMING);
+    if (searchActiveShared.value) {
       return;
     }
 
     offsetX.value = withSpring(DRAWER_WIDTH, SPRING);
     sidebarClipWidth.value = DRAWER_WIDTH;
-  }, [offsetX, open, openShared, searchActive, sidebarClipWidth]);
-
-  const closeSearch = () => {
-    setSearchActive(false);
-    setSearchQuery('');
-  };
+  }, [offsetX, open, openShared, searchActiveShared, searchProgress, sidebarClipWidth]);
 
   const panGesture = Gesture.Pan()
     .enabled(open && !openHistoryMenuEntryId)
@@ -158,6 +232,8 @@ export default function HistoryDrawer({
       offsetX.value = Math.max(0, Math.min(maxW, next));
       if (searchActiveShared.value) {
         sidebarClipWidth.value = offsetX.value;
+        const span = SCREEN_WIDTH - DRAWER_WIDTH;
+        searchProgress.value = span > 0 ? (offsetX.value - DRAWER_WIDTH) / span : 1;
       }
     })
     .onEnd((event) => {
@@ -172,6 +248,8 @@ export default function HistoryDrawer({
         offsetX.value = withSpring(target, SPRING);
         if (searchActiveShared.value) {
           sidebarClipWidth.value = target;
+          const span = SCREEN_WIDTH - DRAWER_WIDTH;
+          searchProgress.value = span > 0 ? (target - DRAWER_WIDTH) / span : 1;
         }
         if (shouldOpen && !openShared.value) runOnJS(onOpen)();
         if (!shouldOpen && openShared.value) runOnJS(onClose)();
@@ -183,6 +261,8 @@ export default function HistoryDrawer({
       offsetX.value = withSpring(target, SPRING);
       if (searchActiveShared.value) {
         sidebarClipWidth.value = target;
+        const span = SCREEN_WIDTH - DRAWER_WIDTH;
+        searchProgress.value = span > 0 ? (target - DRAWER_WIDTH) / span : 1;
       }
       if (shouldClose && openShared.value) runOnJS(onClose)();
       if (!shouldClose && !openShared.value) runOnJS(onOpen)();
@@ -309,9 +389,11 @@ export default function HistoryDrawer({
             searchActive={searchActive}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
-            onSearchOpen={() => setSearchActive(true)}
+            onSearchOpen={openSearch}
             onSearchClose={closeSearch}
             searchFilters={searchActive ? searchFilters : undefined}
+            searchProgress={searchProgress}
+            searchFieldFocusToken={searchFieldFocusToken}
           />
         </View>
         <SidebarOcclusionFade
@@ -347,7 +429,7 @@ export default function HistoryDrawer({
             onNewMap={onNewMap}
             searchActive={searchActive}
             searchQuery={searchQuery}
-            onSearchOpen={() => setSearchActive(true)}
+            onSearchOpen={openSearch}
             onSearchClose={closeSearch}
             onSearchQueryChange={setSearchQuery}
             openMenuEntryId={openHistoryMenuEntryId}

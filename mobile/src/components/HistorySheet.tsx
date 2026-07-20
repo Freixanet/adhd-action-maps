@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSharedValue } from 'react-native-reanimated';
 import FloatingGlassButton, { FLOATING_PILL_MIN_HEIGHT } from './FloatingGlassButton';
 import HistoryEntryCard from './HistoryEntryCard';
 import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  SquarePen,
+  Plus,
 } from 'lucide-react-native';
 import ProfileMenu from './ProfileMenu';
 import {
@@ -105,25 +106,18 @@ export default function HistorySheet({
   const [renameValue, setRenameValue] = useState('');
   const [indexExpanded, setIndexExpanded] = useState(true);
   const [listFilter, setListFilter] = useState<HistoryListFilter>('all');
-  // The list's switch into search mode (filter chips header, re-filtering,
-  // row re-renders) is deferred until the drawer/pill animation has finished —
-  // doing that render work in the same frame as the animation start is what
-  // caused the opening stutter. Exiting search reverts immediately.
-  const [searchMode, setSearchMode] = useState(searchActive);
-  useEffect(() => {
-    if (!searchActive) {
-      setSearchMode(false);
-      return;
-    }
-    const timer = setTimeout(() => setSearchMode(true), 360);
-    return () => clearTimeout(timer);
-  }, [searchActive]);
+  // Search UI (hide index, show filters) follows searchActive immediately.
+  const searchMode = searchActive;
   const insets = useSafeAreaInsets();
   const floatingActionsBottom = Math.max(insets.bottom, 12);
   const listBottomInset = searchActive
     ? floatingActionsBottom + 16
     : floatingActionsBottom + FLOATING_PILL_MIN_HEIGHT + 20;
   const { isDark } = useTheme();
+  const modalSearchProgress = useSharedValue(searchActive ? 1 : 0);
+  useEffect(() => {
+    modalSearchProgress.value = searchActive ? 1 : 0;
+  }, [modalSearchProgress, searchActive]);
 
   const usedCategories = useMemo(() => collectUsedCategories(entries), [entries]);
   const userCategories = useMemo(() => collectUserCategories(entries), [entries]);
@@ -566,6 +560,7 @@ export default function HistorySheet({
             onSearchOpen={onSearchOpen}
             onSearchClose={onSearchClose}
             searchFilters={searchActive ? searchFilterNode : undefined}
+            searchProgress={modalSearchProgress}
           />
         ) : null}
       </View>
@@ -582,13 +577,11 @@ export default function HistorySheet({
               onNewMap?.();
               onClose();
             }}
-            accessibilityLabel="Núcleo"
-            shape="pill"
+            accessibilityLabel="Nuevo Núcleo"
+            shape="circle"
             tone="accent"
-            compact
           >
-            <SquarePen size={17} color="#ffffff" />
-            <Text className="text-[15px] font-bold text-white">Núcleo</Text>
+            <Plus size={22} color="#ffffff" strokeWidth={2.5} />
           </FloatingGlassButton>
         </View>
       ) : null}

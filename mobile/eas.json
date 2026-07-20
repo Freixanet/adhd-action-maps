@@ -21,16 +21,16 @@
       },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://optimizador-tdah-production.up.railway.app",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://oxvfiyuljzchdjotyshl.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94dmZpeXVsanpjaGRqb3R5c2hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNzMxMjEsImV4cCI6MjA5NzY0OTEyMX0.KPtcbIApyD2jqW0Q_gUAlME8ITi6lGBsim6eQEkAVtc"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://your-project.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-anon-key"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://optimizador-tdah-production.up.railway.app",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://oxvfiyuljzchdjotyshl.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94dmZpeXVsanpjaGRqb3R5c2hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNzMxMjEsImV4cCI6MjA5NzY0OTEyMX0.KPtcbIApyD2jqW0Q_gUAlME8ITi6lGBsim6eQEkAVtc"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://your-project.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-anon-key"
       }
     }
   }

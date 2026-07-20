@@ -1,13 +1,12 @@
 import React from 'react';
 import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { RADII } from '@shared/uiTokens';
+import { CTA_FILL, RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 import { usePressScale } from '../hooks/usePressScale';
 
 /** Fixed height — Atrás and Siguiente must match without flex growth. */
 export const STEP_FOOTER_BUTTON_HEIGHT = 52;
-const STEP_FOOTER_PRIMARY_BG = '#6A6FE0';
 const STEP_FOOTER_PRIMARY_TEXT = '#FFFFFF';
 
 type StepFooterGlassButtonProps = {
@@ -70,7 +69,7 @@ export default function StepFooterGlassButton({
         <GlassSurface
           liquid
           liquidBorder="perimeter"
-          borderRadius={RADII.md}
+          borderRadius={RADII.lg}
           style={[styles.shell, styles.secondaryShell]}
           contentClassName="h-full w-full items-center justify-center"
         >
@@ -94,8 +93,8 @@ const styles = StyleSheet.create({
     height: STEP_FOOTER_BUTTON_HEIGHT,
   },
   primaryShell: {
-    backgroundColor: STEP_FOOTER_PRIMARY_BG,
-    borderRadius: RADII.md,
+    backgroundColor: CTA_FILL,
+    borderRadius: RADII.lg,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -113,7 +112,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   secondaryShell: {
-    borderRadius: RADII.md,
+    borderRadius: RADII.lg,
     overflow: 'hidden',
   },
   pressedOpacity: {

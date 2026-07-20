@@ -3,8 +3,16 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --color-app-canvas: #fafafa;
-  --color-app-surface: #fafafa;
+  /* Align with shared/uiTokens (mobile dark canvas). */
+  --color-app-canvas: #181A1F;
+  --color-app-surface: #24262D;
+  --color-app-surface-2: #2C2E37;
+  --color-app-primary: #FAFAFA;
+  --color-app-body: #D4D4DC;
+  --color-app-secondary: #9CA0AB;
+  --color-app-accent: #8B8FF5;
+  --color-app-accent-pressed: #7A7EE0;
+  --color-composer-surface: #3E4041;
 }
 
 @variant dark (&:where(.dark, .dark *));
@@ -12,22 +20,22 @@
 @layer base {
   html {
     scroll-padding-top: 7rem;
-    color-scheme: light;
+    color-scheme: dark;
     background-color: var(--color-app-canvas);
     min-height: 100%;
     min-height: 100dvh;
     min-height: -webkit-fill-available;
-    --btn-accent: #4f46e5;
-    --btn-accent-highlight: #7065f0;
+    --btn-accent: #6A6FE0;
+    --btn-accent-highlight: #8B8FF5;
   }
 
   html.dark {
     color-scheme: dark;
     --color-app-canvas: #181A1F;
-    --color-app-surface: #1a1c21;
+    --color-app-surface: #24262D;
     background-color: var(--color-app-canvas);
-    --btn-accent: #6366f1;
-    --btn-accent-highlight: #818cf8;
+    --btn-accent: #6A6FE0;
+    --btn-accent-highlight: #8B8FF5;
   }
 
   body {

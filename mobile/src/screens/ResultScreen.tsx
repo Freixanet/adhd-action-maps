@@ -39,7 +39,6 @@ import TakeawaysGlassCard from '../components/TakeawaysGlassCard';
 import KnowledgeSectionsList from '../components/KnowledgeSectionsList';
 import NucleoVisualOverview from '../components/NucleoVisualOverview';
 import SectionCompleteCue from '../components/SectionCompleteCue';
-import StepSelfCheck from '../components/StepSelfCheck';
 import { stepHaptic, useAppSession } from '../context/AppSessionContext';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useViewAllScrollSpy } from '../hooks/useViewAllScrollSpy';
@@ -138,9 +137,8 @@ export default function ResultScreen({
     (!session.viewAll && !session.isComplete && session.currentStep === 0) ||
     session.isComplete;
 
-  const mapHeaderResetKey = session.viewAll
-    ? `${session.viewAll}:${session.isComplete}`
-    : `${session.viewAll}:${session.currentStep}:${session.isComplete}`;
+  // Do not include currentStep — chrome hide should persist across step changes.
+  const mapHeaderResetKey = `${session.viewAll}:${session.isComplete}`;
 
   const syncReadingStep = useCallback(
     (step: number) => session.syncReadingStep(step),
@@ -360,7 +358,7 @@ export default function ResultScreen({
     if (isStepMode) {
       headerVisible.value = true;
     }
-  }, [headerVisible, isStepMode, session.currentStep]);
+  }, [headerVisible, isStepMode]);
 
   const toggleStepHeader = useCallback(() => {
     if (!isStepMode) return;
@@ -424,6 +422,7 @@ export default function ResultScreen({
       onPress={interactive ? () => session.goToStep(0, true) : undefined}
       className={interactive ? VIEW_ALL_SECTION_DIVIDER : 'mb-8'}
     >
+      {renderMapMeta()}
       <View className="flex-row items-center flex-wrap gap-x-3 gap-y-2 mb-4">
         <View className="flex-row items-center gap-2">
           <AppIcon size={20} />
@@ -480,24 +479,30 @@ export default function ResultScreen({
   ) => {
     const accent =
       kind === 'alert'
-        ? '#DC2626'
+        ? '#E07A6B'
         : kind === 'action'
-          ? '#0F766E'
-          : '#4338CA';
+          ? '#6FBF8F'
+          : '#8B8FF5';
 
     return (
-      <View className="rounded-card overflow-hidden bg-surface p-4" style={styles.fixedHighlightCard}>
-        <View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: accent, opacity: 0.06 }]}
-        />
+      <View className="mt-2" style={styles.fixedHighlightCard}>
         <Text
-          className="text-[13px] font-semibold uppercase tracking-[0.08em]"
+          className="text-[12px] font-semibold uppercase tracking-[0.14em]"
           style={{ color: accent }}
         >
           {label}
         </Text>
-        <Text className="mt-2 text-[17px] leading-[25px] text-body">{text}</Text>
+        <View
+          className="mt-2.5 mb-3"
+          style={{
+            width: 28,
+            height: 1.5,
+            borderRadius: 1,
+            backgroundColor: accent,
+            opacity: 0.7,
+          }}
+        />
+        <Text className="text-[17px] leading-[25px] text-body">{text}</Text>
       </View>
     );
   };
@@ -589,7 +594,6 @@ export default function ResultScreen({
         <View style={!interactive ? styles.fixedStepBody : undefined}>
           <StepContentBlocks blocks={step.content} />
         </View>
-        {step.selfCheck ? <StepSelfCheck question={step.selfCheck} /> : null}
         <ReferencesChips references={step.references} />
       </Pressable>
     );
@@ -613,49 +617,57 @@ export default function ResultScreen({
               onPress={() => session.setEssentialsReview(false)}
             />
           </View>
-          <View style={styles.completionActionFullWidthSlot}>
-            <CompletionGlassButton
-              label="Volver al inicio"
-              onPress={() => {
-                session.setEssentialsReview(false);
-                session.goToStep(0);
-              }}
-            />
-          </View>
         </View>
       </View>
     );
   };
 
-  const renderCompletionActions = () => (
-    <View className="mt-10 flex-row flex-wrap gap-3" style={styles.completionActions}>
-      <View style={styles.completionActionFullWidthSlot}>
-        <CompletionGlassButton
-          label="Núcleo"
-          variant="accent"
-          onPress={session.handleNewMap}
-        />
-      </View>
-      <View className="flex-row gap-3 w-full items-center">
-        <View style={styles.completionActionSlot}>
+  const renderCompletionActions = () => {
+    const openAsk = () => {
+      if (!session.isPro) {
+        session.openPaywall();
+        stepHaptic();
+        return;
+      }
+      session.setChatOpen(true);
+      stepHaptic();
+    };
+
+    return (
+      <View className="mt-10 gap-3" style={styles.completionActions}>
+        <View className="flex-row gap-3 w-full items-center">
+          <View style={styles.completionActionSlot}>
+            <CompletionGlassButton
+              label="Repasar lo esencial"
+              onPress={() => session.setEssentialsReview(true)}
+            />
+          </View>
+          <View style={styles.completionActionSlot}>
+            <CompletionGlassButton label="Preguntar" onPress={openAsk} />
+          </View>
+        </View>
+        <View style={styles.completionActionFullWidthSlot}>
           <CompletionGlassButton
-            label="Repasar lo esencial"
-            onPress={() => session.setEssentialsReview(true)}
+            label="Guardar ficha PDF"
+            onPress={() => void session.handleDownloadPdf()}
+            disabled={!session.historyStore.activeId || session.isPdfGenerating}
           />
         </View>
-        <CompletionOverflowMenu
-            onExportPdf={() => void session.handleDownloadPdf()}
-            onAsk={() => {
-              session.setChatOpen(true);
-              stepHaptic();
-            }}
-            onViewAll={session.enterCompletedViewAll}
-            pdfDisabled={!session.historyStore.activeId}
-            pdfLoading={session.isPdfGenerating}
+        <View style={styles.completionActionFullWidthSlot}>
+          <CompletionGlassButton
+            label="Nuevo Núcleo"
+            variant="accent"
+            onPress={session.handleNewMap}
           />
+        </View>
+        <View className="w-full items-end">
+          <CompletionOverflowMenu
+            onViewAll={session.enterCompletedViewAll}
+          />
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderCompletionBody = (plainTakeaways = true) => (
     <>
@@ -815,7 +827,6 @@ export default function ResultScreen({
           <GestureDetector gesture={swipeGesture}>
             <Animated.View className="flex-1 px-5" style={stepPageChromeStyle}>
               <Pressable className="flex-1" onPress={toggleStepHeader}>
-                {renderMapMeta()}
                 <Animated.View style={[styles.readingColumn, styles.fixedReadingColumn]}>
                   {showStepSlide ? (
                     <StepSlideTransition step={session.currentStep} reduceMotion={reduceMotion}>
@@ -859,7 +870,6 @@ export default function ResultScreen({
             scrollEventThrottle={16}
           >
             <View>
-              {renderMapMeta()}
               <Animated.View style={styles.readingColumn}>
                 <Animated.View
                   key={contentModeKey}
@@ -881,7 +891,7 @@ export default function ResultScreen({
           </Animated.ScrollView>
         )}
 
-        <StepFooterNav />
+        <StepFooterNav chromeVisibleShared={headerVisible} />
       </View>
 
       {!previewMode && session.historyStore.activeId ? (

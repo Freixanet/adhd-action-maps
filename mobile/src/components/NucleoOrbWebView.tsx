@@ -68,9 +68,21 @@ export default function NucleoOrbWebView({
     };
   }, []);
 
-  // The absolute wrapper (plain RN View) owns position and size; the WebView
-  // just fills it. react-native-webview's default container has
-  // overflow:'hidden', so it must be overridden or the bleed gets clipped.
+  // WebView is larger than the sphere (bleed). Clip the shell to a circle the
+  // size of the orb so opaque WKWebView corners never read as a square/halo.
+  const shellStyle = useMemo(
+    () => [
+      styles.shell,
+      {
+        width: metrics.displaySize,
+        height: metrics.displaySize,
+        borderRadius: metrics.displaySize / 2,
+      },
+      style,
+    ],
+    [metrics.displaySize, style]
+  );
+
   const bleedWrapperStyle = useMemo(
     () => ({
       position: 'absolute' as const,
@@ -97,7 +109,8 @@ export default function NucleoOrbWebView({
     overScrollMode: 'never' as const,
     nestedScrollEnabled: false,
     allowsBackForwardNavigationGestures: false,
-    backgroundColor: 'transparent',
+    // Explicit zero-alpha so RNCWebView sets drawsTransparentBackground.
+    backgroundColor: 'rgba(0,0,0,0)',
     injectedJavaScriptBeforeContentLoaded: configScript,
     injectedJavaScript: configScript,
   };
@@ -113,15 +126,7 @@ export default function NucleoOrbWebView({
   }
 
   return (
-    <View
-      style={[
-        styles.shell,
-        { width: metrics.displaySize, height: metrics.displaySize },
-        style,
-      ]}
-      pointerEvents={interactive ? 'auto' : 'none'}
-      collapsable={false}
-    >
+    <View style={shellStyle} pointerEvents={interactive ? 'auto' : 'none'} collapsable={false}>
       <View style={bleedWrapperStyle} pointerEvents={interactive ? 'auto' : 'none'}>
         {Platform.OS === 'ios' ? (
           <WebView
@@ -148,7 +153,7 @@ export default function NucleoOrbWebView({
 
 const styles = StyleSheet.create({
   shell: {
-    overflow: 'visible',
+    overflow: 'hidden',
     backgroundColor: 'transparent',
     borderWidth: 0,
     shadowOpacity: 0,
@@ -158,7 +163,7 @@ const styles = StyleSheet.create({
   webviewContainer: {
     flex: 1,
     backgroundColor: 'transparent',
-    overflow: 'visible',
+    overflow: 'hidden',
   },
   webview: {
     flex: 1,

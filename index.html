@@ -5,24 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="description" content="Nucleo convierte texto caótico, transcripciones y documentos en mapas de acción claros y estructurados." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <meta name="theme-color" content="#FAFAFA" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="theme-color" content="#181A1F" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Nucleo</title>
     <script>
       (function () {
-        var theme = localStorage.getItem("theme");
-        var isDark =
-          theme === "dark" ||
-          (!theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        if (isDark) {
-          document.documentElement.classList.add("dark");
-        }
+        document.documentElement.classList.add("dark");
         document
           .querySelector('meta[name="theme-color"]')
-          ?.setAttribute("content", isDark ? "#181A1F" : "#FAFAFA");
+          ?.setAttribute("content", "#181A1F");
         document
           .querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
-          ?.setAttribute("content", isDark ? "black-translucent" : "default");
+          ?.setAttribute("content", "black-translucent");
       })();
     </script>
   </head>
