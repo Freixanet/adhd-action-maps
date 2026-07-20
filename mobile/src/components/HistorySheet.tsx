@@ -405,7 +405,7 @@ export default function HistorySheet({
                     : 'text-body'
                 }`}
               >
-                En 60s
+                Mapa visual
               </Text>
             </Pressable>
 

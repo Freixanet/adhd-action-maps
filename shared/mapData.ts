@@ -15,6 +15,7 @@ import {
   normalizeReadingSections,
   SOURCE_TRUNCATION_NOTICE,
 } from './nucleoPipeline';
+import { normalizeNucleoVisual } from './nucleoVisual';
 
 const DEFAULT_CALLOUT_LABELS: Record<string, CalloutLabel> = {
   action: 'Para aplicarlo',
@@ -167,6 +168,8 @@ export function normalizeMapData(
     },
     modelUsed: raw.modelUsed ? String(raw.modelUsed) : undefined,
   };
+
+  normalized.visualization = normalizeNucleoVisual(raw.visualization, normalized.tldr);
 
   if (!normalized.sourceMetadata!.detected.length) {
     normalized.sourceMetadata!.detected = [normalized.sourceMetadata!.label];

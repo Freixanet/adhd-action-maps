@@ -9,6 +9,7 @@ export * from './uiTokens';
 export * from './history';
 export * from './historySearch';
 export * from './mapData';
+export * from './nucleoVisual';
 export * from './apiBase';
 export * from './storage';
 export * from './atomGeometry';

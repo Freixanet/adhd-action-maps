@@ -37,6 +37,7 @@ import StepSlideTransition from '../components/StepSlideTransition';
 import SourceCoverageCard from '../components/SourceCoverageCard';
 import TakeawaysGlassCard from '../components/TakeawaysGlassCard';
 import KnowledgeSectionsList from '../components/KnowledgeSectionsList';
+import NucleoVisualOverview from '../components/NucleoVisualOverview';
 import SectionCompleteCue from '../components/SectionCompleteCue';
 import StepSelfCheck from '../components/StepSelfCheck';
 import { stepHaptic, useAppSession } from '../context/AppSessionContext';
@@ -44,6 +45,7 @@ import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useViewAllScrollSpy } from '../hooks/useViewAllScrollSpy';
 import { getIntentLabel, getSourceTypeLabel } from '@shared/categories';
 import { formatReadingProgressLabel, getReadingSectionForStep } from '@shared/nucleoPipeline';
+import { normalizeNucleoVisual } from '@shared/nucleoVisual';
 import type { SourceReference, StepContentBlock } from '../logic/contracts';
 import { debugTransitionLog } from '../logic/debugTransitionLog';
 
@@ -183,6 +185,10 @@ export default function ResultScreen({
   }, [scrollProgress, session.viewAll]);
 
   const totalMinutes = useMemo(() => parseTotalMinutes(data?.steps), [data?.steps]);
+  const visualOverview = useMemo(
+    () => normalizeNucleoVisual(data?.visualization, data?.tldr ?? []),
+    [data?.tldr, data?.visualization]
+  );
 
   const { reduceMotion } = useGlassAccessibility();
   const completionCheckScale = useSharedValue(1);
@@ -500,33 +506,17 @@ export default function ResultScreen({
     <View style={styles.fixedPage}>
       <View>
         <Text className="text-sm font-bold uppercase tracking-widest text-accent">
-          En 60 segundos
+          Mapa visual · En 60 segundos
         </Text>
         <Text className="mt-3 text-2xl font-bold text-primary leading-9">
-          El mapa antes de entrar en los pasos
+          {visualOverview?.title || 'El Núcleo antes de entrar en los pasos'}
         </Text>
       </View>
 
-      <View style={styles.fixedTldrList}>
-        {data.tldr?.map((item, i) => (
-          <View key={`${item.title}-${i}`} className="flex-row gap-4 items-start">
-            <View className="w-8 h-8 rounded-full border-2 border-neutral-200 border-white/10 items-center justify-center">
-              <Text className="text-sm font-bold text-secondary">{i + 1}</Text>
-            </View>
-            <View className="flex-1">
-              <Text className="text-lg font-bold text-primary mb-1" numberOfLines={2}>
-                {item.title}
-              </Text>
-              <Text className="text-[15px] leading-[22px] text-body" numberOfLines={3}>
-                {item.desc}
-              </Text>
-            </View>
-          </View>
-        ))}
-      </View>
+      {visualOverview ? <NucleoVisualOverview visual={visualOverview} /> : null}
 
       {renderHighlightCard(
-        'Idea clave',
+        'Hilo conductor',
         data.coreSupport || data.coreIdea,
         'info'
       )}
@@ -946,11 +936,6 @@ const styles = StyleSheet.create({
   fixedStepBody: {
     flexShrink: 1,
     overflow: 'hidden',
-  },
-  fixedTldrList: {
-    gap: 18,
-    marginTop: 24,
-    marginBottom: 24,
   },
   fixedHighlightCard: {
     marginTop: 12,

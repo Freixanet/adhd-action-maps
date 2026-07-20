@@ -46,7 +46,7 @@ export default function StepFooterNav({ completeLabel = 'Completar Núcleo' }: S
           ) : (
             <StepFooterGlassButton
               variant="primary"
-              label="Ver En 60s"
+              label="Ver mapa visual"
               onPress={() => session.goToStep(1)}
             />
           )

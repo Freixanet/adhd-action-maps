@@ -42,6 +42,7 @@ import {
   wrapSourceText,
   SOURCE_TRUNCATION_NOTICE,
 } from "./shared/nucleoPipeline";
+import { normalizeNucleoVisual } from "./shared/nucleoVisual";
 
 type AuthenticatedRequest = express.Request & { userId?: string; userEmail?: string; isPro?: boolean };
 
@@ -2093,6 +2094,40 @@ const schema = {
         required: ["title", "desc"]
       }
     },
+    visualization: {
+      type: Type.OBJECT,
+      description:
+        "Una sola visualización semántica compacta que explica la relación dominante del contenido. Evita dashboards y decoraciones; usa de 3 a 5 nodos breves.",
+      properties: {
+        kind: {
+          type: Type.STRING,
+          description: "Opciones: 'flow', 'cycle', 'comparison', 'hierarchy'.",
+        },
+        title: {
+          type: Type.STRING,
+          description: "Título corto que nombra la relación o modelo mental mostrado.",
+        },
+        items: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              label: {
+                type: Type.STRING,
+                description: "Identificador visible muy breve, idealmente de 1 a 4 palabras.",
+              },
+              detail: {
+                type: Type.STRING,
+                description: "Una frase breve y específica que explica este nodo desde la fuente.",
+              },
+            },
+            required: ["id", "label", "detail"],
+          },
+        },
+      },
+      required: ["kind", "title", "items"],
+    },
     knowledgeSections: {
       type: Type.ARRAY,
       items: {
@@ -2206,6 +2241,7 @@ const schema = {
     "sourceMetadata",
     "coverage",
     "tldr",
+    "visualization",
     "steps",
     "completionCard",
   ]
@@ -2231,7 +2267,8 @@ Reglas obligatorias:
 13. Devuelve solo JSON válido compatible con el esquema pedido.
 14. Filtra el ruido y cubre las ideas relevantes según el contrato de profundidad activo. La cobertura completa tiene prioridad salvo cuando depth activo sea rapido; en rapido debes sintetizar y agrupar, declarando omisiones en coverage.limitations si procede.
 15. El campo "intent" en el JSON debe coincidir exactamente con el intent activo del contrato (understand, study o apply).
-16. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).`;
+16. La visualización debe explicar una sola relación dominante de la fuente con 3-5 nodos breves. Elige flow para proceso o secuencia, cycle para bucle, comparison para contraste y hierarchy para partes o dependencias. No inventes métricas ni relaciones.
+17. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, visualization, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).`;
 
 function getRepairGenerationConfig(maxOutputTokens: number) {
   return {
@@ -2486,6 +2523,8 @@ function normalizeMapData(
     },
   };
 
+  normalized.visualization = normalizeNucleoVisual(parsed?.visualization, normalized.tldr);
+
   if (normalized.references.length === 0) {
     normalized.references = normalizedSteps.flatMap((step) => step.references ?? []).slice(0, 8);
   }
@@ -2576,12 +2615,20 @@ function buildTransformPrompt({
 
   const mobilePaginationRule = [
     "CONTRATO DE PAGINACIÓN MÓVIL SIN SCROLL:",
-    "El modo paso a paso se renderiza como páginas fijas: página 1 = coreIdea + coreSupport + tarjeta/fuente; página 2 = tldr ('En 60 segundos'); páginas siguientes = steps.",
+    "El modo paso a paso se renderiza como páginas fijas: página 1 = coreIdea + coreSupport + tarjeta/fuente; página 2 = visualization (apoyada por tldr); páginas siguientes = steps.",
     "Ninguna página del modo paso a paso tendrá scroll vertical. Escribe cada step para que quepa en una pantalla móvil media: título breve, purpose de 1-2 frases, 2-4 bloques de contenido y un selfCheck corto si aporta valor.",
     "Cada step debe incluir al menos un bloque type='callout' con label editorial ('Idea clave', 'Matiz', 'Ejemplo', 'Precaución' o 'Para aplicarlo'). Esa tarjeta debe contener lo más recordable o delicado de la página.",
     "Evita páginas vacías: si una página queda pobre, añade matiz, ejemplo, relación causa/efecto o implicación útil extraída de la fuente, sin inventar ni rellenar.",
     "Evita páginas sobrecargadas: si una página no cabría sin scroll, crea otro step y reparte la información. No omitas información importante solo por encaje visual.",
     "En listas, usa 2-4 items concisos. En prose, evita párrafos largos. En callouts, una idea fuerte y específica.",
+  ].join("\n");
+
+  const visualizationRule = [
+    "CONTRATO DE VISUALIZACIÓN:",
+    "Genera exactamente una visualization que haga visible la relación más importante del Núcleo; debe ayudar a comprender, comparar o decidir, no decorar.",
+    "Elige un solo kind: flow para proceso/secuencia/cronología; cycle para bucle; comparison para contrastar alternativas o dimensiones; hierarchy para partes, niveles o dependencias.",
+    "Usa de 3 a 5 items. Cada label debe ser legible de un vistazo (1-4 palabras) y cada detail una sola frase breve apoyada por la fuente.",
+    "La primera vista debe ser útil sin interacción. No inventes cifras, puntuaciones, estados ni relaciones que la fuente no sostenga.",
   ].join("\n");
 
   const studyDocBetaRule =
@@ -2617,10 +2664,10 @@ function buildTransformPrompt({
     `Intent activo confirmado: ${intentLabel(intent)} (${intent}).`,
     `Profundidad activa confirmada: ${resolvedDepth}.`,
     `El campo JSON "intent" debe ser exactamente "${intent}".`,
-    "ORDEN DE EMISIÓN JSON: genera title, coreIdea y coreSupport primero; solo después el resto de campos (sourceMetadata, coverage, tldr, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).",
+    "ORDEN DE EMISIÓN JSON: genera title, coreIdea y coreSupport primero; solo después el resto de campos (sourceMetadata, coverage, tldr, visualization, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).",
     `Idioma de salida: ${outputLanguage}.`,
     outputLanguage === "es"
-      ? "Debes escribir TODO el mapa en español: title, coreIdea, coreSupport, tldr, knowledgeSections, shortNav, steps, completionCard y labels editoriales. Solo puedes dejar una cita textual en otro idioma si es imprescindible y debe ir claramente marcada como cita."
+      ? "Debes escribir TODO el mapa en español: title, coreIdea, coreSupport, tldr, visualization, knowledgeSections, shortNav, steps, completionCard y labels editoriales. Solo puedes dejar una cita textual en otro idioma si es imprescindible y debe ir claramente marcada como cita."
       : "",
     sourceLabel ? `Etiqueta visible de la fuente: ${sourceLabel}.` : "",
     segmentTitle
@@ -2637,6 +2684,7 @@ function buildTransformPrompt({
     `Si no tienes confianza clara sobre la categoría, usa "${FALLBACK_MAP_CATEGORY}".`,
     "La coreIdea debe ser una frase corta y memorable; evita párrafos, matices largos o dos ideas en una.",
     tldrRule,
+    visualizationRule,
     mobilePaginationRule,
     studyDocBetaRule,
     personalizationRule,

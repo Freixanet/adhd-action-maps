@@ -67,6 +67,24 @@ export type TLDRItem = {
   desc: string;
 };
 
+export type NucleoVisualKind = 'flow' | 'cycle' | 'comparison' | 'hierarchy';
+
+export type NucleoVisualItem = {
+  id: string;
+  label: string;
+  detail: string;
+};
+
+/**
+ * Compact semantic overview rendered as the visual page of a Núcleo.
+ * The kind controls the relationship shown between the labeled items.
+ */
+export type NucleoVisual = {
+  kind: NucleoVisualKind;
+  title: string;
+  items: NucleoVisualItem[];
+};
+
 export type CalloutLabel =
   | 'Idea clave'
   | 'Matiz'
@@ -128,6 +146,7 @@ export type ActionMapData = {
   coreIdea: string;
   coreSupport: string;
   tldr: TLDRItem[];
+  visualization?: NucleoVisual;
   knowledgeSections?: KnowledgeSection[];
   /** Agrupación de pasos para mini-completado (SPEC §4); solo si steps.length >= 6. */
   readingSections?: ReadingSection[] | null;
