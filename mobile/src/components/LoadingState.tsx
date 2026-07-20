@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import NucleoOrb from './NucleoOrb';
+import NucleoGlyphOrb from './NucleoGlyphOrb';
 import { formatCollectionProgress } from '@shared/collections';
 import {
   ANALYZING_SOURCE_LABEL,
@@ -34,7 +34,7 @@ export default function LoadingState(_props: LoadingStateProps) {
 
   return (
     <View className="flex-1 items-center justify-center px-6 bg-base">
-      <NucleoOrb size={72} state="thinking" glow interactive reduceMotion={reduceMotion} />
+      <NucleoGlyphOrb size={72} reduceMotion={reduceMotion} />
       <View className="mt-6 min-h-[22px] justify-center">
         <LoadingPhaseLabel text={phaseLabel} reduceMotion={reduceMotion} />
       </View>

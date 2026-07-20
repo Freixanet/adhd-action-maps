@@ -6,6 +6,9 @@ export const TEXT_BODY = '#D4D4DC';
 export const TEXT_SECONDARY = '#9CA0AB';
 export const ACCENT = '#8B8FF5';
 export const ACCENT_PRESSED = '#7A7EE0';
+/** Primary reading CTA fill (Siguiente / Completar) — distinct from brand accent. */
+export const CTA_FILL = '#6A6FE0';
+export const CTA_FILL_PRESSED = '#5B60D4';
 export const SEM_CLAVE = '#8B8FF5';
 export const SEM_MATIZ = '#E0B45C';
 export const SEM_EJEMPLO = '#6FBF8F';

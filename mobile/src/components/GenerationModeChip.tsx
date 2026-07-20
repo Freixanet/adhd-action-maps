@@ -39,7 +39,7 @@ export default function GenerationModeChip({
       <View className="max-w-[92px]">
         <Text
           numberOfLines={1}
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.35}
           className={`text-[12px] font-semibold ${beta ? 'text-accent' : 'text-body'}`}
         >
           {label}

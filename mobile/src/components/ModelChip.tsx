@@ -34,7 +34,7 @@ function ModelChip({ value, onChange, onOpenPaywall, disabled = false }: ModelCh
         <Sparkles size={13} color={iconMuted} />
         <Text
           numberOfLines={1}
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.35}
           style={{ flexShrink: 0 }}
           className="text-[13px] font-semibold text-body"
         >

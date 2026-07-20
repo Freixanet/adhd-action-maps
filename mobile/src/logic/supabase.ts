@@ -1,12 +1,21 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+const url = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
+const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim();
 
-// Inicializamos el cliente Supabase configurando AsyncStorage para la sesión nativa
-export const supabase = url && anonKey
-  ? createClient(url, anonKey, {
+function isUsableSupabaseConfig(candidateUrl?: string, candidateKey?: string): boolean {
+  if (!candidateUrl || !candidateKey) return false;
+  if (/your-project\.supabase\.co/i.test(candidateUrl)) return false;
+  // Retired project (NXDOMAIN).
+  if (/oxvfiyuljzchdjotyshl\.supabase\.co/i.test(candidateUrl)) return false;
+  if (/^your-anon-key$/i.test(candidateKey)) return false;
+  return true;
+}
+
+/** Null when cloud sync is not configured or still on placeholder/dead project env. */
+export const supabase: SupabaseClient | null = isUsableSupabaseConfig(url, anonKey)
+  ? createClient(url!, anonKey!, {
       auth: {
         storage: AsyncStorage,
         autoRefreshToken: true,

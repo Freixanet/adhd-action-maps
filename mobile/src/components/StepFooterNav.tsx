@@ -1,5 +1,11 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import Animated, {
+  type SharedValue,
+  useAnimatedProps,
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check } from 'lucide-react-native';
 import StepFooterGlassButton from './StepFooterGlassButton';
@@ -8,21 +14,57 @@ import { useAppSession } from '../context/AppSessionContext';
 
 /** CTA icon over the solid step-footer primary fill (SPEC §3.3). */
 const CTA_ICON_COLOR = '#FFFFFF';
+/** Approximate chrome height for slide-off (buttons + padding; safe area added at runtime). */
+const FOOTER_CHROME_BASE = 84;
 
 type StepFooterNavProps = {
   completeLabel?: string;
+  /** Same shared value as the reading header — tap/scroll hides both. */
+  chromeVisibleShared?: SharedValue<boolean>;
 };
 
-export default function StepFooterNav({ completeLabel = 'Completar Núcleo' }: StepFooterNavProps) {
+export default function StepFooterNav({
+  completeLabel = 'Completar Núcleo',
+  chromeVisibleShared,
+}: StepFooterNavProps) {
   const session = useAppSession();
   const insets = useSafeAreaInsets();
   const showStepFooter = !session.viewAll && !session.isComplete;
   const totalReadingPages = session.totalSteps + 1;
+  const hideDistance = FOOTER_CHROME_BASE + insets.bottom;
+
+  const footerStyle = useAnimatedStyle(() => {
+    if (!chromeVisibleShared) {
+      return { transform: [{ translateY: 0 }], opacity: 1 };
+    }
+    const visible = chromeVisibleShared.value;
+    return {
+      transform: [
+        {
+          translateY: withTiming(visible ? 0 : hideDistance, { duration: 250 }),
+        },
+      ],
+      opacity: withTiming(visible ? 1 : 0, { duration: 200 }),
+    };
+  });
+
+  const footerAnimatedProps = useAnimatedProps(() => {
+    if (!chromeVisibleShared) {
+      return { pointerEvents: 'auto' as const };
+    }
+    return {
+      pointerEvents: chromeVisibleShared.value ? ('auto' as const) : ('none' as const),
+    };
+  });
 
   if (!showStepFooter) return null;
 
   return (
-    <View className="border-t border-neutral-200 border-white/10 bg-base">
+    <Animated.View
+      animatedProps={footerAnimatedProps}
+      style={footerStyle}
+      className="border-t border-neutral-200 border-white/10 bg-base"
+    >
       <View
         className="px-7"
         style={{ paddingTop: 16, paddingBottom: insets.bottom + 16 }}
@@ -79,7 +121,7 @@ export default function StepFooterNav({ completeLabel = 'Completar Núcleo' }: S
           </View>
         )}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
