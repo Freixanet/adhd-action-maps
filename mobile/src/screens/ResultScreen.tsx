@@ -49,8 +49,7 @@ import { getIntentLabel, getSourceTypeLabel } from '@shared/categories';
 import { formatReadingProgressLabel } from '@shared/nucleoPipeline';
 // F3: re-spec pending — NucleoVisualSpec normalize unused while channel is off.
 // import { normalizeNucleoVisual } from '@shared/nucleoVisual';
-import type { SourceReference, StepContentBlock } from '../logic/contracts';
-import { getBlockPlainText } from '@shared/stepContentBlocks';
+import type { SourceReference } from '../logic/contracts';
 import { debugTransitionLog } from '../logic/debugTransitionLog';
 
 const PREVIEW_TOP_INSET = initialWindowMetrics?.insets.top ?? 0;
@@ -522,41 +521,6 @@ export default function ResultScreen({
     );
   };
 
-  const renderHighlightCard = (
-    label: string,
-    text: string,
-    kind: 'action' | 'info' | 'alert' | undefined = 'info'
-  ) => {
-    const accent =
-      kind === 'alert'
-        ? '#E07A6B'
-        : kind === 'action'
-          ? '#6FBF8F'
-          : '#8B8FF5';
-
-    return (
-      <View className="mt-2" style={styles.fixedHighlightCard}>
-        <Text
-          className="text-[12px] font-semibold uppercase tracking-[0.14em]"
-          style={{ color: accent }}
-        >
-          {label}
-        </Text>
-        <View
-          className="mt-2.5 mb-3"
-          style={{
-            width: 28,
-            height: 1.5,
-            borderRadius: 1,
-            backgroundColor: accent,
-            opacity: 0.7,
-          }}
-        />
-        <Text className="text-[17px] leading-[25px] text-body">{text}</Text>
-      </View>
-    );
-  };
-
   const renderTldrPage = () => (
     <View style={styles.stepPage}>
       {isVisualizeHtmlTest ? (
@@ -593,9 +557,6 @@ export default function ResultScreen({
       session.totalSteps,
       data.readingSections ?? null
     );
-    const hasCallout = step.content?.some(
-      (block) => String(block.type || '').toLowerCase() === 'callout'
-    );
 
     return (
       <View
@@ -621,14 +582,9 @@ export default function ResultScreen({
             {step.purpose}
           </Text>
         ) : null}
-        {/* F3: re-spec pending — step.visualization / NucleoVisualOverview disconnected. */}
-        {!interactive && !hasCallout && (step.purpose || (step.content?.[0] && getBlockPlainText(step.content[0]))) ? (
-          renderHighlightCard(
-            'Idea clave',
-            step.purpose || (step.content?.[0] ? getBlockPlainText(step.content[0]) : '') || '',
-            'info'
-          )
-        ) : null}
+        {/* F3: re-spec pending — step.visualization / NucleoVisualOverview disconnected.
+            Idea clave: no fallback from purpose (was duplicating the paragraph above).
+            Real callouts render via StepContentBlocks only. */}
         <View>
           <StepContentBlocks blocks={step.content} />
         </View>
@@ -1006,9 +962,6 @@ const styles = StyleSheet.create({
   },
   stepPage: {
     paddingBottom: 16,
-  },
-  fixedHighlightCard: {
-    marginTop: 12,
   },
   completionActions: {
     width: '100%',

@@ -164,9 +164,9 @@ const MAP_CACHE_LIMIT = 120;
 const mapCache = new Map<string, ActionMapData>();
 
 const READING_WORDS_PER_MINUTE = 200;
-const MAX_OUTPUT_TOKENS_FAST = 6144;
-const MAX_OUTPUT_TOKENS_STANDARD = 8192;
-const MAX_OUTPUT_TOKENS_DEEP = 16384;
+const MAX_OUTPUT_TOKENS_FAST = 8192;
+const MAX_OUTPUT_TOKENS_STANDARD = 16384;
+const MAX_OUTPUT_TOKENS_DEEP = 24576;
 const MAX_CHAT_OUTPUT_TOKENS = 2048;
 
 function resolveModelChain(preferred?: string, isPro = false): string[] {
@@ -390,6 +390,41 @@ function truncateDebugText(value: string | undefined, max = 120): string | null 
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max)}…`;
+}
+
+/** Dev dump of raw model JSON before normalize (overwrites each generation). */
+function dumpLastGenerationRaw(
+  fullText: string,
+  meta: {
+    model?: string;
+    finishReason?: string | null;
+    maxOutputTokens?: number;
+    path?: string;
+  }
+): void {
+  if (process.env.NODE_ENV === "production") return;
+  try {
+    const dir = path.join(process.cwd(), "logs");
+    fs.mkdirSync(dir, { recursive: true });
+    const outPath = path.join(dir, "last-generation.json");
+    fs.writeFileSync(
+      outPath,
+      JSON.stringify(
+        {
+          dumpedAt: new Date().toISOString(),
+          ...meta,
+          textLength: fullText.length,
+          rawText: fullText,
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+    console.log(`[dump] wrote ${outPath} (${fullText.length} chars)`);
+  } catch (err) {
+    console.warn("[dump] failed to write logs/last-generation.json", err);
+  }
 }
 
 function estimateTransformInputLength(body: TransformRequest): number {
@@ -1668,6 +1703,11 @@ function geminiGenerationConfig(
 ) {
   // Do not send thinkingBudget: 0 — Gemini 3.x flash rejects it as INVALID_ARGUMENT.
   // Omit thinkingConfig and let the model use its default (works for rapido/estandar).
+  const schemaProps = Object.keys((schema as { properties?: Record<string, unknown> }).properties ?? {});
+  safeTransformDebugLog("[transform-schema-props]", {
+    props: schemaProps,
+    hasVisualizationKey: schemaProps.includes("visualization"),
+  });
   return {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
@@ -1960,6 +2000,7 @@ async function handleTransformStream(
     const partialParsed = extractPartialMap(fullText);
     if (!partialParsed) return;
 
+    // Partials: normalize without drop warns (incomplete blocks are expected mid-stream).
     const normalized = normalizeMapData(partialParsed, {
       intent: context.resolvedIntent,
       outputLanguage: context.resolvedOutputLanguage,
@@ -1968,6 +2009,7 @@ async function handleTransformStream(
       depth: context.resolvedDepth,
       sourceTruncated: context.sourceTruncated,
       singleNucleoMode: context.singleNucleoMode,
+      logDrops: false,
     });
     if (context.generationMode === "study-doc-beta") {
       applyStudyDocBetaShape(normalized);
@@ -1996,6 +2038,7 @@ async function handleTransformStream(
 
   let streamStarted = false;
   let lastStreamErr: unknown = null;
+  let finishReason: string | null = null;
 
   for (const model of context.modelChain) {
     try {
@@ -2010,8 +2053,13 @@ async function handleTransformStream(
 
       usedModel = activeModel;
       streamStarted = true;
+      finishReason = null;
 
       for await (const chunk of stream) {
+        const chunkReason =
+          (chunk as { candidates?: Array<{ finishReason?: string }> }).candidates?.[0]
+            ?.finishReason ?? null;
+        if (chunkReason) finishReason = String(chunkReason);
         const chunkText = chunk.text || "";
         if (!chunkText) continue;
         fullText += chunkText;
@@ -2039,6 +2087,22 @@ async function handleTransformStream(
     );
     throw new Error(errorMessage);
   }
+
+  console.log(
+    `[gemini-finish] model=${usedModel} finishReason=${finishReason ?? "unknown"} maxOutputTokens=${context.maxOutputTokens} textLength=${fullText.length}`
+  );
+  if (finishReason === "MAX_TOKENS") {
+    console.warn(
+      `[gemini-finish] MAX_TOKENS hit — output may be truncated (budget=${context.maxOutputTokens}).`
+    );
+  }
+
+  dumpLastGenerationRaw(fullText, {
+    model: usedModel,
+    finishReason,
+    maxOutputTokens: context.maxOutputTokens,
+    path: "/api/transform/stream",
+  });
 
   console.log(`Mapa generado en streaming con el modelo "${usedModel}".`);
 
@@ -2730,18 +2794,23 @@ function normalizeMapData(
     depth?: TransformRequest["depth"];
     sourceTruncated?: boolean;
     singleNucleoMode?: boolean;
+    /** When false, skip drop warns (partial stream snapshots). Default true. */
+    logDrops?: boolean;
   }
 ): ActionMapData {
   const cappedRawSteps = capStepsForDepth(
     Array.isArray(parsed?.steps) ? parsed.steps : [],
     fallback.depth
   );
+  const logDrops = fallback.logDrops !== false;
 
   const normalizedSteps = cappedRawSteps.map((step: any, index: number) => {
         const content = normalizeStepContentBlocks(step?.content, {
-          onDrop: (reason) => {
-            console.warn(`[normalizeMapData] dropped content block: ${reason}`);
-          },
+          onDrop: logDrops
+            ? (reason) => {
+                console.warn(`[normalizeMapData] dropped content block: ${reason}`);
+              }
+            : undefined,
         });
 
         return {
@@ -2837,15 +2906,19 @@ function normalizeMapData(
     },
   };
 
-  // F3: re-spec pending — ignore visualization if the model still emits it.
+  // F3: re-spec pending — visualization channel off; ignore if present (history or model).
   normalized.steps.forEach((step, index) => {
     if (cappedRawSteps[index]?.visualization != null) {
-      console.warn("[normalizeMapData] ignored step.visualization — F3: re-spec pending");
+      if (logDrops) {
+        console.warn("[normalizeMapData] ignored step.visualization — F3: re-spec pending");
+      }
     }
     step.visualization = undefined;
   });
   if (parsed?.visualization != null) {
-    console.warn("[normalizeMapData] ignored visualization — F3: re-spec pending");
+    if (logDrops) {
+      console.warn("[normalizeMapData] ignored visualization — F3: re-spec pending");
+    }
   }
   normalized.visualization = undefined;
 
@@ -3520,10 +3593,29 @@ async function startServer() {
         resolveLlmTimeoutMs(contextResult.resolvedDepth)
       );
 
+      const rawText = response.text || "{}";
+      const finishReason =
+        (response as { candidates?: Array<{ finishReason?: string }> }).candidates?.[0]
+          ?.finishReason ?? null;
+      console.log(
+        `[gemini-finish] model=${usedModel} finishReason=${finishReason ?? "unknown"} maxOutputTokens=${contextResult.maxOutputTokens} textLength=${rawText.length}`
+      );
+      if (finishReason === "MAX_TOKENS") {
+        console.warn(
+          `[gemini-finish] MAX_TOKENS hit — output may be truncated (budget=${contextResult.maxOutputTokens}).`
+        );
+      }
+      dumpLastGenerationRaw(rawText, {
+        model: usedModel,
+        finishReason,
+        maxOutputTokens: contextResult.maxOutputTokens,
+        path: "/api/transform",
+      });
+
       res.setHeader("X-Gemini-Model-Used", usedModel);
       console.log(`Mapa generado con el modelo "${usedModel}".`);
 
-      const normalized = await finalizeMapJson(response.text || "{}", contextResult, usedModel, {
+      const normalized = await finalizeMapJson(rawText, contextResult, usedModel, {
         req,
         res,
       });
@@ -3742,6 +3834,10 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    const schemaProps = Object.keys((schema as { properties?: Record<string, unknown> }).properties ?? {});
+    console.log(
+      `[boot-schema-props] hasVisualizationKey=${schemaProps.includes("visualization")} props=${schemaProps.join(",")}`
+    );
   });
 }
 

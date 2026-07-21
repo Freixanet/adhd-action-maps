@@ -22,3 +22,4 @@ ios/DerivedData/
 ios/**/*.xcuserstate
 ios/App/Pods/
 ios/App/App/public/
+logs/

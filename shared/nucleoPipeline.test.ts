@@ -337,6 +337,22 @@ describe('normalizeStepContentBlock interactive catalog', () => {
     expect(blocks[1]?.type).toBe('stat');
   });
 
+  it('descarta prose huérfano que termina en ":" antes de un bloque dropeado', () => {
+    const dropped: string[] = [];
+    const blocks = normalizeStepContentBlocks(
+      [
+        { type: 'prose', text: 'Tres capas del sistema:' },
+        { type: 'stat', value: '1' }, // missing label → drop
+        { type: 'prose', text: 'Sigue válido.' },
+      ],
+      { onDrop: (reason) => dropped.push(reason) }
+    );
+    expect(blocks.map((b) => b.type)).toEqual(['prose']);
+    expect(blocks[0]).toMatchObject({ type: 'prose', text: 'Sigue válido.' });
+    expect(dropped).toContain('stat-missing-value-or-label');
+    expect(dropped).toContain('orphan-prose-before-dropped-block');
+  });
+
   it('descarta tipos fuera de allowlist (p. ej. timeline) sin half-render', () => {
     const dropped: string[] = [];
     expect(

@@ -241,9 +241,20 @@ export function normalizeStepContentBlocks(
   options?: { onDrop?: (reason: string, raw: unknown) => void }
 ): StepContentBlock[] {
   if (!Array.isArray(input)) return [];
-  return input
-    .map((block) => normalizeStepContentBlock(block, options))
-    .filter(Boolean) as StepContentBlock[];
+  const out: StepContentBlock[] = [];
+  for (const raw of input) {
+    const block = normalizeStepContentBlock(raw, options);
+    if (!block) {
+      const prev = out[out.length - 1];
+      if (prev?.type === 'prose' && prev.text.trimEnd().endsWith(':')) {
+        out.pop();
+        options?.onDrop?.('orphan-prose-before-dropped-block', prev);
+      }
+      continue;
+    }
+    out.push(block);
+  }
+  return out;
 }
 
 /** Plain text for metrics / study-signal heuristics — never style. */
