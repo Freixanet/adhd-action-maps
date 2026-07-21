@@ -1,6 +1,7 @@
 export * from './categories';
 export * from './features';
 export * from './contracts';
+export * from './stepContentBlocks';
 export * from './youtube';
 export * from './urlInput';
 export * from './modelPreference';
@@ -10,6 +11,8 @@ export * from './history';
 export * from './historySearch';
 export * from './mapData';
 export * from './nucleoVisual';
+export * from './visualizeCompiler';
+export * from './visualize';
 export * from './apiBase';
 export * from './storage';
 export * from './atomGeometry';

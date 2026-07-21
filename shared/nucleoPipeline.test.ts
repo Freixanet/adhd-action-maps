@@ -7,6 +7,7 @@ import {
   RAPIDO_STEP_COUNT,
   SOURCE_TRUNCATION_NOTICE,
   buildDepthContract,
+  buildInteractiveBlocksContract,
   capStepsForDepth,
   cleanJsonMapText,
   formatReadingProgressLabel,
@@ -19,6 +20,10 @@ import {
   validateTransformType,
   wrapSourceText,
 } from './nucleoPipeline';
+import {
+  normalizeStepContentBlock,
+  normalizeStepContentBlocks,
+} from './stepContentBlocks';
 import { isProUser } from './proEntitlement';
 import { parseTransformStreamLine } from './transformStream';
 
@@ -191,5 +196,231 @@ describe('NDJSON stream parsing', () => {
   it('ignora líneas vacías o corruptas', () => {
     expect(parseTransformStreamLine('')).toBeNull();
     expect(parseTransformStreamLine('{no-json')).toBeNull();
+  });
+});
+
+describe('buildInteractiveBlocksContract', () => {
+  it('understand prioriza comparison/stat/accordion y quiz al cierre', () => {
+    const contract = buildInteractiveBlocksContract('understand');
+    expect(contract).toContain('comparison');
+    expect(contract).toContain('cierre');
+  });
+
+  it('study enfatiza quiz y accordion', () => {
+    const contract = buildInteractiveBlocksContract('study');
+    expect(contract.toLowerCase()).toContain('quiz');
+    expect(contract.toLowerCase()).toContain('accordion');
+  });
+
+  it('apply prioriza acción y teoría en accordions', () => {
+    const contract = buildInteractiveBlocksContract('apply');
+    expect(contract.toLowerCase()).toContain('acción');
+    expect(contract.toLowerCase()).toContain('accordions');
+  });
+});
+
+describe('normalizeStepContentBlock interactive catalog', () => {
+  it('acepta stat válido', () => {
+    const block = normalizeStepContentBlock({
+      type: 'stat',
+      value: '70%',
+      label: 'de la carga baja',
+      source: 'fuente',
+      emphasis: 'hero',
+    });
+    expect(block).toEqual({
+      type: 'stat',
+      value: '70%',
+      label: 'de la carga baja',
+      source: 'fuente',
+      emphasis: 'hero',
+    });
+  });
+
+  it('descarta stat sin value/label', () => {
+    const dropped: string[] = [];
+    expect(
+      normalizeStepContentBlock(
+        { type: 'stat', value: '1' },
+        { onDrop: (reason) => dropped.push(reason) }
+      )
+    ).toBeNull();
+    expect(dropped[0]).toContain('stat-missing');
+  });
+
+  it('acepta comparison 2 columnas y descarta filas mal alineadas', () => {
+    const block = normalizeStepContentBlock({
+      type: 'comparison',
+      columns: ['A', 'B'],
+      rows: [
+        { label: 'Inicio', values: ['x', 'y'] },
+        { label: 'Bad', values: ['solo-uno'] },
+      ],
+    });
+    expect(block?.type).toBe('comparison');
+    if (block?.type === 'comparison') {
+      expect(block.rows).toHaveLength(1);
+      expect(block.columns).toEqual(['A', 'B']);
+    }
+  });
+
+  it('descarta comparison con 1 o 4 columnas', () => {
+    expect(
+      normalizeStepContentBlock({
+        type: 'comparison',
+        columns: ['Solo'],
+        rows: [{ label: 'r', values: ['a'] }],
+      })
+    ).toBeNull();
+  });
+
+  it('acepta accordion válido', () => {
+    const block = normalizeStepContentBlock({
+      type: 'accordion',
+      title: '¿Por qué importa?',
+      body: 'Porque externaliza el plan.',
+    });
+    expect(block).toMatchObject({
+      type: 'accordion',
+      title: '¿Por qué importa?',
+      body: 'Porque externaliza el plan.',
+    });
+  });
+
+  it('descarta accordion sin body', () => {
+    expect(
+      normalizeStepContentBlock({ type: 'accordion', title: '¿Hola?' })
+    ).toBeNull();
+  });
+
+  it('acepta quiz con correct en rango', () => {
+    const block = normalizeStepContentBlock({
+      type: 'quiz',
+      question: '¿Qué hace el plan?',
+      options: ['A', 'B', 'C'],
+      correct: 1,
+      feedback: 'Externaliza el siguiente paso.',
+    });
+    expect(block).toMatchObject({ type: 'quiz', correct: 1 });
+  });
+
+  it('descarta quiz con correct fuera de rango', () => {
+    const dropped: string[] = [];
+    expect(
+      normalizeStepContentBlock(
+        {
+          type: 'quiz',
+          question: '¿?',
+          options: ['A', 'B'],
+          correct: 2,
+          feedback: 'x',
+        },
+        { onDrop: (reason) => dropped.push(reason) }
+      )
+    ).toBeNull();
+    expect(dropped[0]).toBe('quiz-correct-out-of-range');
+  });
+
+  it('preserva bloques legacy y descarta interactivos malformados en lote', () => {
+    const blocks = normalizeStepContentBlocks([
+      { type: 'prose', text: 'Sigue válido.' },
+      { type: 'quiz', question: 'q', options: ['a'], correct: 0, feedback: 'f' },
+      {
+        type: 'stat',
+        value: '3',
+        label: 'días',
+        emphasis: 'normal',
+      },
+    ]);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.type).toBe('prose');
+    expect(blocks[1]?.type).toBe('stat');
+  });
+
+  it('descarta tipos fuera de allowlist (p. ej. timeline) sin half-render', () => {
+    const dropped: string[] = [];
+    expect(
+      normalizeStepContentBlock(
+        { type: 'timeline', text: 'no debe renderizarse' },
+        { onDrop: (reason) => dropped.push(reason) }
+      )
+    ).toBeNull();
+    expect(dropped[0]).toBe('unknown-type:timeline');
+  });
+
+  it('normalizeMapData: step con diagram/timeline queda sin esos bloques (sin error)', () => {
+    const normalized = normalizeMapData({
+      ...validMapFixture,
+      steps: [
+        {
+          id: 'step-1',
+          shortNav: 'Uno',
+          title: 'Paso con basura tipada',
+          time: '~2 min',
+          content: [
+            { type: 'prose', text: 'Queda.' },
+            { type: 'diagram', nodes: [{ id: 'a' }] },
+            { type: 'timeline', events: ['antes', 'después'] },
+            {
+              type: 'stat',
+              value: '2',
+              label: 'ejes',
+            },
+          ],
+        },
+      ],
+    });
+    expect(normalized.steps).toHaveLength(1);
+    const types = normalized.steps[0]!.content.map((b) => b.type);
+    expect(types).toEqual(['prose', 'stat']);
+    expect(types).not.toContain('diagram');
+    expect(types).not.toContain('timeline');
+  });
+
+  it('normalizeMapData conserva los 4 tipos interactivos', () => {
+    const normalized = normalizeMapData({
+      ...validMapFixture,
+      steps: [
+        {
+          id: 'step-1',
+          shortNav: 'Uno',
+          title: 'Paso con catálogo',
+          time: '~2 min',
+          content: [
+            {
+              type: 'stat',
+              value: '42%',
+              label: 'de casos',
+              emphasis: 'hero',
+            },
+            {
+              type: 'comparison',
+              columns: ['Antes', 'Después'],
+              rows: [{ label: 'Foco', values: ['Bajo', 'Alto'] }],
+            },
+            {
+              type: 'accordion',
+              title: '¿Qué cambia?',
+              body: 'La memoria de trabajo se libera.',
+            },
+            {
+              type: 'quiz',
+              question: '¿Qué externaliza el plan?',
+              options: ['La motivación', 'El siguiente paso', 'El sueño'],
+              correct: 1,
+              feedback: 'Externaliza el siguiente paso, no la motivación.',
+            },
+            { type: 'quiz', question: 'roto', options: ['a'], correct: 9, feedback: 'x' },
+          ],
+        },
+      ],
+    });
+
+    expect(normalized?.steps[0]?.content.map((b) => b.type)).toEqual([
+      'stat',
+      'comparison',
+      'accordion',
+      'quiz',
+    ]);
   });
 });
