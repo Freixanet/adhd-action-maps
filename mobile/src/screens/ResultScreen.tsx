@@ -37,15 +37,20 @@ import StepSlideTransition from '../components/StepSlideTransition';
 import SourceCoverageCard from '../components/SourceCoverageCard';
 import TakeawaysGlassCard from '../components/TakeawaysGlassCard';
 import KnowledgeSectionsList from '../components/KnowledgeSectionsList';
-import NucleoVisualOverview from '../components/NucleoVisualOverview';
-import SectionCompleteCue from '../components/SectionCompleteCue';
+// F3: re-spec pending — NucleoVisualOverview disconnected from ResultScreen.
+// import NucleoVisualOverview from '../components/NucleoVisualOverview';
+import NucleoVisualizeWebView from '../components/NucleoVisualizeWebView';
+import VisualizeRunHost from '../visualize/VisualizeRunHost';
+import { ensureVisualizeArtifact } from '@shared/visualizeCompiler';
 import { stepHaptic, useAppSession } from '../context/AppSessionContext';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useViewAllScrollSpy } from '../hooks/useViewAllScrollSpy';
 import { getIntentLabel, getSourceTypeLabel } from '@shared/categories';
-import { formatReadingProgressLabel, getReadingSectionForStep } from '@shared/nucleoPipeline';
-import { normalizeNucleoVisual } from '@shared/nucleoVisual';
+import { formatReadingProgressLabel } from '@shared/nucleoPipeline';
+// F3: re-spec pending — NucleoVisualSpec normalize unused while channel is off.
+// import { normalizeNucleoVisual } from '@shared/nucleoVisual';
 import type { SourceReference, StepContentBlock } from '../logic/contracts';
+import { getBlockPlainText } from '@shared/stepContentBlocks';
 import { debugTransitionLog } from '../logic/debugTransitionLog';
 
 const PREVIEW_TOP_INSET = initialWindowMetrics?.insets.top ?? 0;
@@ -183,15 +188,7 @@ export default function ResultScreen({
   }, [scrollProgress, session.viewAll]);
 
   const totalMinutes = useMemo(() => parseTotalMinutes(data?.steps), [data?.steps]);
-  const visualOverview = useMemo(
-    () => normalizeNucleoVisual(data?.visualization, {
-      coreIdea: data?.coreIdea,
-      tldr: data?.tldr ?? [],
-      stepIds: data?.steps.map((step) => step.id),
-    }),
-    [data?.coreIdea, data?.steps, data?.tldr, data?.visualization]
-  );
-
+  // F3: re-spec pending — classic NucleoVisualSpec overview off.
   const openVisualStep = useCallback(
     (stepId: string) => {
       const stepIndex = data?.steps.findIndex((step) => step.id === stepId) ?? -1;
@@ -378,6 +375,12 @@ export default function ResultScreen({
     }
   }, [headerVisible, isStepMode]);
 
+  const toggleStepHeader = useCallback(() => {
+    if (!isStepMode) return;
+    headerVisible.value = !headerVisible.value;
+    stepHaptic();
+  }, [headerVisible, isStepMode]);
+
   const stepHeaderVisibleTopPadding = mapContentTopPadding(hideProgressLine);
   const stepHeaderHiddenTopPadding = 20;
   const stepPageChromeStyle = useAnimatedStyle(() => ({
@@ -391,6 +394,48 @@ export default function ResultScreen({
 
   const isIntroStep = !session.isComplete && !session.viewAll && session.currentStep === 0;
   const isStudyDocBeta = data.generationMode === 'study-doc-beta';
+  const isVisualizeHtmlTest = data.generationMode === 'visualize-html-test';
+  const visualizeArtifact = isVisualizeHtmlTest
+    ? ensureVisualizeArtifact(data.visualizeArtifact, {
+        coreIdea: data.coreIdea,
+        tldr: data.tldr,
+        visualization: data.visualization,
+      })
+    : null;
+  /** Shadow opt-in: prefer v2 RN render when persisted run exists. */
+  const visualizeRun = isVisualizeHtmlTest ? data.visualizeRun ?? null : null;
+
+  const renderVisualOverview = (options?: { compact?: boolean; showTitle?: boolean }) => {
+    // F3: re-spec pending — only Visualize compiler test path; never NucleoVisualOverview.
+    if (isVisualizeHtmlTest && visualizeRun) {
+      return <VisualizeRunHost run={visualizeRun} />;
+    }
+    if (isVisualizeHtmlTest && visualizeArtifact) {
+      return (
+        <NucleoVisualizeWebView
+          artifact={visualizeArtifact}
+          compact={options?.compact}
+          onOpenStep={openVisualStep}
+        />
+      );
+    }
+    return null;
+  };
+
+  const renderTldrList = () => {
+    const items = data.tldr ?? [];
+    if (!items.length) return null;
+    return (
+      <View className="mt-6 gap-5">
+        {items.map((item, index) => (
+          <View key={`${item.title}-${index}`}>
+            <Text className="text-base font-semibold text-primary">{item.title}</Text>
+            <Text className="mt-1 text-[17px] leading-[26px] text-body">{item.desc}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  };
 
   const renderMapMeta = () => (
     <View onLayout={handleMapMetaAnchorLayout} collapsable={false} className="mb-10">
@@ -402,6 +447,13 @@ export default function ResultScreen({
           <View className="rounded-full bg-accent/12 px-2 py-0.5">
             <Text className="text-[10px] font-bold uppercase tracking-[0.12em] text-accent">
               StudyDoc beta
+            </Text>
+          </View>
+        ) : null}
+        {isVisualizeHtmlTest ? (
+          <View className="rounded-full bg-accent/12 px-2 py-0.5">
+            <Text className="text-[10px] font-bold uppercase tracking-[0.12em] text-accent">
+              Visualize compiler
             </Text>
           </View>
         ) : null}
@@ -456,16 +508,14 @@ export default function ResultScreen({
         <SourceMetadataGlassCard sourceMetadata={data.sourceMetadata} />
       ) : null}
 
-      {includeTldr && visualOverview ? (
+      {includeTldr && (visualizeRun || visualizeArtifact || (data.tldr?.length ?? 0) > 0) ? (
         <View className="mt-8 pt-8 border-t border-neutral-200 border-white/10">
-          <Text className="text-xs font-bold uppercase tracking-widest text-secondary mb-6">
-            En 60 segundos
-          </Text>
-          <NucleoVisualOverview
-            visual={visualOverview}
-            compact
-            onOpenStep={openVisualStep}
-          />
+          {!isVisualizeHtmlTest ? (
+            <Text className="text-xs font-bold uppercase tracking-widest text-secondary mb-6">
+              En 60 segundos
+            </Text>
+          ) : null}
+          {isVisualizeHtmlTest ? renderVisualOverview({ compact: true }) : renderTldrList()}
         </View>
       ) : null}
     </View>
@@ -475,7 +525,7 @@ export default function ResultScreen({
   const renderHighlightCard = (
     label: string,
     text: string,
-    kind: StepContentBlock['kind'] = 'info'
+    kind: 'action' | 'info' | 'alert' | undefined = 'info'
   ) => {
     const accent =
       kind === 'alert'
@@ -509,22 +559,23 @@ export default function ResultScreen({
 
   const renderTldrPage = () => (
     <View style={styles.stepPage}>
-      <View>
-        <Text className="text-sm font-bold uppercase tracking-widest text-accent">
-          En 60 segundos
-        </Text>
-        <Text className="mt-3 text-2xl font-bold text-primary leading-9">
-          {visualOverview?.title || 'El Núcleo antes de entrar en los pasos'}
-        </Text>
-      </View>
-
-      {visualOverview ? (
-        <NucleoVisualOverview
-          visual={visualOverview}
-          showTitle={false}
-          onOpenStep={openVisualStep}
-        />
-      ) : null}
+      {isVisualizeHtmlTest ? (
+        visualizeRun || visualizeArtifact ? (
+          renderVisualOverview({ showTitle: false })
+        ) : null
+      ) : (
+        <>
+          <View>
+            <Text className="text-sm font-bold uppercase tracking-widest text-accent">
+              En 60 segundos
+            </Text>
+            <Text className="mt-3 text-2xl font-bold text-primary leading-9">
+              El Núcleo antes de entrar en los pasos
+            </Text>
+          </View>
+          {renderTldrList()}
+        </>
+      )}
     </View>
   );
 
@@ -542,10 +593,6 @@ export default function ResultScreen({
       session.totalSteps,
       data.readingSections ?? null
     );
-    const completedSection =
-      session.sectionCompleteCue != null
-        ? getReadingSectionForStep(session.sectionCompleteCue, data.readingSections ?? null)
-        : null;
     const hasCallout = step.content?.some(
       (block) => String(block.type || '').toLowerCase() === 'callout'
     );
@@ -556,12 +603,6 @@ export default function ResultScreen({
         className={stepDividerClass}
         style={!interactive ? styles.stepPage : undefined}
       >
-        {!interactive && session.sectionCompleteCue != null ? (
-          <SectionCompleteCue
-            visible
-            sectionTitle={completedSection?.title}
-          />
-        ) : null}
         <View className="flex-row flex-wrap items-center gap-2 mb-4">
           <Text className="text-sm font-bold uppercase tracking-widest text-accent dark:text-accent">
             {stepLabel}
@@ -580,17 +621,11 @@ export default function ResultScreen({
             {step.purpose}
           </Text>
         ) : null}
-        {step.visualization ? (
-          <NucleoVisualOverview
-            visual={step.visualization}
-            compact
-            onOpenStep={openVisualStep}
-          />
-        ) : null}
-        {!interactive && !hasCallout && (step.purpose || step.content?.[0]?.text) ? (
+        {/* F3: re-spec pending — step.visualization / NucleoVisualOverview disconnected. */}
+        {!interactive && !hasCallout && (step.purpose || (step.content?.[0] && getBlockPlainText(step.content[0]))) ? (
           renderHighlightCard(
             'Idea clave',
-            step.purpose || step.content?.[0]?.text || '',
+            step.purpose || (step.content?.[0] ? getBlockPlainText(step.content[0]) : '') || '',
             'info'
           )
         ) : null}
@@ -785,10 +820,13 @@ export default function ResultScreen({
       onScroll={step === session.currentStep ? scrollHandler : undefined}
       scrollEventThrottle={16}
     >
-      <View style={styles.readingColumn}>
+      <Pressable
+        onPress={toggleStepHeader}
+        style={[styles.readingColumn, styles.tapChromeTarget]}
+      >
         {step === 0 ? renderMapMeta() : null}
         {renderStepModeReading(step)}
-      </View>
+      </Pressable>
     </Animated.ScrollView>
   );
 
@@ -962,6 +1000,9 @@ const styles = StyleSheet.create({
   adaptiveScrollContent: {
     flexGrow: 1,
     paddingBottom: 16,
+  },
+  tapChromeTarget: {
+    flexGrow: 1,
   },
   stepPage: {
     paddingBottom: 16,

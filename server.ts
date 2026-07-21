@@ -43,10 +43,11 @@ import {
   SOURCE_TRUNCATION_NOTICE,
   buildInteractiveBlocksContract,
 } from "./shared/nucleoPipeline";
-import {
-  getNucleoVisualQualityIssues,
-  normalizeNucleoVisual,
-} from "./shared/nucleoVisual";
+// F3: re-spec pending — NucleoVisualSpec channel off; keep import path for future.
+// import {
+//   getNucleoVisualQualityIssues,
+//   normalizeNucleoVisual,
+// } from "./shared/nucleoVisual";
 import { normalizeVisualizeArtifact, ensureVisualizeArtifact } from "./shared/visualizeCompiler";
 import { countBlockPlainWords, getBlockPlainText, normalizeStepContentBlocks } from "./shared/stepContentBlocks";
 import {
@@ -805,9 +806,7 @@ function evaluateTransformQuality(
   if (!map.coreIdea?.trim()) {
     reasons.push("missing_core_idea");
   }
-  if (!map.visualization || getNucleoVisualQualityIssues(map.visualization).length > 0) {
-    reasons.push("missing_or_invalid_visualization");
-  }
+  // F3: re-spec pending — visualization channel off; do not require NucleoVisualSpec.
 
   if (depth === "profundo") {
     if (richSource && metrics.stepsLength <= 3 && metrics.avgWordsPerStep < 85) {
@@ -1166,11 +1165,7 @@ function buildRepairReasonInstructions(
           "FALTA coreIdea: Define una idea central clara y fiel a la fuente."
         );
         break;
-      case "missing_or_invalid_visualization":
-        instructions.push(
-          "VISUALIZACIÓN INVÁLIDA: Regenera visualization con NucleoVisualSpec version 2, 2-6 elementos, summary accesible, ids/enlaces válidos y una relación fiel. Bar/line solo con valores finitos y unidades presentes en la fuente."
-        );
-        break;
+      // F3: re-spec pending — missing_or_invalid_visualization retired with visualization channel.
       default:
         break;
     }
@@ -2206,7 +2201,8 @@ const visualizeArtifactSchema = {
   required: ["version", "semantic", "chosen"],
 };
 
-const visualizationSchema = {
+// F3: re-spec pending — NucleoVisualSpec generation off; schema retained for future re-wire.
+const _visualizationSchemaF3Pending = {
   type: Type.OBJECT,
   description:
     "Visual semántico nativo y fiel a la fuente. Usa diagramas para relaciones conceptuales y gráficos solo con valores y unidades explícitos en la fuente.",
@@ -2260,6 +2256,7 @@ const visualizationSchema = {
   },
   required: ["version", "kind", "title", "summary", "items"],
 };
+void _visualizationSchemaF3Pending;
 
 const schema = {
   type: Type.OBJECT,
@@ -2329,7 +2326,7 @@ const schema = {
     tldr: {
       type: Type.ARRAY,
       description:
-        "Contenido que apoya la página visual 'En 60 segundos'. Debe ser compacto, útil y sin relleno. En modo clásico usa 3-4; en StudyDoc beta usa exactamente 5.",
+        "Contenido de la página 'En 60 segundos'. Debe ser compacto, útil y sin relleno. En modo clásico usa 3-4; en StudyDoc beta usa exactamente 5.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -2339,7 +2336,6 @@ const schema = {
         required: ["title", "desc"]
       }
     },
-    visualization: visualizationSchema,
     visualizeArtifact: visualizeArtifactSchema,
     knowledgeSections: {
       type: Type.ARRAY,
@@ -2352,8 +2348,7 @@ const schema = {
             type: Type.ARRAY,
             items: sourceReferenceSchema,
           },
-          visualization: visualizationSchema,
-        },
+              },
         required: ["title", "summary"],
       },
     },
@@ -2520,7 +2515,6 @@ const schema = {
     "sourceMetadata",
     "coverage",
     "tldr",
-    "visualization",
     "steps",
     "completionCard",
   ]
@@ -2546,8 +2540,8 @@ Reglas obligatorias:
 13. Devuelve solo JSON válido compatible con el esquema pedido.
 14. Filtra el ruido y cubre las ideas relevantes según el contrato de profundidad activo. La cobertura completa tiene prioridad salvo cuando depth activo sea rapido; en rapido debes sintetizar y agrupar, declarando omisiones en coverage.limitations si procede.
 15. El campo "intent" en el JSON debe coincidir exactamente con el intent activo del contrato (understand, study o apply).
-16. La visualization raíz debe usar version 2 y explicar una sola relación dominante con 2-6 elementos: concept para idea central y ramas; flow para proceso o secuencia; cycle para bucle; hierarchy para niveles; comparison para contraste; bar o line solo cuando la fuente contenga valores numéricos finitos, etiquetas y unidades reales. No uses kind timeline (retirado): hechos cronológicos van en bloques list o comparison. No inventes métricas, series, órdenes ni relaciones. Un step puede incluir visualization solo si mejora materialmente su comprensión.
-17. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, visualization, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).
+16. NO generes el campo visualization ni NucleoVisualSpec (canal apagado hasta F3). Cronología/contraste van en bloques list o comparison; relaciones en prose/callout.
+17. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).
 18. CERO HTML, CSS, markdown de presentación o propiedades visuales en el JSON. Solo contenido, rol semántico y emphasis.
 
 CATÁLOGO DE BLOQUES (únicos tipos permitidos en step.content — la UI vive en el cliente):
@@ -2843,18 +2837,17 @@ function normalizeMapData(
     },
   };
 
-  const stepIds = normalized.steps.map((step) => step.id);
+  // F3: re-spec pending — ignore visualization if the model still emits it.
   normalized.steps.forEach((step, index) => {
-    step.visualization = normalizeNucleoVisual(cappedRawSteps[index]?.visualization, {
-      fallback: false,
-      stepIds,
-    });
+    if (cappedRawSteps[index]?.visualization != null) {
+      console.warn("[normalizeMapData] ignored step.visualization — F3: re-spec pending");
+    }
+    step.visualization = undefined;
   });
-  normalized.visualization = normalizeNucleoVisual(parsed?.visualization, {
-    coreIdea: normalized.coreIdea,
-    tldr: normalized.tldr,
-    stepIds,
-  });
+  if (parsed?.visualization != null) {
+    console.warn("[normalizeMapData] ignored visualization — F3: re-spec pending");
+  }
+  normalized.visualization = undefined;
 
   if (normalized.references.length === 0) {
     normalized.references = normalizedSteps.flatMap((step) => step.references ?? []).slice(0, 8);
@@ -2947,7 +2940,7 @@ function buildTransformPrompt({
 
   const mobilePaginationRule = [
     "CONTRATO DE PAGINACIÓN MÓVIL ADAPTATIVA:",
-    "El modo paso a paso se renderiza como páginas fijas: página 1 = coreIdea + coreSupport + tarjeta/fuente; página 2 = visualization (apoyada por tldr); páginas siguientes = steps.",
+    "El modo paso a paso se renderiza como páginas fijas: página 1 = coreIdea + coreSupport + tarjeta/fuente; página 2 = tldr (sin overview visual; canal visualization apagado hasta F3); páginas siguientes = steps.",
     "Escribe cada step para que quepa en una pantalla móvil media: título breve, purpose de 1-2 frases, 2-4 bloques y un selfCheck corto si aporta valor. La app solo habilita un scroll vertical corto ante overflow real o texto ampliado.",
     "Cada step debe incluir ≥1 bloque interactivo (stat|comparison|accordion|quiz). En páginas con ≥3 bloques, prose ≤40%; en páginas de 2, máximo 1 prose. Máximo un emphasis:'hero' por página.",
     "Callouts siguen siendo válidos como apoyo editorial; no sustituyen el requisito de bloque interactivo.",
@@ -2959,15 +2952,8 @@ function buildTransformPrompt({
   ].join("\n");
 
   const visualizationRule = [
-    "CONTRATO VISUAL-FIRST — NucleoVisualSpec VERSION 2:",
-    "Genera exactamente una visualization raíz que haga visible la relación más importante del Núcleo; debe ayudar a comprender, comparar o decidir, no decorar. Incluye version=2, title, summary accesible, 2-6 items y links cuando exista dirección o dependencia.",
-    "Elige concept para idea central con ramas; flow para proceso, causalidad o secuencia; cycle para bucle cerrado; hierarchy para niveles o dependencias; comparison para columnas alineadas; bar para magnitudes comparables; line para evolución numérica.",
-    "No uses kind timeline. Cronología o hitos: bloques content list (ordenados) o comparison; proceso secuencial en visual kind flow.",
-    "Cada id debe ser único. Cada link.source y link.target debe coincidir con un id. stepId solo puede ser el id exacto de un step generado. Cada label debe ser directa (1-6 palabras) y detail una frase breve apoyada por la fuente.",
-    "Para comparison asigna group explícito. Para line asigna group a cada serie y aporta al menos dos puntos por serie.",
-    "REGLA NUMÉRICA ESTRICTA: usa bar o line únicamente si la fuente da valores finitos, categorías y unidades reales. Escribe value como número y unit común o por item. Si falta cualquier dato, usa concept/flow/comparison o no añadas visual al step; jamás estimes, puntúes ni inventes cifras.",
-    "Puedes añadir visualization a un step solo si una relación visual mejora materialmente esa página. No repitas el overview, no fuerces un visual en cada step y no uses un gráfico sin soporte numérico.",
-    "La primera vista debe ser útil sin interacción: todas las etiquetas esenciales deben aparecer directamente.",
+    // F3: re-spec pending
+    "CANAL VISUALIZATION APAGADO: no emitas visualization ni NucleoVisualSpec. No inventes diagramas. Usa bloques content (list/comparison/prose) para estructura.",
   ].join("\n");
 
   const visualizeHtmlTestRule =
@@ -3022,10 +3008,10 @@ function buildTransformPrompt({
     `Intent activo confirmado: ${intentLabel(intent)} (${intent}).`,
     `Profundidad activa confirmada: ${resolvedDepth}.`,
     `El campo JSON "intent" debe ser exactamente "${intent}".`,
-    "ORDEN DE EMISIÓN JSON: genera title, coreIdea y coreSupport primero; solo después el resto de campos (sourceMetadata, coverage, tldr, visualization, visualizeArtifact si aplica, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).",
+    "ORDEN DE EMISIÓN JSON: genera title, coreIdea y coreSupport primero; solo después el resto de campos (sourceMetadata, coverage, tldr, visualizeArtifact si aplica, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).",
     `Idioma de salida: ${outputLanguage}.`,
     outputLanguage === "es"
-      ? "Debes escribir TODO el mapa en español: title, coreIdea, coreSupport, tldr, visualization, knowledgeSections, shortNav, steps, completionCard y labels editoriales. Solo puedes dejar una cita textual en otro idioma si es imprescindible y debe ir claramente marcada como cita."
+      ? "Debes escribir TODO el mapa en español: title, coreIdea, coreSupport, tldr, knowledgeSections, shortNav, steps, completionCard y labels editoriales. Solo puedes dejar una cita textual en otro idioma si es imprescindible y debe ir claramente marcada como cita."
       : "",
     sourceLabel ? `Etiqueta visible de la fuente: ${sourceLabel}.` : "",
     segmentTitle

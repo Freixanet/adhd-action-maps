@@ -14,7 +14,8 @@ import {
   normalizeReadingSections,
   SOURCE_TRUNCATION_NOTICE,
 } from './nucleoPipeline';
-import { normalizeNucleoVisual } from './nucleoVisual';
+// F3: re-spec pending — NucleoVisualSpec channel off; keep module for future.
+// import { normalizeNucleoVisual } from './nucleoVisual';
 import { normalizeVisualizeArtifact } from './visualizeCompiler';
 import { normalizePersistedVisualizationRun } from './visualize';
 import { normalizeStepContentBlocks } from './stepContentBlocks';
@@ -140,18 +141,20 @@ export function normalizeMapData(
     modelUsed: raw.modelUsed ? String(raw.modelUsed) : undefined,
   };
 
-  const stepIds = normalized.steps.map((step) => step.id);
+  // F3: re-spec pending — visualization channel off; ignore if present (history or model).
   normalized.steps.forEach((step, index) => {
-    step.visualization = normalizeNucleoVisual(cappedSteps[index]?.visualization, {
-      fallback: false,
-      stepIds,
-    });
+    const rawStepVisual = (cappedSteps[index] as { visualization?: unknown } | undefined)?.visualization;
+    if (rawStepVisual != null) {
+      console.warn(
+        '[normalizeMapData] ignored step.visualization — F3: re-spec pending'
+      );
+    }
+    step.visualization = undefined;
   });
-  normalized.visualization = normalizeNucleoVisual(raw.visualization, {
-    coreIdea: normalized.coreIdea,
-    tldr: normalized.tldr,
-    stepIds,
-  });
+  if ((raw as { visualization?: unknown }).visualization != null) {
+    console.warn('[normalizeMapData] ignored visualization — F3: re-spec pending');
+  }
+  normalized.visualization = undefined;
   normalized.visualizeArtifact = normalizeVisualizeArtifact(
     (raw as ActionMapData).visualizeArtifact
   );
