@@ -23,6 +23,44 @@ export const DEMO_NUCLEO_DATA: ActionMapData = {
       desc: 'Reducir interrupciones recupera más rendimiento que forzar la voluntad.',
     },
   ],
+  visualization: {
+    version: 2,
+    kind: 'concept',
+    title: 'El entorno decide cuánto foco queda disponible',
+    summary:
+      'La atención es la idea central: los cambios de tarea la drenan y un entorno protegido conserva recursos para terminar.',
+    items: [
+      {
+        id: 'attention',
+        label: 'Atención disponible',
+        detail: 'Recurso central que debe sostener la comprensión durante toda la lectura.',
+        stepId: 'demo-step-1',
+      },
+      {
+        id: 'switching',
+        label: 'Cambios de foco',
+        detail: 'Cada interrupción exige abandonar y reconstruir el contexto mental.',
+        stepId: 'demo-step-2',
+      },
+      {
+        id: 'environment',
+        label: 'Entorno protegido',
+        detail: 'Menos avisos y pestañas dejan más atención para la tarea elegida.',
+        stepId: 'demo-step-3',
+      },
+      {
+        id: 'finish',
+        label: 'Final claro',
+        detail: 'Un alcance breve y delimitado convierte la intención en una sesión acabable.',
+        stepId: 'demo-step-4',
+      },
+    ],
+    links: [
+      { source: 'attention', target: 'switching', label: 'se drena con' },
+      { source: 'attention', target: 'environment', label: 'se protege con' },
+      { source: 'attention', target: 'finish', label: 'se orienta hacia' },
+    ],
+  },
   sourceMetadata: {
     kind: 'text',
     label: 'Artículo empaquetado',
@@ -53,6 +91,22 @@ export const DEMO_NUCLEO_DATA: ActionMapData = {
       shortNav: 'Cambio',
       title: 'Cada cambio de tarea deja residuo cognitivo',
       time: '~2 min',
+      visualization: {
+        version: 2,
+        kind: 'flow',
+        title: 'El coste oculto de una interrupción',
+        summary:
+          'Una alerta rompe el contexto, deja residuo mental y obliga a reconstruir la comprensión.',
+        items: [
+          { id: 'alert', label: 'Interrupción', detail: 'Una alerta desplaza la tarea elegida.' },
+          { id: 'residue', label: 'Residuo', detail: 'Parte de la atención sigue ligada al cambio.' },
+          { id: 'return', label: 'Reorientación', detail: 'Volver exige reconstruir dónde estabas.' },
+        ],
+        links: [
+          { source: 'alert', target: 'residue' },
+          { source: 'residue', target: 'return' },
+        ],
+      },
       content: [
         {
           type: 'prose',

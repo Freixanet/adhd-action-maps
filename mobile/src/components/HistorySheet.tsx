@@ -399,7 +399,7 @@ export default function HistorySheet({
                     : 'text-body'
                 }`}
               >
-                Mapa visual
+                En 60 segundos
               </Text>
             </Pressable>
 

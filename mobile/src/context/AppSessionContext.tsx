@@ -744,7 +744,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     if (isComplete) return 'Núcleo completado';
     if (viewAll) return 'Vista completa';
     if (currentStep === 0) return 'Idea central';
-    if (currentStep === 1) return 'Mapa visual';
+    if (currentStep === 1) return 'En 60 segundos';
     return formatReadingProgressLabel(
       currentStep - 1,
       totalSteps,

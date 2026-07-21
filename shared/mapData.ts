@@ -169,7 +169,18 @@ export function normalizeMapData(
     modelUsed: raw.modelUsed ? String(raw.modelUsed) : undefined,
   };
 
-  normalized.visualization = normalizeNucleoVisual(raw.visualization, normalized.tldr);
+  const stepIds = normalized.steps.map((step) => step.id);
+  normalized.steps.forEach((step, index) => {
+    step.visualization = normalizeNucleoVisual(cappedSteps[index]?.visualization, {
+      fallback: false,
+      stepIds,
+    });
+  });
+  normalized.visualization = normalizeNucleoVisual(raw.visualization, {
+    coreIdea: normalized.coreIdea,
+    tldr: normalized.tldr,
+    stepIds,
+  });
 
   if (!normalized.sourceMetadata!.detected.length) {
     normalized.sourceMetadata!.detected = [normalized.sourceMetadata!.label];

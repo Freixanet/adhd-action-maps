@@ -44,7 +44,7 @@ export function buildDepthContract(depth?: MapDepth): string {
       'Análisis completo; prevalece sobre brevedad.',
       'Genera entre 7 y 9 pasos como objetivo (máximo absoluto 9).',
       'Desarrolla matices, límites, ejemplos e implicaciones; no colapses fuentes densas.',
-      'Cada paso debe funcionar como una página sin scroll: denso, completo y legible, con 2-4 bloques útiles y una tarjeta destacada.',
+      'Cada paso debe funcionar como una página móvil: denso, completo y legible, con scroll corto solo ante overflow o texto ampliado, 2-4 bloques útiles y una tarjeta destacada.',
       'knowledgeSections más ricas; granularidad fina: no fusiones unidades que el lector necesitaría separar.',
       'Si una unidad relevante no cabe en una página, crea otro paso hasta el máximo permitido; no descartes en silencio.',
     ].join('\n');
@@ -55,7 +55,7 @@ export function buildDepthContract(depth?: MapDepth): string {
     'Equilibrio entre cobertura y brevedad.',
     'Genera entre 4 y 6 pasos como objetivo (máximo absoluto 9).',
     'Cubre lo importante sin ser exhaustivo; una unidad principal por paso.',
-    'Cada paso debe funcionar como una página sin scroll: contenido suficiente para ocupar bien la pantalla, sin relleno.',
+    'Cada paso debe funcionar como una página móvil adaptativa: contenido suficiente para ocupar bien la pantalla, sin relleno ni scroll largo.',
     'Ejemplos solo donde clarifiquen; granularidad media.',
     'knowledgeSections moderadas; si omites algo relevante por espacio, decláralo en coverage.limitations.',
   ].join('\n');

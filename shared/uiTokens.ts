@@ -13,6 +13,9 @@ export const SEM_CLAVE = '#8B8FF5';
 export const SEM_MATIZ = '#E0B45C';
 export const SEM_EJEMPLO = '#6FBF8F';
 export const SEM_ALERTA = '#E07A6B';
+export const VIZ_GRID = '#3A3D47';
+export const VIZ_MUTED = '#656A78';
+export const VIZ_SERIES = [ACCENT, SEM_EJEMPLO, SEM_MATIZ, SEM_ALERTA] as const;
 
 export const APP_DARK_BACKGROUND = BG_BASE;
 export const APP_DARK_BACKGROUND_RGB = '24, 26, 31';

@@ -143,11 +143,7 @@ Nucleo {
   ideaCentral: { titulo: string, subtitulo: string, minutosEstimados: number }
   fuenteDetectada: { descripcion: string, limites: string[] }   // P1 Fidelidad
   en60segundos: { titulo: string, texto: string }[]              // 3 items exactos
-  visualizacion: {
-    tipo: enum { flujo, ciclo, comparacion, jerarquia }
-    titulo: string
-    items: { id: string, etiqueta: string, detalle: string }[]   // 3-5 nodos
-  }
+  visualizacion: NucleoVisualSpecV2
   pasos: Paso[]                                                  // máximo 9 en toda profundidad
   secciones: { titulo: string, desdePaso: number, hastaPaso: number }[] | null
                                                                  // solo si pasos.length >= 6: 2-3 secciones
@@ -163,7 +159,31 @@ Paso {
   cuerpo: string
   minutosEstimados: number
   bloque: { tipo: enum { clave, matiz, ejemplo, alerta }, texto: string } | null
+  visualizacion: NucleoVisualSpecV2 | null   // solo cuando mejora la comprensión
   autochequeo: string | null    // pregunta de comprensión, colapsada por defecto
+}
+
+NucleoVisualSpecV2 {
+  version: 2
+  tipo: enum { concepto, flujo, ciclo, jerarquia, comparacion, timeline, barras, linea }
+  titulo: string
+  resumenAccesible: string
+  items: {
+    id: string
+    etiqueta: string
+    detalle?: string
+    grupo?: string
+    valor?: number
+    unidad?: string
+    orden?: number
+    pasoId?: string
+    referencias?: Referencia[]
+  }[]                                             // 2-6 elementos
+  enlaces?: { origen: string, destino: string, etiqueta?: string }[]
+  referencias?: Referencia[]
+  unidad?: string
+  etiquetaX?: string
+  etiquetaY?: string
 }
 
 Coleccion {                                                       // ver 6.7
@@ -238,10 +258,12 @@ Flujo normal en `InputScreen` (sin pantalla de carga aparte). Layout **efímero*
 
 Como el diseño actual (correcto), con cambios:
 
-1. Página 1: label `IDEA CENTRAL` + chip tiempo total → titular display → subtítulo → card FUENTE DETECTADA (con límites, borde izq `sem-alerta` 3px) → CTA fijo "Ver mapa visual".
+1. Página 1: label `IDEA CENTRAL` + chip tiempo total → titular display → subtítulo → card FUENTE DETECTADA (con límites, borde izq `sem-alerta` 3px) → CTA fijo `Explorar el Núcleo`.
 2. Corregir bug del CTA cortado (safe area, ver 3.3).
 3. Los límites dentro de FUENTE DETECTADA usan icono ⓘ y `text-secondary`; el label del bloque usa `sem-alerta`.
-4. Página 2: un único mapa visual interactivo que representa la relación dominante del Núcleo (flujo, ciclo, comparación o jerarquía), con 3-5 nodos seleccionables y un solo detalle contextual. La primera selección ya es útil sin interacción. Debajo, bloque plano `HILO CONDUCTOR`. Los Núcleos guardados sin `visualizacion` derivan un flujo compatible desde `en60segundos`.
+4. Página 2 — `En 60 segundos`: un overview visual dominante y sin tarjeta que representa la relación principal mediante concepto, flujo, ciclo, jerarquía, comparación, timeline, barras o línea. Todas las etiquetas esenciales son directas; el tap selecciona un elemento y actualiza un único detalle compacto. Si existe `pasoId`, ofrece `Abrir paso`. Los Núcleos guardados sin visualización derivan un mapa conceptual honesto desde la idea central y `en60segundos`.
+5. Los pasos pueden incluir un visual opcional solo cuando mejora materialmente la comprensión. Barras y líneas exigen valores finitos y unidades reales de la fuente; si faltan, se usa un diagrama conceptual o no se genera visual.
+6. La lectura usa altura adaptativa: pantalla fija cuando el contenido cabe y scroll corto cuando existe overflow o texto ampliado. El header se oculta por scroll, nunca por tocar el contenido. Scroll vertical y swipe horizontal son gestos simultáneos; el vertical gana al cruzar primero su umbral y el cambio de paso requiere una trayectoria horizontal clara.
 
 
 
@@ -299,7 +321,7 @@ Pantalla modal: título "nucleo pro" → 4 beneficios en lista con check `accent
 
 ### 6.1 Pipeline de generación
 
-Entrada: fuente + modo + profundidad. Salida: objeto `Nucleo` completo (sección 4) vía LLM con salida JSON estricta validada contra el esquema. Si el JSON no valida: 1 reintento con el error incluido en el prompt; si vuelve a fallar, error de 5.2. Reglas del prompt de generación (P1): prohibido añadir información externa a la fuente; los vacíos se declaran en `fuenteDetectada.limites`; `en60segundos` exactamente 3 items; una `visualizacion` con una sola relación dominante, tipo semántico y 3-5 nodos breves sin métricas inventadas; `paraRecordar` 3-4 bullets; nº de pasos según profundidad: rápido 3, estándar 4-6, profundo 7-9. **Máximo absoluto 9 pasos en toda profundidad.** Si el Núcleo resultante tiene ≥6 pasos, el LLM devuelve además `secciones` (2-3 grupos con título) para el mini-completado de 5.4.8. Fuentes que pidan más de 9 pasos: ver Colecciones (6.7).
+Entrada: fuente + modo + profundidad. Salida: objeto `Nucleo` completo (sección 4) vía LLM con salida JSON estricta validada contra el esquema. Si el JSON no valida: 1 reintento con el error incluido en el prompt; si vuelve a fallar, error de 5.2. Reglas del prompt de generación (P1): prohibido añadir información externa a la fuente; los vacíos se declaran en `fuenteDetectada.limites`; `en60segundos` exactamente 3 items; una `visualizacion` v2 con una relación dominante, 2-6 elementos, IDs/enlaces/referencias válidos y resumen accesible; barras/líneas solo con datos finitos y unidades reales; los visuales de paso son opcionales y no pueden repetir el overview; `paraRecordar` 3-4 bullets; nº de pasos según profundidad: rápido 3, estándar 4-6, profundo 7-9. **Máximo absoluto 9 pasos en toda profundidad.** Si el Núcleo resultante tiene ≥6 pasos, el LLM devuelve además `secciones` (2-3 grupos con título) para el mini-completado de 5.4.8. Fuentes que pidan más de 9 pasos: ver Colecciones (6.7).
 
 ### 6.2 Categorización automática
 

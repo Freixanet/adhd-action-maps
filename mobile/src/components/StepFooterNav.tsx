@@ -88,7 +88,7 @@ export default function StepFooterNav({
           ) : (
             <StepFooterGlassButton
               variant="primary"
-              label="Ver mapa visual"
+              label="Explorar el Núcleo"
               onPress={() => session.goToStep(1)}
             />
           )

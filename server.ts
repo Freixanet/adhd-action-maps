@@ -41,7 +41,10 @@ import {
   wrapSourceText,
   SOURCE_TRUNCATION_NOTICE,
 } from "./shared/nucleoPipeline";
-import { normalizeNucleoVisual } from "./shared/nucleoVisual";
+import {
+  getNucleoVisualQualityIssues,
+  normalizeNucleoVisual,
+} from "./shared/nucleoVisual";
 import {
   authenticateOptional,
   enforceProEntitlements,
@@ -430,6 +433,8 @@ type TransformQualityMetrics = {
   avgWordsPerStep: number;
   tldrCount: number;
   knowledgeSectionCount: number;
+  visualItemCount: number;
+  stepVisualCount: number;
 };
 
 type TransformQualityEvaluation = {
@@ -748,6 +753,8 @@ function buildQualityMetrics(map: ActionMapData): TransformQualityMetrics {
     avgWordsPerStep: stepsLength > 0 ? Math.round(totalStepWords / stepsLength) : 0,
     tldrCount: map.tldr?.length ?? 0,
     knowledgeSectionCount: map.knowledgeSections?.length ?? 0,
+    visualItemCount: map.visualization?.items.length ?? 0,
+    stepVisualCount: map.steps.filter((step) => Boolean(step.visualization)).length,
   };
 }
 
@@ -783,6 +790,9 @@ function evaluateTransformQuality(
 
   if (!map.coreIdea?.trim()) {
     reasons.push("missing_core_idea");
+  }
+  if (!map.visualization || getNucleoVisualQualityIssues(map.visualization).length > 0) {
+    reasons.push("missing_or_invalid_visualization");
   }
 
   if (depth === "profundo") {
@@ -1142,6 +1152,11 @@ function buildRepairReasonInstructions(
           "FALTA coreIdea: Define una idea central clara y fiel a la fuente."
         );
         break;
+      case "missing_or_invalid_visualization":
+        instructions.push(
+          "VISUALIZACIÓN INVÁLIDA: Regenera visualization con NucleoVisualSpec version 2, 2-6 elementos, summary accesible, ids/enlaces válidos y una relación fiel. Bar/line solo con valores finitos y unidades presentes en la fuente."
+        );
+        break;
       default:
         break;
     }
@@ -1191,6 +1206,7 @@ function buildAdaptiveRepairPrompt(
     coreIdea: existingMap.coreIdea,
     coreSupport: existingMap.coreSupport,
     tldr: existingMap.tldr,
+    visualization: existingMap.visualization,
     knowledgeSections: existingMap.knowledgeSections,
     steps: existingMap.steps,
     completionCard: existingMap.completionCard,
@@ -1215,7 +1231,7 @@ function buildAdaptiveRepairPrompt(
     "No inventes datos fuera de la fuente. Conserva idioma, intent y estructura general salvo que reorganizar mejore claridad.",
     `Intent activo: ${context.resolvedIntent}. Profundidad activa: ${context.resolvedDepth}.`,
     `Complejidad estimada: ${contract.sourceComplexity} | Riqueza conceptual: ${context.conceptualRichness} | Señales: ${context.conceptSignalCount}.`,
-    `Métricas actuales del mapa: ${metrics.stepsLength} pasos, ${metrics.totalStepWords} palabras en pasos, ${metrics.avgWordsPerStep} palabras/paso, ${metrics.understandCallouts} callouts conceptuales, ${metrics.actionBlocks} actionBlocks, ${metrics.tldrCount} bullets tldr, ${metrics.knowledgeSectionCount} knowledgeSections.`,
+    `Métricas actuales del mapa: ${metrics.stepsLength} pasos, ${metrics.totalStepWords} palabras en pasos, ${metrics.avgWordsPerStep} palabras/paso, ${metrics.understandCallouts} callouts conceptuales, ${metrics.actionBlocks} actionBlocks, ${metrics.tldrCount} bullets tldr, ${metrics.knowledgeSectionCount} knowledgeSections, ${metrics.visualItemCount} elementos visuales y ${metrics.stepVisualCount} visuales de paso.`,
     `Problemas detectados (códigos): ${evaluation.reasons.join(", ")}.`,
     "INSTRUCCIONES ESPECÍFICAS POR PROBLEMA:",
     reasonInstructions.map((item, index) => `${index + 1}. ${item}`).join("\n"),
@@ -2020,6 +2036,61 @@ const sourceReferenceSchema = {
   required: ["label", "locator"],
 };
 
+const visualizationSchema = {
+  type: Type.OBJECT,
+  description:
+    "Visual semántico nativo y fiel a la fuente. Usa diagramas para relaciones conceptuales y gráficos solo con valores y unidades explícitos en la fuente.",
+  properties: {
+    version: { type: Type.INTEGER, description: "Debe ser exactamente 2." },
+    kind: {
+      type: Type.STRING,
+      description:
+        "Opciones: 'concept', 'flow', 'cycle', 'hierarchy', 'comparison', 'timeline', 'bar', 'line'.",
+    },
+    title: { type: Type.STRING, description: "Título editorial corto del modelo mental." },
+    summary: {
+      type: Type.STRING,
+      description: "Resumen accesible que explica la relación completa sin depender del dibujo.",
+    },
+    unit: { type: Type.STRING, description: "Unidad real común; obligatoria para bar y line." },
+    xLabel: { type: Type.STRING },
+    yLabel: { type: Type.STRING },
+    items: {
+      type: Type.ARRAY,
+      description: "Entre 2 y 6 elementos esenciales.",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING },
+          label: { type: Type.STRING, description: "Etiqueta directa de 1-6 palabras." },
+          detail: { type: Type.STRING, description: "Explicación breve y específica." },
+          group: { type: Type.STRING, description: "Grupo/serie para comparison, bar o line." },
+          value: { type: Type.NUMBER, description: "Valor finito explícito en la fuente." },
+          unit: { type: Type.STRING, description: "Unidad real del valor si difiere de la común." },
+          order: { type: Type.NUMBER, description: "Orden temporal o secuencial si aporta precisión." },
+          stepId: { type: Type.STRING, description: "ID exacto de un step relacionado, si existe." },
+          references: { type: Type.ARRAY, items: sourceReferenceSchema },
+        },
+        required: ["id", "label"],
+      },
+    },
+    links: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          source: { type: Type.STRING },
+          target: { type: Type.STRING },
+          label: { type: Type.STRING },
+        },
+        required: ["source", "target"],
+      },
+    },
+    references: { type: Type.ARRAY, items: sourceReferenceSchema },
+  },
+  required: ["version", "kind", "title", "summary", "items"],
+};
+
 const schema = {
   type: Type.OBJECT,
   properties: {
@@ -2088,7 +2159,7 @@ const schema = {
     tldr: {
       type: Type.ARRAY,
       description:
-        "Página propia 'En 60 segundos' del modo paso a paso. Debe contener puntos compactos y útiles, con suficiente densidad para ocupar una pantalla móvil sin scroll y sin relleno. En modo clásico usa 3-4; en StudyDoc beta usa exactamente 5.",
+        "Contenido que apoya la página visual 'En 60 segundos'. Debe ser compacto, útil y sin relleno. En modo clásico usa 3-4; en StudyDoc beta usa exactamente 5.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -2098,40 +2169,7 @@ const schema = {
         required: ["title", "desc"]
       }
     },
-    visualization: {
-      type: Type.OBJECT,
-      description:
-        "Una sola visualización semántica compacta que explica la relación dominante del contenido. Evita dashboards y decoraciones; usa de 3 a 5 nodos breves.",
-      properties: {
-        kind: {
-          type: Type.STRING,
-          description: "Opciones: 'flow', 'cycle', 'comparison', 'hierarchy'.",
-        },
-        title: {
-          type: Type.STRING,
-          description: "Título corto que nombra la relación o modelo mental mostrado.",
-        },
-        items: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              label: {
-                type: Type.STRING,
-                description: "Identificador visible muy breve, idealmente de 1 a 4 palabras.",
-              },
-              detail: {
-                type: Type.STRING,
-                description: "Una frase breve y específica que explica este nodo desde la fuente.",
-              },
-            },
-            required: ["id", "label", "detail"],
-          },
-        },
-      },
-      required: ["kind", "title", "items"],
-    },
+    visualization: visualizationSchema,
     knowledgeSections: {
       type: Type.ARRAY,
       items: {
@@ -2143,6 +2181,7 @@ const schema = {
             type: Type.ARRAY,
             items: sourceReferenceSchema,
           },
+          visualization: visualizationSchema,
         },
         required: ["title", "summary"],
       },
@@ -2164,7 +2203,7 @@ const schema = {
     steps: {
       type: Type.ARRAY,
       description:
-        "Páginas reales de lectura paso a paso. Cada step debe caber en una pantalla móvil sin scroll, incluir una unidad de comprensión completa y contener al menos un bloque callout destacado.",
+        "Páginas reales de lectura paso a paso. Cada step prioriza el encaje en una pantalla móvil y admite scroll corto ante overflow o texto ampliado; incluye una unidad completa y al menos un callout destacado.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -2265,13 +2304,13 @@ Reglas obligatorias:
 7. La capa "tldr" orienta; no sustituye la lectura completa.
 8. Si falta parte del contenido, señálalo en "coverage" o "sourceMetadata.limitations" con honestidad.
 9. Los bloques callout deben usar labels editoriales sobrios acordes al intent activo: 'Idea clave', 'Matiz', 'Ejemplo', 'Precaución' o 'Para aplicarlo'.
-10. En modo paso a paso móvil no habrá scroll vertical: coreIdea, tldr y cada step deben funcionar como páginas separadas que caben en pantalla.
-11. No recortes ideas importantes para hacerlas caber. Si una unidad queda demasiado densa, divídela en otro step hasta el límite del contrato activo; si aun así algo no cabe, decláralo con honestidad en coverage.
+10. En modo paso a paso móvil cada unidad debe funcionar como una página clara. Prioriza que quepa en pantalla; la app permitirá únicamente un scroll corto cuando haya overflow real o texto ampliado.
+11. No recortes ideas importantes para hacerlas caber. Si una unidad queda demasiado densa, divídela en otro step hasta el límite del contrato activo; si aun así algo requiere scroll corto, conserva la comprensión y decláralo con honestidad en coverage.
 12. Cada step debe tener al menos un bloque callout con una tarjeta destacada y contenido específico.
 13. Devuelve solo JSON válido compatible con el esquema pedido.
 14. Filtra el ruido y cubre las ideas relevantes según el contrato de profundidad activo. La cobertura completa tiene prioridad salvo cuando depth activo sea rapido; en rapido debes sintetizar y agrupar, declarando omisiones en coverage.limitations si procede.
 15. El campo "intent" en el JSON debe coincidir exactamente con el intent activo del contrato (understand, study o apply).
-16. La visualización debe explicar una sola relación dominante de la fuente con 3-5 nodos breves. Elige flow para proceso o secuencia, cycle para bucle, comparison para contraste y hierarchy para partes o dependencias. No inventes métricas ni relaciones.
+16. La visualization raíz debe usar version 2 y explicar una sola relación dominante con 2-6 elementos: concept para idea central y ramas; flow para proceso; cycle para bucle; hierarchy para niveles; comparison para contraste; timeline para cronología; bar o line solo cuando la fuente contenga valores numéricos finitos, etiquetas y unidades reales. No inventes métricas, series, órdenes ni relaciones. Un step puede incluir visualization solo si mejora materialmente su comprensión.
 17. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, visualization, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).`;
 
 function getRepairGenerationConfig(maxOutputTokens: number) {
@@ -2527,7 +2566,18 @@ function normalizeMapData(
     },
   };
 
-  normalized.visualization = normalizeNucleoVisual(parsed?.visualization, normalized.tldr);
+  const stepIds = normalized.steps.map((step) => step.id);
+  normalized.steps.forEach((step, index) => {
+    step.visualization = normalizeNucleoVisual(cappedRawSteps[index]?.visualization, {
+      fallback: false,
+      stepIds,
+    });
+  });
+  normalized.visualization = normalizeNucleoVisual(parsed?.visualization, {
+    coreIdea: normalized.coreIdea,
+    tldr: normalized.tldr,
+    stepIds,
+  });
 
   if (normalized.references.length === 0) {
     normalized.references = normalizedSteps.flatMap((step) => step.references ?? []).slice(0, 8);
@@ -2618,21 +2668,24 @@ function buildTransformPrompt({
       : "En 'tldr' entrega de 3 a 4 puntos.";
 
   const mobilePaginationRule = [
-    "CONTRATO DE PAGINACIÓN MÓVIL SIN SCROLL:",
+    "CONTRATO DE PAGINACIÓN MÓVIL ADAPTATIVA:",
     "El modo paso a paso se renderiza como páginas fijas: página 1 = coreIdea + coreSupport + tarjeta/fuente; página 2 = visualization (apoyada por tldr); páginas siguientes = steps.",
-    "Ninguna página del modo paso a paso tendrá scroll vertical. Escribe cada step para que quepa en una pantalla móvil media: título breve, purpose de 1-2 frases, 2-4 bloques de contenido y un selfCheck corto si aporta valor.",
+    "Escribe cada step para que quepa en una pantalla móvil media: título breve, purpose de 1-2 frases, 2-4 bloques y un selfCheck corto si aporta valor. La app solo habilita un scroll vertical corto ante overflow real o texto ampliado.",
     "Cada step debe incluir al menos un bloque type='callout' con label editorial ('Idea clave', 'Matiz', 'Ejemplo', 'Precaución' o 'Para aplicarlo'). Esa tarjeta debe contener lo más recordable o delicado de la página.",
     "Evita páginas vacías: si una página queda pobre, añade matiz, ejemplo, relación causa/efecto o implicación útil extraída de la fuente, sin inventar ni rellenar.",
-    "Evita páginas sobrecargadas: si una página no cabría sin scroll, crea otro step y reparte la información. No omitas información importante solo por encaje visual.",
+    "Evita páginas sobrecargadas: si una página exigiría un scroll largo, crea otro step y reparte la información. No omitas información importante solo por encaje visual.",
     "En listas, usa 2-4 items concisos. En prose, evita párrafos largos. En callouts, una idea fuerte y específica.",
   ].join("\n");
 
   const visualizationRule = [
-    "CONTRATO DE VISUALIZACIÓN:",
-    "Genera exactamente una visualization que haga visible la relación más importante del Núcleo; debe ayudar a comprender, comparar o decidir, no decorar.",
-    "Elige un solo kind: flow para proceso/secuencia/cronología; cycle para bucle; comparison para contrastar alternativas o dimensiones; hierarchy para partes, niveles o dependencias.",
-    "Usa de 3 a 5 items. Cada label debe ser legible de un vistazo (1-4 palabras) y cada detail una sola frase breve apoyada por la fuente.",
-    "La primera vista debe ser útil sin interacción. No inventes cifras, puntuaciones, estados ni relaciones que la fuente no sostenga.",
+    "CONTRATO VISUAL-FIRST — NucleoVisualSpec VERSION 2:",
+    "Genera exactamente una visualization raíz que haga visible la relación más importante del Núcleo; debe ayudar a comprender, comparar o decidir, no decorar. Incluye version=2, title, summary accesible, 2-6 items y links cuando exista dirección o dependencia.",
+    "Elige concept para idea central con ramas; flow para proceso o causalidad; cycle para bucle cerrado; hierarchy para niveles o dependencias; comparison para columnas alineadas; timeline para hechos cronológicos; bar para magnitudes comparables; line para evolución numérica.",
+    "Cada id debe ser único. Cada link.source y link.target debe coincidir con un id. stepId solo puede ser el id exacto de un step generado. Cada label debe ser directa (1-6 palabras) y detail una frase breve apoyada por la fuente.",
+    "Para comparison asigna group explícito. Para timeline incluye order cuando las etiquetas no basten. Para line asigna group a cada serie y aporta al menos dos puntos por serie.",
+    "REGLA NUMÉRICA ESTRICTA: usa bar o line únicamente si la fuente da valores finitos, categorías y unidades reales. Escribe value como número y unit común o por item. Si falta cualquier dato, usa concept/flow/comparison o no añadas visual al step; jamás estimes, puntúes ni inventes cifras.",
+    "Puedes añadir visualization a un step solo si una relación visual mejora materialmente esa página. No repitas el overview, no fuerces un visual en cada step y no uses un gráfico sin soporte numérico.",
+    "La primera vista debe ser útil sin interacción: todas las etiquetas esenciales deben aparecer directamente.",
   ].join("\n");
 
   const studyDocBetaRule =
@@ -2646,7 +2699,7 @@ function buildTransformPrompt({
           "En cada step incluye: 1) un callout 'Idea clave' o 'Matiz'; 2) una lista breve de pretest con 2-3 preguntas si encaja; 3) prose/bodyMarkdown adaptado a lectura nativa; 4) checkQuestions en lista o prose; 5) selfCheck como selfExplainPrompt.",
           "Incluye relaciones entre conceptos dentro de los pasos usando frases explícitas tipo 'X depende de Y', 'X contrasta con Y' o 'X explica Y'.",
           "completionCard.takeaways debe funcionar como flashcards condensadas: frente implícito + respuesta clara en cada takeaway.",
-          "Mantén el contenido compatible con pantallas sin scroll por página: si queda denso, crea otra section/step.",
+          "Mantén el contenido compatible con páginas móviles de scroll corto: si queda denso, crea otra section/step.",
         ].join("\n")
       : "";
 

@@ -67,23 +67,50 @@ export type TLDRItem = {
   desc: string;
 };
 
-export type NucleoVisualKind = 'flow' | 'cycle' | 'comparison' | 'hierarchy';
+export type NucleoVisualKind =
+  | 'concept'
+  | 'flow'
+  | 'cycle'
+  | 'hierarchy'
+  | 'comparison'
+  | 'timeline'
+  | 'bar'
+  | 'line';
 
 export type NucleoVisualItem = {
   id: string;
   label: string;
-  detail: string;
+  detail?: string;
+  group?: string;
+  value?: number;
+  unit?: string;
+  order?: number;
+  stepId?: string;
+  references?: SourceReference[];
 };
 
-/**
- * Compact semantic overview rendered as the visual page of a Núcleo.
- * The kind controls the relationship shown between the labeled items.
- */
-export type NucleoVisual = {
+export type NucleoVisualLink = {
+  source: string;
+  target: string;
+  label?: string;
+};
+
+/** Source-grounded semantic overview. Version 2 is the canonical write format. */
+export type NucleoVisualSpec = {
+  version: 2;
   kind: NucleoVisualKind;
   title: string;
+  summary: string;
   items: NucleoVisualItem[];
+  links?: NucleoVisualLink[];
+  references?: SourceReference[];
+  unit?: string;
+  xLabel?: string;
+  yLabel?: string;
 };
+
+/** @deprecated Read compatibility alias. New code should use NucleoVisualSpec. */
+export type NucleoVisual = NucleoVisualSpec;
 
 export type CalloutLabel =
   | 'Idea clave'
@@ -120,6 +147,7 @@ export type MapStep = {
   content: StepContentBlock[];
   purpose?: string;
   references?: SourceReference[];
+  visualization?: NucleoVisualSpec;
   /** Pregunta de comprensión colapsada por defecto (SPEC §5.4.3). */
   selfCheck?: string | null;
 };
@@ -146,7 +174,7 @@ export type ActionMapData = {
   coreIdea: string;
   coreSupport: string;
   tldr: TLDRItem[];
-  visualization?: NucleoVisual;
+  visualization?: NucleoVisualSpec;
   knowledgeSections?: KnowledgeSection[];
   /** Agrupación de pasos para mini-completado (SPEC §4); solo si steps.length >= 6. */
   readingSections?: ReadingSection[] | null;
