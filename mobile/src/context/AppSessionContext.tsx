@@ -1148,8 +1148,13 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   }, [uploadedFile?.isPdf, uploadedFile?.isVideo]);
 
   const handleTransform = useCallback(async () => {
+    // Inline retry must run even with an empty composer: the first attempt clears
+    // input/paste/file and keeps the request in inlineRetryPayloadRef.
+    const isInlineRetry =
+      inlineGenerationStatusRef.current === 'error' && inlineRetryPayloadRef.current != null;
+
     const bodyText = pastedText?.trim() ?? inputText.trim();
-    if (!bodyText && !uploadedFile) return;
+    if (!isInlineRetry && !bodyText && !uploadedFile) return;
 
     if (await isDeviceOffline()) {
       setError(OFFLINE_TRANSFORM_MESSAGE);
@@ -1158,7 +1163,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     }
 
     let urlDetection: ReturnType<typeof detectUrlInput> | null = null;
-    if (!uploadedFile && bodyText) {
+    if (!isInlineRetry && !uploadedFile && bodyText) {
       urlDetection = detectUrlInput(bodyText);
       if (urlDetection.kind === 'invalid') {
         setError(urlDetection.message);
@@ -1267,9 +1272,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       ? (await supabase.auth.getSession()).data.session?.access_token
       : undefined;
     const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
-
-    const isInlineRetry =
-      inlineGenerationStatusRef.current === 'error' && inlineRetryPayloadRef.current != null;
 
     if (isInlineRetry && inlineRetryPayloadRef.current) {
       setError(null);
