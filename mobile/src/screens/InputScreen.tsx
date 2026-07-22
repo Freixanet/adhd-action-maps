@@ -190,22 +190,24 @@ export default function InputScreen() {
           style={{ position: 'relative' }}
           onTouchStart={handleCancelAutoOpen}
         >
-          <View className="flex-row items-center justify-between pt-2.5 pb-3">
-            <FloatingGlassButton
-              onPress={() => session.toggleHistoryDrawer()}
-              accessibilityLabel={session.historyOpen ? 'Cerrar navegacion' : 'Abrir navegacion'}
-              shape="circle"
-              size={SIDEBAR_HEADER_BUTTON_SIZE}
-            >
-              <MenuTwoLines size={17} color={navIconColor} />
-            </FloatingGlassButton>
-            <IntentSelector
-              value={session.intent}
-              onChange={session.setIntent}
-              disabled={session.phase === 'loading' || composerDisabled}
-            />
-            <View className="w-9" />
-          </View>
+          {inlineActive ? null : (
+            <View className="flex-row items-center justify-between pt-2.5 pb-3">
+              <FloatingGlassButton
+                onPress={() => session.toggleHistoryDrawer()}
+                accessibilityLabel={session.historyOpen ? 'Cerrar navegacion' : 'Abrir navegacion'}
+                shape="circle"
+                size={SIDEBAR_HEADER_BUTTON_SIZE}
+              >
+                <MenuTwoLines size={17} color={navIconColor} />
+              </FloatingGlassButton>
+              <IntentSelector
+                value={session.intent}
+                onChange={session.setIntent}
+                disabled={session.phase === 'loading' || composerDisabled}
+              />
+              <View className="w-9" />
+            </View>
+          )}
 
           {session.inlineGenerationStatus === 'idle' ? <SessionErrorBanner /> : null}
 
