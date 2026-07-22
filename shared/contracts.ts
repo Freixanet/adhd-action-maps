@@ -1,3 +1,5 @@
+import type { PersistedVisualizationRun } from './visualize';
+
 export type SourceType = 'text' | 'link' | 'youtube' | 'file' | 'pdf';
 
 export type MapIntent = 'understand' | 'study' | 'apply';
@@ -6,7 +8,83 @@ export type MapDepth = 'rapido' | 'estandar' | 'profundo';
 
 export type OutputLanguagePreference = 'device' | 'es' | 'en';
 
-export type NucleoGenerationMode = 'classic' | 'study-doc-beta';
+export type NucleoGenerationMode = 'classic' | 'study-doc-beta' | 'visualize-html-test';
+
+/** Resolve client/server generationMode; unknown values fall back to classic. */
+export function resolveNucleoGenerationMode(value: unknown): NucleoGenerationMode {
+  if (value === 'study-doc-beta' || value === 'visualize-html-test') return value;
+  return 'classic';
+}
+
+export type VisualizeObjective =
+  | 'understand'
+  | 'compare'
+  | 'explore'
+  | 'calculate'
+  | 'practice'
+  | 'decide'
+  | 'act';
+
+export type VisualizeGrammar =
+  | 'chart'
+  | 'timeline'
+  | 'process'
+  | 'causal-flow'
+  | 'concept-map'
+  | 'causal-diagram'
+  | 'comparison'
+  | 'simulation'
+  | 'calculator'
+  | 'interactive-explainer';
+
+export type VisualizeSemanticModel = {
+  objective: VisualizeObjective;
+  /** Claim grounded in the source — not presented as universal law. */
+  centralIdea: string;
+  entities: { id: string; label: string; detail?: string }[];
+  relationships: { from: string; to: string; type: string; label?: string }[];
+  variables?: { id: string; label: string; min?: number; max?: number; unit?: string }[];
+  processes?: { id: string; steps: string[] }[];
+  comparisons?: { id: string; axes: string[]; rows: Record<string, string | number>[] }[];
+  /** Optional caveat / distinction (e.g. healthy affection vs dependence). */
+  caveat?: string;
+  /** Two contrasting scenarios for a real interaction (not decorative). */
+  scenarios?: Array<{
+    id: string;
+    label: string;
+    claim?: string;
+    steps: Array<{ id: string; title: string; detail?: string }>;
+    relations: Array<{ from: string; to: string; label: string }>;
+  }>;
+  interactionOpportunities?: string[];
+};
+
+export type VisualizeRouteA = {
+  route: 'structured';
+  grammar: VisualizeGrammar;
+  spec: Record<string, unknown>;
+};
+
+export type VisualizeRouteC = {
+  route: 'adhoc';
+  grammar: VisualizeGrammar;
+  metadata: { title: string; expandable: boolean };
+  content: { markup: string; styles: string; script?: string };
+  initialState?: Record<string, unknown>;
+  accessibility: { textAlternative: string };
+};
+
+export type VisualizeArtifact = {
+  version: 1;
+  semantic: VisualizeSemanticModel;
+  chosen: VisualizeRouteA | VisualizeRouteC;
+  rubric?: {
+    fidelity: number;
+    initialLegibility: number;
+    robustness: number;
+    cognitiveLoad: number;
+  };
+};
 
 export type SourceKind =
   | 'text'
@@ -73,7 +151,6 @@ export type NucleoVisualKind =
   | 'cycle'
   | 'hierarchy'
   | 'comparison'
-  | 'timeline'
   | 'bar'
   | 'line';
 
@@ -124,14 +201,71 @@ export type StepListItem = {
   span?: string;
 };
 
-export type StepContentBlock = {
-  type: 'prose' | 'callout' | 'list';
+/** Emphasis for interactive blocks — semantic only; visuals live in RN. */
+export type BlockEmphasis = 'hero' | 'normal' | 'quiet';
+
+export type StepContentBlockProse = {
+  type: 'prose';
+  text: string;
+  kind?: 'action' | 'info' | 'alert';
+  references?: SourceReference[];
+};
+
+export type StepContentBlockCallout = {
+  type: 'callout';
   text: string;
   kind?: 'action' | 'info' | 'alert';
   label?: CalloutLabel;
+  references?: SourceReference[];
+};
+
+export type StepContentBlockList = {
+  type: 'list';
+  text: string;
+  kind?: 'action' | 'info' | 'alert';
   items?: StepListItem[];
   references?: SourceReference[];
 };
+
+export type StepContentBlockStat = {
+  type: 'stat';
+  value: string;
+  label: string;
+  source?: string;
+  emphasis?: BlockEmphasis;
+};
+
+export type StepContentBlockComparison = {
+  type: 'comparison';
+  columns: [string, string] | [string, string, string];
+  rows: { label: string; values: string[] }[];
+  emphasis?: BlockEmphasis;
+};
+
+export type StepContentBlockAccordion = {
+  type: 'accordion';
+  title: string;
+  body: string;
+  references?: SourceReference[];
+};
+
+export type StepContentBlockQuiz = {
+  type: 'quiz';
+  question: string;
+  options: string[];
+  /** Zero-based index into options; must be in range after normalize. */
+  correct: number;
+  feedback: string;
+};
+
+export type StepContentBlock =
+  | StepContentBlockProse
+  | StepContentBlockCallout
+  | StepContentBlockList
+  | StepContentBlockStat
+  | StepContentBlockComparison
+  | StepContentBlockAccordion
+  | StepContentBlockQuiz;
 
 export type ReadingSection = {
   title: string;
@@ -175,6 +309,13 @@ export type ActionMapData = {
   coreSupport: string;
   tldr: TLDRItem[];
   visualization?: NucleoVisualSpec;
+  /** Experimental Visualize-compiler artifact (__DEV__ generationMode visualize-html-test). */
+  visualizeArtifact?: VisualizeArtifact | null;
+  /**
+   * Visualize v2 persisted run (shadow alongside visualizeArtifact).
+   * Debug payloads must NOT be stored here — see shared/visualize VisualizationRunDebug.
+   */
+  visualizeRun?: PersistedVisualizationRun | null;
   knowledgeSections?: KnowledgeSection[];
   /** Agrupación de pasos para mini-completado (SPEC §4); solo si steps.length >= 6. */
   readingSections?: ReadingSection[] | null;

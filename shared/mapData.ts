@@ -1,13 +1,12 @@
 import type {
   ActionMapData,
-  CalloutLabel,
   CoverageNote,
   KnowledgeSection,
   MapDepth,
   MapStep,
   SourceReference,
-  StepListItem,
 } from './contracts';
+import { resolveNucleoGenerationMode } from './contracts';
 import { FALLBACK_MAP_CATEGORY, normalizeTags, resolveMapCategory } from './categories';
 import {
   capStepsForDepth,
@@ -15,13 +14,11 @@ import {
   normalizeReadingSections,
   SOURCE_TRUNCATION_NOTICE,
 } from './nucleoPipeline';
-import { normalizeNucleoVisual } from './nucleoVisual';
-
-const DEFAULT_CALLOUT_LABELS: Record<string, CalloutLabel> = {
-  action: 'Para aplicarlo',
-  info: 'Idea clave',
-  alert: 'Precaución',
-};
+// F3: re-spec pending — NucleoVisualSpec channel off; keep module for future.
+// import { normalizeNucleoVisual } from './nucleoVisual';
+import { normalizeVisualizeArtifact } from './visualizeCompiler';
+import { normalizePersistedVisualizationRun } from './visualize';
+import { normalizeStepContentBlocks } from './stepContentBlocks';
 
 function normalizeReferences(input: unknown): SourceReference[] {
   if (!Array.isArray(input)) return [];
@@ -54,38 +51,13 @@ export function normalizeMapData(
     title: String(step?.title || `Paso ${index + 1}`),
     time: String(step?.time || '~3 min'),
     purpose: step?.purpose ? String(step.purpose) : undefined,
-    content: Array.isArray(step?.content)
-      ? step.content
-          .map((block) => {
-            const kindRaw = block?.kind ? String(block.kind) : undefined;
-            const kind: 'action' | 'info' | 'alert' | undefined =
-              kindRaw === 'action' || kindRaw === 'info' || kindRaw === 'alert' ? kindRaw : undefined;
-            const items: StepListItem[] | undefined = Array.isArray(block?.items)
-              ? (block.items
-                  .map((item) =>
-                    item?.strong
-                      ? {
-                          strong: String(item.strong),
-                          span: item?.span ? String(item.span) : undefined,
-                        }
-                      : null
-                  )
-                  .filter(Boolean) as StepListItem[])
-              : undefined;
-
-            return {
-              type: String(block?.type || 'prose') as 'prose' | 'callout' | 'list',
-              text: String(block?.text || '').trim(),
-              kind,
-              label: block?.label
-                ? (String(block.label) as CalloutLabel)
-                : DEFAULT_CALLOUT_LABELS[String(block?.kind || 'info')] || 'Idea clave',
-              items,
-              references: normalizeReferences(block?.references),
-            };
-          })
-          .filter((block) => block.text || block.items?.length)
-      : [],
+    content: normalizeStepContentBlocks(step?.content, {
+      onDrop: (reason) => {
+        if (typeof console !== 'undefined') {
+          console.warn(`[normalizeMapData] dropped step content block: ${reason}`);
+        }
+      },
+    }),
     references: normalizeReferences(step?.references),
     selfCheck: extractSelfCheck(step),
   }));
@@ -97,7 +69,7 @@ export function normalizeMapData(
     intent: raw.intent === 'study' || raw.intent === 'apply' ? raw.intent : 'understand',
     outputLanguage: raw.outputLanguage ? String(raw.outputLanguage) : 'es',
     mapVersion: Number.isFinite(raw.mapVersion) ? Number(raw.mapVersion) : 2,
-    generationMode: raw.generationMode === 'study-doc-beta' ? 'study-doc-beta' : 'classic',
+    generationMode: resolveNucleoGenerationMode(raw.generationMode),
     sourceMetadata: {
       kind: raw.sourceMetadata?.kind || 'text',
       label: raw.sourceMetadata?.label || 'Fuente analizada',
@@ -169,18 +141,26 @@ export function normalizeMapData(
     modelUsed: raw.modelUsed ? String(raw.modelUsed) : undefined,
   };
 
-  const stepIds = normalized.steps.map((step) => step.id);
+  // F3: re-spec pending — visualization channel off; ignore if present (history or model).
   normalized.steps.forEach((step, index) => {
-    step.visualization = normalizeNucleoVisual(cappedSteps[index]?.visualization, {
-      fallback: false,
-      stepIds,
-    });
+    const rawStepVisual = (cappedSteps[index] as { visualization?: unknown } | undefined)?.visualization;
+    if (rawStepVisual != null) {
+      console.warn(
+        '[normalizeMapData] ignored step.visualization — F3: re-spec pending'
+      );
+    }
+    step.visualization = undefined;
   });
-  normalized.visualization = normalizeNucleoVisual(raw.visualization, {
-    coreIdea: normalized.coreIdea,
-    tldr: normalized.tldr,
-    stepIds,
-  });
+  if ((raw as { visualization?: unknown }).visualization != null) {
+    console.warn('[normalizeMapData] ignored visualization — F3: re-spec pending');
+  }
+  normalized.visualization = undefined;
+  normalized.visualizeArtifact = normalizeVisualizeArtifact(
+    (raw as ActionMapData).visualizeArtifact
+  );
+  normalized.visualizeRun = normalizePersistedVisualizationRun(
+    (raw as ActionMapData).visualizeRun
+  );
 
   if (!normalized.sourceMetadata!.detected.length) {
     normalized.sourceMetadata!.detected = [normalized.sourceMetadata!.label];

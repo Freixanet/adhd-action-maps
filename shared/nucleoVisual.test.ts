@@ -20,7 +20,6 @@ const diagramKinds: NucleoVisualKind[] = [
   'flow',
   'cycle',
   'hierarchy',
-  'timeline',
 ];
 
 describe('normalizeNucleoVisual v2', () => {

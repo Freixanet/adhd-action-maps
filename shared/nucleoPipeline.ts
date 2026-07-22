@@ -44,7 +44,7 @@ export function buildDepthContract(depth?: MapDepth): string {
       'Análisis completo; prevalece sobre brevedad.',
       'Genera entre 7 y 9 pasos como objetivo (máximo absoluto 9).',
       'Desarrolla matices, límites, ejemplos e implicaciones; no colapses fuentes densas.',
-      'Cada paso debe funcionar como una página móvil: denso, completo y legible, con scroll corto solo ante overflow o texto ampliado, 2-4 bloques útiles y una tarjeta destacada.',
+      'Cada paso debe funcionar como una página móvil: denso, completo y legible, con scroll corto solo ante overflow o texto ampliado, 2-4 bloques útiles y ≥1 bloque interactivo.',
       'knowledgeSections más ricas; granularidad fina: no fusiones unidades que el lector necesitaría separar.',
       'Si una unidad relevante no cabe en una página, crea otro paso hasta el máximo permitido; no descartes en silencio.',
     ].join('\n');
@@ -55,9 +55,34 @@ export function buildDepthContract(depth?: MapDepth): string {
     'Equilibrio entre cobertura y brevedad.',
     'Genera entre 4 y 6 pasos como objetivo (máximo absoluto 9).',
     'Cubre lo importante sin ser exhaustivo; una unidad principal por paso.',
-    'Cada paso debe funcionar como una página móvil adaptativa: contenido suficiente para ocupar bien la pantalla, sin relleno ni scroll largo.',
+    'Cada paso debe funcionar como una página móvil adaptativa: contenido suficiente para ocupar bien la pantalla, sin relleno ni scroll largo, con ≥1 bloque interactivo.',
     'Ejemplos solo donde clarifiquen; granularidad media.',
     'knowledgeSections moderadas; si omites algo relevante por espacio, decláralo en coverage.limitations.',
+  ].join('\n');
+}
+
+/** Intent bias for interactive content blocks (mirrors server buildIntentGuide). */
+export function buildInteractiveBlocksContract(intent?: import('./contracts').MapIntent): string {
+  const resolved = intent === 'study' || intent === 'apply' ? intent : 'understand';
+  if (resolved === 'apply') {
+    return [
+      'CONTRATO DE BLOQUES INTERACTIVOS (apply):',
+      'Mantén list/callout de acción dominantes; teoría en accordions.',
+      'stat/comparison solo si clarifican una decisión; quiz escaso.',
+      'Cada página: ≥1 interactivo; en ≥3 bloques, prose ≤40%; en 2 bloques, máximo 1 prose.',
+    ].join('\n');
+  }
+  if (resolved === 'study') {
+    return [
+      'CONTRATO DE BLOQUES INTERACTIVOS (study):',
+      'quiz y accordion frecuentes; comparison para contrastes a memorizar; stat para cifras ancla.',
+      'Cada página: ≥1 interactivo; en ≥3 bloques, prose ≤40%; en 2 bloques, máximo 1 prose.',
+    ].join('\n');
+  }
+  return [
+    'CONTRATO DE BLOQUES INTERACTIVOS (understand):',
+    'Prioriza comparison, stat y accordion; quiz solo al cierre del mapa.',
+    'Cada página: ≥1 interactivo; en ≥3 bloques, prose ≤40%; en 2 bloques, máximo 1 prose; máximo un emphasis hero por página.',
   ].join('\n');
 }
 
