@@ -248,7 +248,7 @@ describe('normalizeStepContentBlock interactive catalog', () => {
     expect(dropped[0]).toContain('stat-missing');
   });
 
-  it('acepta comparison 2 columnas y descarta filas mal alineadas', () => {
+  it('acepta comparison 2 columnas y coerciona filas mal alineadas', () => {
     const block = normalizeStepContentBlock({
       type: 'comparison',
       columns: ['A', 'B'],
@@ -259,19 +259,30 @@ describe('normalizeStepContentBlock interactive catalog', () => {
     });
     expect(block?.type).toBe('comparison');
     if (block?.type === 'comparison') {
-      expect(block.rows).toHaveLength(1);
+      expect(block.rows).toHaveLength(2);
+      expect(block.rows[1]).toEqual({ label: 'Bad', values: ['solo-uno', ''] });
       expect(block.columns).toEqual(['A', 'B']);
     }
   });
 
-  it('descarta comparison con 1 o 4 columnas', () => {
+  it('descarta comparison sin columns útiles; recorta a 3 si vienen 4', () => {
     expect(
       normalizeStepContentBlock({
         type: 'comparison',
-        columns: ['Solo'],
+        columns: [],
         rows: [{ label: 'r', values: ['a'] }],
       })
     ).toBeNull();
+    const block = normalizeStepContentBlock({
+      type: 'comparison',
+      columns: ['A', 'B', 'C', 'D'],
+      rows: [{ label: 'r', values: ['1', '2', '3', '4'] }],
+    });
+    expect(block?.type).toBe('comparison');
+    if (block?.type === 'comparison') {
+      expect(block.columns).toEqual(['A', 'B', 'C']);
+      expect(block.rows[0]?.values).toEqual(['1', '2', '3']);
+    }
   });
 
   it('acepta accordion válido', () => {
@@ -335,6 +346,30 @@ describe('normalizeStepContentBlock interactive catalog', () => {
     expect(blocks).toHaveLength(2);
     expect(blocks[0]?.type).toBe('prose');
     expect(blocks[1]?.type).toBe('stat');
+  });
+
+  it('coerciona comparison rows al número de columns en vez de dropear', () => {
+    const dropped: string[] = [];
+    const block = normalizeStepContentBlock(
+      {
+        type: 'comparison',
+        columns: ['A', 'B', 'C'],
+        rows: [
+          { label: 'Fila', values: ['1', '2'] }, // short
+          { label: 'Larga', values: ['1', '2', '3', '4'] }, // long
+        ],
+      },
+      { onDrop: (reason) => dropped.push(reason) }
+    );
+    expect(block).toMatchObject({
+      type: 'comparison',
+      columns: ['A', 'B', 'C'],
+      rows: [
+        { label: 'Fila', values: ['1', '2', ''] },
+        { label: 'Larga', values: ['1', '2', '3'] },
+      ],
+    });
+    expect(dropped).toEqual([]);
   });
 
   it('descarta prose huérfano que termina en ":" antes de un bloque dropeado', () => {

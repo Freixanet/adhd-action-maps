@@ -1983,6 +1983,9 @@ async function handleTransformStream(
   res: express.Response,
   req?: express.Request
 ): Promise<void> {
+  // F1: map gen is non-streaming (full generateContent). NDJSON protocol kept for
+  // clients: one optional early shell + final `done`. Constrained anyOf schema +
+  // streaming was producing truncated/malformed step content under load.
   res.setHeader("Content-Type", "application/x-ndjson");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
@@ -1990,103 +1993,21 @@ async function handleTransformStream(
   res.flushHeaders?.();
 
   let usedModel = context.modelChain[0];
-  let fullText = "";
-  let lastPartialAt = 0;
-  let lastStepCount = 0;
-  let lastSnapshot: ActionMapData | null = null;
-
-  const maybeEmitPartial = () => {
-    const now = Date.now();
-    const partialParsed = extractPartialMap(fullText);
-    if (!partialParsed) return;
-
-    // Partials: normalize without drop warns (incomplete blocks are expected mid-stream).
-    const normalized = normalizeMapData(partialParsed, {
-      intent: context.resolvedIntent,
-      outputLanguage: context.resolvedOutputLanguage,
-      sourceKind: context.type,
-      sourceLabel: context.sourceLabel,
-      depth: context.resolvedDepth,
-      sourceTruncated: context.sourceTruncated,
-      singleNucleoMode: context.singleNucleoMode,
-      logDrops: false,
-    });
-    if (context.generationMode === "study-doc-beta") {
-      applyStudyDocBetaShape(normalized);
-    } else if (context.generationMode === "visualize-html-test") {
-      normalized.generationMode = "visualize-html-test";
-      normalized.visualizeArtifact = ensureVisualizeArtifact(normalized.visualizeArtifact, {
-        coreIdea: normalized.coreIdea,
-        tldr: normalized.tldr,
-        visualization: normalized.visualization,
-      });
-    }
-
-    if (!isPartialMapRenderable(normalized)) return;
-
-    const stepCount = normalized.steps.length;
-    const shouldEmit =
-      stepCount > lastStepCount || now - lastPartialAt >= 350 || !lastSnapshot;
-
-    if (!shouldEmit) return;
-
-    lastPartialAt = now;
-    lastStepCount = stepCount;
-    lastSnapshot = normalized;
-    writeStreamEvent(res, { type: "partial", map: normalized });
-  };
-
-  let streamStarted = false;
-  let lastStreamErr: unknown = null;
   let finishReason: string | null = null;
+  let fullText = "";
 
-  for (const model of context.modelChain) {
-    try {
-      const { stream, model: activeModel } = await generateStreamWithFallback(
-        {
-          contents: context.contents,
-          config: geminiGenerationConfig(context.maxOutputTokens, context.resolvedDepth, model),
-        },
-        [model],
-        resolveLlmTimeoutMs(context.resolvedDepth)
-      );
-
-      usedModel = activeModel;
-      streamStarted = true;
-      finishReason = null;
-
-      for await (const chunk of stream) {
-        const chunkReason =
-          (chunk as { candidates?: Array<{ finishReason?: string }> }).candidates?.[0]
-            ?.finishReason ?? null;
-        if (chunkReason) finishReason = String(chunkReason);
-        const chunkText = chunk.text || "";
-        if (!chunkText) continue;
-        fullText += chunkText;
-        maybeEmitPartial();
-      }
-
-      break;
-    } catch (err: any) {
-      lastStreamErr = err;
-      if (streamStarted) throw err;
-      const { statusCode } = describeGeminiError(err);
-      if (statusCode === 429 || statusCode === 503) {
-        console.warn(
-          `Modelo "${model}" no disponible para streaming (estado ${statusCode}). Probando el siguiente modelo...`
-        );
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  if (!streamStarted) {
-    const { errorMessage } = describeGeminiError(
-      lastStreamErr ?? new Error("No hay modelos disponibles para generar el mapa.")
-    );
-    throw new Error(errorMessage);
-  }
+  const { response, model: activeModel } = await generateWithFallback(
+    { contents: context.contents },
+    context.modelChain,
+    (model) => geminiGenerationConfig(context.maxOutputTokens, context.resolvedDepth, model),
+    resolveLlmTimeoutMs(context.resolvedDepth)
+  );
+  usedModel = activeModel;
+  fullText = response.text || "{}";
+  finishReason =
+    (response as { candidates?: Array<{ finishReason?: string }> }).candidates?.[0]
+      ?.finishReason ?? null;
+  if (finishReason) finishReason = String(finishReason);
 
   console.log(
     `[gemini-finish] model=${usedModel} finishReason=${finishReason ?? "unknown"} maxOutputTokens=${context.maxOutputTokens} textLength=${fullText.length}`
@@ -2104,7 +2025,7 @@ async function handleTransformStream(
     path: "/api/transform/stream",
   });
 
-  console.log(`Mapa generado en streaming con el modelo "${usedModel}".`);
+  console.log(`Mapa generado (non-stream via /stream) con el modelo "${usedModel}".`);
 
   const normalized = await finalizeMapJson(fullText, context, usedModel, { req, res });
   writeStreamEvent(res, { type: "done", map: normalized, model: usedModel });
@@ -2322,6 +2243,120 @@ const _visualizationSchemaF3Pending = {
 };
 void _visualizationSchemaF3Pending;
 
+/** Discriminated step content blocks — constrained decoding via anyOf + enum type. */
+const stepContentBlockSchema = {
+  anyOf: [
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["prose"] },
+        text: { type: Type.STRING },
+        kind: { type: Type.STRING, format: "enum", enum: ["action", "info", "alert"] },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "text"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["callout"] },
+        text: { type: Type.STRING },
+        kind: { type: Type.STRING, format: "enum", enum: ["action", "info", "alert"] },
+        label: { type: Type.STRING },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "text"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["list"] },
+        text: { type: Type.STRING },
+        kind: { type: Type.STRING, format: "enum", enum: ["action", "info", "alert"] },
+        items: {
+          type: Type.ARRAY,
+          minItems: "1",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              strong: { type: Type.STRING },
+              span: { type: Type.STRING },
+            },
+            required: ["strong"],
+          },
+        },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "text"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["stat"] },
+        value: { type: Type.STRING },
+        label: { type: Type.STRING },
+        source: { type: Type.STRING },
+        emphasis: { type: Type.STRING, format: "enum", enum: ["hero", "normal", "quiet"] },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "value", "label"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["comparison"] },
+        columns: {
+          type: Type.ARRAY,
+          minItems: "2",
+          maxItems: "3",
+          items: { type: Type.STRING },
+        },
+        rows: {
+          type: Type.ARRAY,
+          minItems: "1",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              label: { type: Type.STRING },
+              values: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+            required: ["label", "values"],
+          },
+        },
+        emphasis: { type: Type.STRING, format: "enum", enum: ["hero", "normal", "quiet"] },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "columns", "rows"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["accordion"] },
+        title: { type: Type.STRING },
+        body: { type: Type.STRING },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "title", "body"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["quiz"] },
+        question: { type: Type.STRING },
+        options: {
+          type: Type.ARRAY,
+          minItems: "2",
+          items: { type: Type.STRING },
+        },
+        correct: { type: Type.INTEGER },
+        feedback: { type: Type.STRING },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "question", "options", "correct", "feedback"],
+    },
+  ],
+};
+
 const schema = {
   type: Type.OBJECT,
   properties: {
@@ -2450,100 +2485,8 @@ const schema = {
             type: Type.ARRAY,
             description:
               "Usa 2-4 bloques por paso. Incluye ≥1 bloque interactivo (stat|comparison|accordion|quiz). En páginas con ≥3 bloques, prose ≤40%; en páginas de 2 bloques, como máximo 1 prose. Distribuye contenido denso en más pasos antes que sobrecargar una página.",
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                type: {
-                  type: Type.STRING,
-                  description:
-                    "Allowlist EXACTA: 'prose', 'callout', 'list', 'stat', 'comparison', 'accordion', 'quiz'. Cualquier otro type (p. ej. timeline, diagram, graph, flow) está prohibido.",
-                },
-                text: {
-                  type: Type.STRING,
-                  description:
-                    "Obligatorio para prose/callout/list. Vacío o omitido en stat/comparison/accordion/quiz.",
-                },
-                kind: { type: Type.STRING, description: "Opciones: 'action', 'info', 'alert'" },
-                label: {
-                  type: Type.STRING,
-                  description:
-                    "Para bloques callout. Opciones recomendadas: 'Idea clave', 'Matiz', 'Ejemplo', 'Precaución', 'Para aplicarlo'.",
-                },
-                items: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      strong: { type: Type.STRING },
-                      span: { type: Type.STRING },
-                    },
-                    required: ["strong"],
-                  },
-                },
-                references: {
-                  type: Type.ARRAY,
-                  items: sourceReferenceSchema,
-                },
-                value: {
-                  type: Type.STRING,
-                  description: "stat: cifra o magnitud como string (ej. '42%', '3 días').",
-                },
-                source: {
-                  type: Type.STRING,
-                  description: "stat: procedencia breve opcional de la cifra.",
-                },
-                emphasis: {
-                  type: Type.STRING,
-                  description: "stat/comparison: 'hero' | 'normal' | 'quiet'. Máximo un hero por página.",
-                },
-                columns: {
-                  type: Type.ARRAY,
-                  description: "comparison: 2 o 3 cabeceras de columna.",
-                  items: { type: Type.STRING },
-                },
-                rows: {
-                  type: Type.ARRAY,
-                  description: "comparison: filas con label + values (misma longitud que columns).",
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      label: { type: Type.STRING },
-                      values: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                      },
-                    },
-                    required: ["label", "values"],
-                  },
-                },
-                title: {
-                  type: Type.STRING,
-                  description: "accordion: título-pregunta que genera curiosidad.",
-                },
-                body: {
-                  type: Type.STRING,
-                  description: "accordion: cuerpo expandible.",
-                },
-                question: {
-                  type: Type.STRING,
-                  description: "quiz: enunciado.",
-                },
-                options: {
-                  type: Type.ARRAY,
-                  description: "quiz: opciones plausibles (≥2).",
-                  items: { type: Type.STRING },
-                },
-                correct: {
-                  type: Type.INTEGER,
-                  description: "quiz: índice 0-based válido dentro de options.",
-                },
-                feedback: {
-                  type: Type.STRING,
-                  description: "quiz: explica el porqué (no digas solo 'correcto').",
-                },
-              },
-              required: ["type"],
-            },
+            minItems: "2",
+            items: stepContentBlockSchema,
           },
           references: {
             type: Type.ARRAY,
@@ -2803,11 +2746,13 @@ function normalizeMapData(
     fallback.depth
   );
   const logDrops = fallback.logDrops !== false;
+  const dropReasons: string[] = [];
 
   const normalizedSteps = cappedRawSteps.map((step: any, index: number) => {
         const content = normalizeStepContentBlocks(step?.content, {
           onDrop: logDrops
             ? (reason) => {
+                dropReasons.push(reason);
                 console.warn(`[normalizeMapData] dropped content block: ${reason}`);
               }
             : undefined,
@@ -2825,6 +2770,17 @@ function normalizeMapData(
         };
       });
 
+  if (logDrops) {
+    const interactivePerStep = normalizedSteps.map(
+      (step) =>
+        step.content.filter((b) =>
+          b.type === "stat" || b.type === "comparison" || b.type === "accordion" || b.type === "quiz"
+        ).length
+    );
+    console.log(
+      `[normalize-final] dropCount=${dropReasons.length} interactivePerStep=[${interactivePerStep.join(",")}] drops=${JSON.stringify(dropReasons)}`
+    );
+  }
   const normalized: ActionMapData = {
     title: String(parsed?.title || "Mapa sin título"),
     category: resolveMapCategory(parsed?.suggestedCategory ?? parsed?.category),

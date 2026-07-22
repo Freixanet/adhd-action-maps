@@ -99,7 +99,9 @@ export function normalizeStepContentBlock(
       options?.onDrop?.('comparison-columns-not-array', input);
       return null;
     }
-    const columns = raw.columns.map((c) => asString(c)).filter(Boolean);
+    let columns = raw.columns.map((c) => asString(c)).filter(Boolean);
+    if (columns.length > 3) columns = columns.slice(0, 3);
+    if (columns.length === 1) columns = [columns[0]!, ''];
     if (columns.length !== 2 && columns.length !== 3) {
       options?.onDrop?.('comparison-columns-arity', input);
       return null;
@@ -114,12 +116,16 @@ export function normalizeStepContentBlock(
       if (!row || typeof row !== 'object') continue;
       const r = row as Record<string, unknown>;
       const label = asString(r.label);
+      if (!label) continue;
       const valuesRaw = Array.isArray(r.values) ? r.values.map((v) => asString(v)) : [];
-      if (!label || valuesRaw.length !== colCount) {
-        options?.onDrop?.('comparison-row-mismatch', row);
-        continue;
-      }
-      rows.push({ label, values: valuesRaw });
+      // Coerce arity to columns — prefer keep over drop (schema cannot enforce equal lengths).
+      const values =
+        valuesRaw.length === colCount
+          ? valuesRaw
+          : valuesRaw.length > colCount
+            ? valuesRaw.slice(0, colCount)
+            : [...valuesRaw, ...Array(colCount - valuesRaw.length).fill('')];
+      rows.push({ label, values });
     }
     if (rows.length === 0) {
       options?.onDrop?.('comparison-no-valid-rows', input);
