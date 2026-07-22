@@ -1,7 +1,11 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { SEM_ALERTA, SEM_CLAVE, SEM_EJEMPLO, SEM_MATIZ } from '@shared/uiTokens';
-import type { StepContentBlock } from '../logic/contracts';
+import type { SourceReference, StepContentBlock } from '../logic/contracts';
+import StatBlock from './blocks/StatBlock';
+import ComparisonBlock from './blocks/ComparisonBlock';
+import AccordionBlock from './blocks/AccordionBlock';
+import QuizBlock from './blocks/QuizBlock';
 
 type SemTone = 'clave' | 'matiz' | 'ejemplo' | 'alerta';
 
@@ -33,7 +37,7 @@ type StepContentBlocksProps = {
   blocks: StepContentBlock[];
 };
 
-function BlockReferences({ references }: { references?: StepContentBlock['references'] }) {
+function BlockReferences({ references }: { references?: SourceReference[] }) {
   if (!references?.length) return null;
 
   return (
@@ -66,7 +70,7 @@ function SemanticCallout({
   label: string;
   text: string;
   tone: SemTone;
-  references?: StepContentBlock['references'];
+  references?: SourceReference[];
 }) {
   const color = TONE_COLOR[tone];
 
@@ -100,53 +104,59 @@ function SemanticCallout({
 }
 
 function renderBlock(block: StepContentBlock, idx: number) {
-  const type = String(block.type || 'prose').toLowerCase();
-  const textContent = block.text || '';
-
-  if (type === 'callout') {
-    const kind = String(block.kind || 'info').toLowerCase();
-    const tone = KIND_TO_TONE[kind] ?? 'clave';
-    const label = String(block.label || TONE_LABEL[tone]);
-
-    return (
-      <SemanticCallout
-        key={idx}
-        label={label}
-        text={textContent}
-        tone={tone}
-        references={block.references}
-      />
-    );
+  switch (block.type) {
+    case 'stat':
+      return <StatBlock key={`stat-${idx}`} block={block} index={idx} />;
+    case 'comparison':
+      return <ComparisonBlock key={`comparison-${idx}`} block={block} index={idx} />;
+    case 'accordion':
+      return <AccordionBlock key={`accordion-${idx}`} block={block} index={idx} />;
+    case 'quiz':
+      return <QuizBlock key={`quiz-${idx}`} block={block} index={idx} />;
+    case 'callout': {
+      const kind = String(block.kind || 'info').toLowerCase();
+      const tone = KIND_TO_TONE[kind] ?? 'clave';
+      const label = String(block.label || TONE_LABEL[tone]);
+      return (
+        <SemanticCallout
+          key={idx}
+          label={label}
+          text={block.text || ''}
+          tone={tone}
+          references={block.references}
+        />
+      );
+    }
+    case 'list':
+      return (
+        <View key={idx} className="my-6">
+          {block.text ? (
+            <Text className="text-[17px] leading-[26px] text-body mb-4">{block.text}</Text>
+          ) : null}
+          {block.items?.map((item, i) => (
+            <View key={i} className="flex-row gap-3 items-start mb-4">
+              <View className="w-1.5 h-1.5 rounded-full bg-secondary/70 mt-2.5 shrink-0" />
+              <Text className="flex-1 text-[17px] leading-[26px] text-body">
+                <Text className="font-bold text-primary">{item.strong}</Text>
+                {item.span ? <Text className="text-body"> {item.span}</Text> : null}
+              </Text>
+            </View>
+          ))}
+          <BlockReferences references={block.references} />
+        </View>
+      );
+    case 'prose':
+    default: {
+      const textContent = block.type === 'prose' ? block.text : '';
+      if (!textContent.trim()) return null;
+      return (
+        <View key={idx} className="my-4">
+          <Text className="text-[17px] leading-[26px] text-body">{textContent}</Text>
+          <BlockReferences references={block.references} />
+        </View>
+      );
+    }
   }
-
-  if (type === 'list') {
-    return (
-      <View key={idx} className="my-6">
-        {textContent ? (
-          <Text className="text-[17px] leading-[26px] text-body mb-4">{textContent}</Text>
-        ) : null}
-        {block.items?.map((item, i) => (
-          <View key={i} className="flex-row gap-3 items-start mb-4">
-            <View className="w-1.5 h-1.5 rounded-full bg-secondary/70 mt-2.5 shrink-0" />
-            <Text className="flex-1 text-[17px] leading-[26px] text-body">
-              <Text className="font-bold text-primary">{item.strong}</Text>
-              {item.span ? <Text className="text-body"> {item.span}</Text> : null}
-            </Text>
-          </View>
-        ))}
-        <BlockReferences references={block.references} />
-      </View>
-    );
-  }
-
-  if (!textContent.trim()) return null;
-
-  return (
-    <View key={idx} className="my-4">
-      <Text className="text-[17px] leading-[26px] text-body">{textContent}</Text>
-      <BlockReferences references={block.references} />
-    </View>
-  );
 }
 
 export default function StepContentBlocks({ blocks }: StepContentBlocksProps) {

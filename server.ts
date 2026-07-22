@@ -16,6 +16,7 @@ import type {
   SourceReference,
   TransformRequest,
 } from "./src/contracts";
+import { resolveNucleoGenerationMode } from "./src/contracts";
 import {
   DEFAULT_MAP_CATEGORIES,
   FALLBACK_MAP_CATEGORY,
@@ -40,11 +41,15 @@ import {
   validateTransformType,
   wrapSourceText,
   SOURCE_TRUNCATION_NOTICE,
+  buildInteractiveBlocksContract,
 } from "./shared/nucleoPipeline";
-import {
-  getNucleoVisualQualityIssues,
-  normalizeNucleoVisual,
-} from "./shared/nucleoVisual";
+// F3: re-spec pending — NucleoVisualSpec channel off; keep import path for future.
+// import {
+//   getNucleoVisualQualityIssues,
+//   normalizeNucleoVisual,
+// } from "./shared/nucleoVisual";
+import { normalizeVisualizeArtifact, ensureVisualizeArtifact } from "./shared/visualizeCompiler";
+import { countBlockPlainWords, getBlockPlainText, normalizeStepContentBlocks } from "./shared/stepContentBlocks";
 import {
   authenticateOptional,
   enforceProEntitlements,
@@ -125,13 +130,13 @@ const analyzeAi = new GoogleGenAI({
   },
 });
 
-// Free chain stays on lighter Flash models. Premium (3.5 / Pro) is Pro-only.
-const FREE_MODEL_CHAIN = ["gemini-3-flash-preview", "gemini-3.1-flash-lite"];
+// Free chain: balanced 3.6 + cheap Lite. Premium 3.5 Flash is Pro-only.
+const FREE_MODEL_CHAIN = ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
 
 const DEFAULT_MODEL_CHAIN = [
+  "gemini-3.6-flash",
   "gemini-3.5-flash",
-  "gemini-3-flash-preview",
-  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash-lite",
 ];
 
 const DEEP_MODEL_CHAIN: string[] = [
@@ -159,22 +164,32 @@ const MAP_CACHE_LIMIT = 120;
 const mapCache = new Map<string, ActionMapData>();
 
 const READING_WORDS_PER_MINUTE = 200;
-const MAX_OUTPUT_TOKENS_FAST = 6144;
-const MAX_OUTPUT_TOKENS_STANDARD = 8192;
-const MAX_OUTPUT_TOKENS_DEEP = 16384;
+const MAX_OUTPUT_TOKENS_FAST = 8192;
+const MAX_OUTPUT_TOKENS_STANDARD = 16384;
+const MAX_OUTPUT_TOKENS_DEEP = 24576;
 const MAX_CHAT_OUTPUT_TOKENS = 2048;
 
 function resolveModelChain(preferred?: string, isPro = false): string[] {
   const chain = isPro ? MODEL_CHAIN : FREE_MODEL_CHAIN;
   if (!preferred || preferred === "auto") return chain;
   if (!isPro && PREMIUM_MODEL_IDS.has(preferred)) return FREE_MODEL_CHAIN;
-  if (preferred === "gemini-3.1-flash-lite") return ["gemini-3.1-flash-lite"];
-  if (preferred === "gemini-3-flash-preview") {
-    return ["gemini-3-flash-preview", "gemini-3.1-flash-lite"];
+  if (preferred === "gemini-3.5-flash-lite") return ["gemini-3.5-flash-lite"];
+  if (preferred === "gemini-3.6-flash") {
+    return isPro
+      ? ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
+      : ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
   }
   if (preferred === "gemini-3.5-flash") return isPro ? MODEL_CHAIN : FREE_MODEL_CHAIN;
-  if (ALLOWED_MODELS.has(preferred)) return [preferred];
-  return chain;
+  // Legacy prefs from older clients
+  if (preferred === "gemini-3.1-flash-lite" || preferred === "gemini-3.1-flash-lite-preview") {
+    return ["gemini-3.5-flash-lite"];
+  }
+  if (preferred === "gemini-3-flash-preview") {
+    return isPro
+      ? ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
+      : ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
+  }
+  return chain.includes(preferred) ? [preferred, ...chain.filter((m) => m !== preferred)] : chain;
 }
 
 function resolveTransformModelChain(
@@ -375,6 +390,41 @@ function truncateDebugText(value: string | undefined, max = 120): string | null 
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max)}…`;
+}
+
+/** Dev dump of raw model JSON before normalize (overwrites each generation). */
+function dumpLastGenerationRaw(
+  fullText: string,
+  meta: {
+    model?: string;
+    finishReason?: string | null;
+    maxOutputTokens?: number;
+    path?: string;
+  }
+): void {
+  if (process.env.NODE_ENV === "production") return;
+  try {
+    const dir = path.join(process.cwd(), "logs");
+    fs.mkdirSync(dir, { recursive: true });
+    const outPath = path.join(dir, "last-generation.json");
+    fs.writeFileSync(
+      outPath,
+      JSON.stringify(
+        {
+          dumpedAt: new Date().toISOString(),
+          ...meta,
+          textLength: fullText.length,
+          rawText: fullText,
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+    console.log(`[dump] wrote ${outPath} (${fullText.length} chars)`);
+  } catch (err) {
+    console.warn("[dump] failed to write logs/last-generation.json", err);
+  }
 }
 
 function estimateTransformInputLength(body: TransformRequest): number {
@@ -791,9 +841,7 @@ function evaluateTransformQuality(
   if (!map.coreIdea?.trim()) {
     reasons.push("missing_core_idea");
   }
-  if (!map.visualization || getNucleoVisualQualityIssues(map.visualization).length > 0) {
-    reasons.push("missing_or_invalid_visualization");
-  }
+  // F3: re-spec pending — visualization channel off; do not require NucleoVisualSpec.
 
   if (depth === "profundo") {
     if (richSource && metrics.stepsLength <= 3 && metrics.avgWordsPerStep < 85) {
@@ -1152,11 +1200,7 @@ function buildRepairReasonInstructions(
           "FALTA coreIdea: Define una idea central clara y fiel a la fuente."
         );
         break;
-      case "missing_or_invalid_visualization":
-        instructions.push(
-          "VISUALIZACIÓN INVÁLIDA: Regenera visualization con NucleoVisualSpec version 2, 2-6 elementos, summary accesible, ids/enlaces válidos y una relación fiel. Bar/line solo con valores finitos y unidades presentes en la fuente."
-        );
-        break;
+      // F3: re-spec pending — missing_or_invalid_visualization retired with visualization channel.
       default:
         break;
     }
@@ -1253,8 +1297,8 @@ function buildAdaptiveRepairPrompt(
 
 function resolveRepairModelChain(usedModel: string): string[] {
   const chain = [usedModel];
-  if (usedModel !== "gemini-3.1-flash-lite") {
-    chain.push("gemini-3.1-flash-lite");
+  if (usedModel !== "gemini-3.5-flash-lite") {
+    chain.push("gemini-3.5-flash-lite");
   }
   return chain;
 }
@@ -1527,8 +1571,7 @@ async function buildTransformContext(
     intent === "study" || intent === "apply" ? intent : "understand";
   const resolvedDepth: TransformRequest["depth"] =
     depth === "rapido" || depth === "profundo" ? depth : "estandar";
-  const resolvedGenerationMode: NonNullable<TransformRequest["generationMode"]> =
-    generationMode === "study-doc-beta" ? "study-doc-beta" : "classic";
+  const resolvedGenerationMode = resolveNucleoGenerationMode(generationMode);
   const resolvedOutputLanguage =
     typeof outputLanguage === "string" && outputLanguage.trim() ? outputLanguage.trim() : "es";
   const resolvedUserDisplayName = sanitizeUserDisplayName(userDisplayName);
@@ -1653,18 +1696,19 @@ async function buildTransformContext(
   };
 }
 
-function modelUsesMinimalThinking(depth: TransformRequest["depth"], model: string): boolean {
-  if (depth === "profundo") return false;
-  // Rapido/estandar: disable thinking on flash models (including 429 fallbacks).
-  return model.includes("gemini-3");
-}
-
 function geminiGenerationConfig(
   maxOutputTokens: number,
-  depth: TransformRequest["depth"],
-  model: string
+  _depth: TransformRequest["depth"],
+  _model: string
 ) {
-  const config: Record<string, unknown> = {
+  // Do not send thinkingBudget: 0 — Gemini 3.x flash rejects it as INVALID_ARGUMENT.
+  // Omit thinkingConfig and let the model use its default (works for rapido/estandar).
+  const schemaProps = Object.keys((schema as { properties?: Record<string, unknown> }).properties ?? {});
+  safeTransformDebugLog("[transform-schema-props]", {
+    props: schemaProps,
+    hasVisualizationKey: schemaProps.includes("visualization"),
+  });
+  return {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: schema as any,
@@ -1672,12 +1716,6 @@ function geminiGenerationConfig(
     topP: 0.9,
     maxOutputTokens,
   };
-
-  if (modelUsesMinimalThinking(depth, model)) {
-    config.thinkingConfig = { thinkingBudget: 0 };
-  }
-
-  return config;
 }
 
 function parseAndNormalizeMapJson(
@@ -1698,6 +1736,13 @@ function parseAndNormalizeMapJson(
   normalized.modelUsed = usedModel;
   if (context.generationMode === "study-doc-beta") {
     applyStudyDocBetaShape(normalized);
+  } else if (context.generationMode === "visualize-html-test") {
+    normalized.generationMode = "visualize-html-test";
+    normalized.visualizeArtifact = ensureVisualizeArtifact(normalized.visualizeArtifact, {
+      coreIdea: normalized.coreIdea,
+      tldr: normalized.tldr,
+      visualization: normalized.visualization,
+    });
   }
   return normalized;
 }
@@ -1716,7 +1761,7 @@ function applyStudyDocBetaShape(map: ActionMapData): ActionMapData {
     ...map.tldr,
     ...map.steps.map((step) => ({
       title: step.shortNav || step.title,
-      desc: step.purpose || step.content?.[0]?.text || step.title,
+      desc: step.purpose || getBlockPlainText(step.content?.[0] as any) || step.title,
     })),
   ].filter((item) => item.title && item.desc);
   map.tldr = tldrFillers.slice(0, 5);
@@ -1725,15 +1770,13 @@ function applyStudyDocBetaShape(map: ActionMapData): ActionMapData {
     ? map.knowledgeSections
     : map.steps.slice(0, 9).map((step, index) => ({
         title: step.shortNav || `Concepto ${index + 1}`,
-        summary: step.purpose || step.content?.[0]?.text || step.title,
+        summary: step.purpose || getBlockPlainText(step.content?.[0] as any) || step.title,
         references: step.references,
       }));
 
   map.steps = map.steps.map((step, index) => {
     const hasStudySignal = step.content.some((block) =>
-      /pretest|comprueba|explica con tus palabras|self/i.test(
-        `${block.text ?? ""} ${block.label ?? ""}`
-      )
+      /pretest|comprueba|explica con tus palabras|self/i.test(getBlockPlainText(block))
     );
     if (hasStudySignal) {
       return {
@@ -1801,6 +1844,12 @@ async function parseMapJsonWithRetry(
 
     const parseMessage =
       firstError instanceof Error ? firstError.message : "JSON inválido";
+    console.error("[parseMapJsonWithRetry] first parse/normalize failed", {
+      message: parseMessage,
+      textLength: jsonText?.length ?? 0,
+      textHead: String(jsonText ?? "").slice(0, 240),
+      textTail: String(jsonText ?? "").slice(-240),
+    });
     const { response, model: repairModel } = await generateWithFallback(
       {
         contents: [
@@ -1916,6 +1965,13 @@ async function finalizeMapJson(
 
   if (context.generationMode === "study-doc-beta") {
     applyStudyDocBetaShape(normalized);
+  } else if (context.generationMode === "visualize-html-test") {
+    normalized.generationMode = "visualize-html-test";
+    normalized.visualizeArtifact = ensureVisualizeArtifact(normalized.visualizeArtifact, {
+      coreIdea: normalized.coreIdea,
+      tldr: normalized.tldr,
+      visualization: normalized.visualization,
+    });
   }
   cacheMap(context.mapId, normalized);
   logTransformResultDebug(context, normalized, usedModel, qualityMeta, finalEvaluation, contract);
@@ -1927,6 +1983,9 @@ async function handleTransformStream(
   res: express.Response,
   req?: express.Request
 ): Promise<void> {
+  // F1: map gen is non-streaming (full generateContent). NDJSON protocol kept for
+  // clients: one optional early shell + final `done`. Constrained anyOf schema +
+  // streaming was producing truncated/malformed step content under load.
   res.setHeader("Content-Type", "application/x-ndjson");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
@@ -1934,90 +1993,39 @@ async function handleTransformStream(
   res.flushHeaders?.();
 
   let usedModel = context.modelChain[0];
+  let finishReason: string | null = null;
   let fullText = "";
-  let lastPartialAt = 0;
-  let lastStepCount = 0;
-  let lastSnapshot: ActionMapData | null = null;
 
-  const maybeEmitPartial = () => {
-    const now = Date.now();
-    const partialParsed = extractPartialMap(fullText);
-    if (!partialParsed) return;
+  const { response, model: activeModel } = await generateWithFallback(
+    { contents: context.contents },
+    context.modelChain,
+    (model) => geminiGenerationConfig(context.maxOutputTokens, context.resolvedDepth, model),
+    resolveLlmTimeoutMs(context.resolvedDepth)
+  );
+  usedModel = activeModel;
+  fullText = response.text || "{}";
+  finishReason =
+    (response as { candidates?: Array<{ finishReason?: string }> }).candidates?.[0]
+      ?.finishReason ?? null;
+  if (finishReason) finishReason = String(finishReason);
 
-    const normalized = normalizeMapData(partialParsed, {
-      intent: context.resolvedIntent,
-      outputLanguage: context.resolvedOutputLanguage,
-      sourceKind: context.type,
-      sourceLabel: context.sourceLabel,
-      depth: context.resolvedDepth,
-      sourceTruncated: context.sourceTruncated,
-      singleNucleoMode: context.singleNucleoMode,
-    });
-    if (context.generationMode === "study-doc-beta") {
-      applyStudyDocBetaShape(normalized);
-    }
-
-    if (!isPartialMapRenderable(normalized)) return;
-
-    const stepCount = normalized.steps.length;
-    const shouldEmit =
-      stepCount > lastStepCount || now - lastPartialAt >= 350 || !lastSnapshot;
-
-    if (!shouldEmit) return;
-
-    lastPartialAt = now;
-    lastStepCount = stepCount;
-    lastSnapshot = normalized;
-    writeStreamEvent(res, { type: "partial", map: normalized });
-  };
-
-  let streamStarted = false;
-  let lastStreamErr: unknown = null;
-
-  for (const model of context.modelChain) {
-    try {
-      const { stream, model: activeModel } = await generateStreamWithFallback(
-        {
-          contents: context.contents,
-          config: geminiGenerationConfig(context.maxOutputTokens, context.resolvedDepth, model),
-        },
-        [model],
-        resolveLlmTimeoutMs(context.resolvedDepth)
-      );
-
-      usedModel = activeModel;
-      streamStarted = true;
-
-      for await (const chunk of stream) {
-        const chunkText = chunk.text || "";
-        if (!chunkText) continue;
-        fullText += chunkText;
-        maybeEmitPartial();
-      }
-
-      break;
-    } catch (err: any) {
-      lastStreamErr = err;
-      if (streamStarted) throw err;
-      const { statusCode } = describeGeminiError(err);
-      if (statusCode === 429 || statusCode === 503) {
-        console.warn(
-          `Modelo "${model}" no disponible para streaming (estado ${statusCode}). Probando el siguiente modelo...`
-        );
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  if (!streamStarted) {
-    const { errorMessage } = describeGeminiError(
-      lastStreamErr ?? new Error("No hay modelos disponibles para generar el mapa.")
+  console.log(
+    `[gemini-finish] model=${usedModel} finishReason=${finishReason ?? "unknown"} maxOutputTokens=${context.maxOutputTokens} textLength=${fullText.length}`
+  );
+  if (finishReason === "MAX_TOKENS") {
+    console.warn(
+      `[gemini-finish] MAX_TOKENS hit — output may be truncated (budget=${context.maxOutputTokens}).`
     );
-    throw new Error(errorMessage);
   }
 
-  console.log(`Mapa generado en streaming con el modelo "${usedModel}".`);
+  dumpLastGenerationRaw(fullText, {
+    model: usedModel,
+    finishReason,
+    maxOutputTokens: context.maxOutputTokens,
+    path: "/api/transform/stream",
+  });
+
+  console.log(`Mapa generado (non-stream via /stream) con el modelo "${usedModel}".`);
 
   const normalized = await finalizeMapJson(fullText, context, usedModel, { req, res });
   writeStreamEvent(res, { type: "done", map: normalized, model: usedModel });
@@ -2036,7 +2044,150 @@ const sourceReferenceSchema = {
   required: ["label", "locator"],
 };
 
-const visualizationSchema = {
+const visualizeArtifactSchema = {
+  type: Type.OBJECT,
+  description:
+    "Artefacto del compilador Visualize (modo visualize-html-test): modelo semántico + ruta structured o adhoc.",
+  properties: {
+    version: { type: Type.INTEGER, description: "Debe ser 1." },
+    semantic: {
+      type: Type.OBJECT,
+      properties: {
+        objective: {
+          type: Type.STRING,
+          description:
+            "understand | compare | explore | calculate | practice | decide | act",
+        },
+        centralIdea: { type: Type.STRING },
+        entities: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              label: { type: Type.STRING },
+              detail: { type: Type.STRING },
+            },
+            required: ["id", "label"],
+          },
+        },
+        relationships: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              from: { type: Type.STRING },
+              to: { type: Type.STRING },
+              type: { type: Type.STRING },
+              label: { type: Type.STRING },
+            },
+            required: ["from", "to", "type"],
+          },
+        },
+        variables: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              label: { type: Type.STRING },
+              min: { type: Type.NUMBER },
+              max: { type: Type.NUMBER },
+              unit: { type: Type.STRING },
+            },
+            required: ["id", "label"],
+          },
+        },
+        processes: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              steps: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+            required: ["id", "steps"],
+          },
+        },
+        comparisons: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              axes: { type: Type.ARRAY, items: { type: Type.STRING } },
+              rows: { type: Type.ARRAY, items: { type: Type.OBJECT } },
+            },
+            required: ["id", "axes", "rows"],
+          },
+        },
+        interactionOpportunities: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+        },
+      },
+      required: ["objective", "centralIdea", "entities", "relationships"],
+    },
+    chosen: {
+      type: Type.OBJECT,
+      properties: {
+        route: {
+          type: Type.STRING,
+          description: "structured | adhoc",
+        },
+        grammar: {
+          type: Type.STRING,
+          description:
+            "chart | timeline | process | causal-flow | concept-map | causal-diagram | comparison | simulation | calculator | interactive-explainer. Prefer causal-flow for sequential causality.",
+        },
+        spec: {
+          type: Type.OBJECT,
+          description:
+            "Para causal-flow: {view, claim, steps[{id,title,detail}], relations[{from,to,label}], caveat?, scenarios?}. Sin coordenadas.",
+        },
+        metadata: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            expandable: { type: Type.BOOLEAN },
+          },
+        },
+        content: {
+          type: Type.OBJECT,
+          description: "Solo route=adhoc: markup + styles + script autocontenidos sin red.",
+          properties: {
+            markup: { type: Type.STRING },
+            styles: { type: Type.STRING },
+            script: { type: Type.STRING },
+          },
+          required: ["markup", "styles"],
+        },
+        initialState: { type: Type.OBJECT },
+        accessibility: {
+          type: Type.OBJECT,
+          properties: {
+            textAlternative: { type: Type.STRING },
+          },
+          required: ["textAlternative"],
+        },
+      },
+      required: ["route", "grammar"],
+    },
+    rubric: {
+      type: Type.OBJECT,
+      properties: {
+        fidelity: { type: Type.NUMBER },
+        initialLegibility: { type: Type.NUMBER },
+        robustness: { type: Type.NUMBER },
+        cognitiveLoad: { type: Type.NUMBER },
+      },
+    },
+  },
+  required: ["version", "semantic", "chosen"],
+};
+
+// F3: re-spec pending — NucleoVisualSpec generation off; schema retained for future re-wire.
+const _visualizationSchemaF3Pending = {
   type: Type.OBJECT,
   description:
     "Visual semántico nativo y fiel a la fuente. Usa diagramas para relaciones conceptuales y gráficos solo con valores y unidades explícitos en la fuente.",
@@ -2045,7 +2196,7 @@ const visualizationSchema = {
     kind: {
       type: Type.STRING,
       description:
-        "Opciones: 'concept', 'flow', 'cycle', 'hierarchy', 'comparison', 'timeline', 'bar', 'line'.",
+        "Opciones: 'concept', 'flow', 'cycle', 'hierarchy', 'comparison', 'bar', 'line'. No uses timeline: cronología en bloques list/comparison; secuencia causal/proceso en flow.",
     },
     title: { type: Type.STRING, description: "Título editorial corto del modelo mental." },
     summary: {
@@ -2089,6 +2240,121 @@ const visualizationSchema = {
     references: { type: Type.ARRAY, items: sourceReferenceSchema },
   },
   required: ["version", "kind", "title", "summary", "items"],
+};
+void _visualizationSchemaF3Pending;
+
+/** Discriminated step content blocks — constrained decoding via anyOf + enum type. */
+const stepContentBlockSchema = {
+  anyOf: [
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["prose"] },
+        text: { type: Type.STRING },
+        kind: { type: Type.STRING, format: "enum", enum: ["action", "info", "alert"] },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "text"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["callout"] },
+        text: { type: Type.STRING },
+        kind: { type: Type.STRING, format: "enum", enum: ["action", "info", "alert"] },
+        label: { type: Type.STRING },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "text"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["list"] },
+        text: { type: Type.STRING },
+        kind: { type: Type.STRING, format: "enum", enum: ["action", "info", "alert"] },
+        items: {
+          type: Type.ARRAY,
+          minItems: "1",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              strong: { type: Type.STRING },
+              span: { type: Type.STRING },
+            },
+            required: ["strong"],
+          },
+        },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "text"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["stat"] },
+        value: { type: Type.STRING },
+        label: { type: Type.STRING },
+        source: { type: Type.STRING },
+        emphasis: { type: Type.STRING, format: "enum", enum: ["hero", "normal", "quiet"] },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "value", "label"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["comparison"] },
+        columns: {
+          type: Type.ARRAY,
+          minItems: "2",
+          maxItems: "3",
+          items: { type: Type.STRING },
+        },
+        rows: {
+          type: Type.ARRAY,
+          minItems: "1",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              label: { type: Type.STRING },
+              values: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+            required: ["label", "values"],
+          },
+        },
+        emphasis: { type: Type.STRING, format: "enum", enum: ["hero", "normal", "quiet"] },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "columns", "rows"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["accordion"] },
+        title: { type: Type.STRING },
+        body: { type: Type.STRING },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "title", "body"],
+    },
+    {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: ["quiz"] },
+        question: { type: Type.STRING },
+        options: {
+          type: Type.ARRAY,
+          minItems: "2",
+          items: { type: Type.STRING },
+        },
+        correct: { type: Type.INTEGER },
+        feedback: { type: Type.STRING },
+        references: { type: Type.ARRAY, items: sourceReferenceSchema },
+      },
+      required: ["type", "question", "options", "correct", "feedback"],
+    },
+  ],
 };
 
 const schema = {
@@ -2159,7 +2425,7 @@ const schema = {
     tldr: {
       type: Type.ARRAY,
       description:
-        "Contenido que apoya la página visual 'En 60 segundos'. Debe ser compacto, útil y sin relleno. En modo clásico usa 3-4; en StudyDoc beta usa exactamente 5.",
+        "Contenido de la página 'En 60 segundos'. Debe ser compacto, útil y sin relleno. En modo clásico usa 3-4; en StudyDoc beta usa exactamente 5.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -2169,7 +2435,7 @@ const schema = {
         required: ["title", "desc"]
       }
     },
-    visualization: visualizationSchema,
+    visualizeArtifact: visualizeArtifactSchema,
     knowledgeSections: {
       type: Type.ARRAY,
       items: {
@@ -2181,8 +2447,7 @@ const schema = {
             type: Type.ARRAY,
             items: sourceReferenceSchema,
           },
-          visualization: visualizationSchema,
-        },
+              },
         required: ["title", "summary"],
       },
     },
@@ -2219,36 +2484,9 @@ const schema = {
           content: {
             type: Type.ARRAY,
             description:
-              "Usa 2-4 bloques por paso. Cada paso debe incluir al menos un bloque type='callout'. Distribuye contenido denso en más pasos antes que sobrecargar una página.",
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                type: { type: Type.STRING, description: "Opciones: 'prose', 'callout', 'list'" },
-                text: { type: Type.STRING, description: "CONTENIDO ESCRITO DEL BLOQUE. ESTO ES ESTRICTAMENTE OBLIGATORIO. NO LO DEJES VACÍO." },
-                kind: { type: Type.STRING, description: "Opciones: 'action', 'info', 'alert'" },
-                label: {
-                  type: Type.STRING,
-                  description:
-                    "Para bloques callout. Opciones recomendadas: 'Idea clave', 'Matiz', 'Ejemplo', 'Precaución', 'Para aplicarlo'.",
-                },
-                items: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      strong: { type: Type.STRING },
-                      span: { type: Type.STRING }
-                    },
-                    required: ["strong"]
-                  }
-                },
-                references: {
-                  type: Type.ARRAY,
-                  items: sourceReferenceSchema,
-                },
-              },
-              required: ["type", "text"]
-            }
+              "Usa 2-4 bloques por paso. Incluye ≥1 bloque interactivo (stat|comparison|accordion|quiz). En páginas con ≥3 bloques, prose ≤40%; en páginas de 2 bloques, como máximo 1 prose. Distribuye contenido denso en más pasos antes que sobrecargar una página.",
+            minItems: "2",
+            items: stepContentBlockSchema,
           },
           references: {
             type: Type.ARRAY,
@@ -2284,7 +2522,6 @@ const schema = {
     "sourceMetadata",
     "coverage",
     "tldr",
-    "visualization",
     "steps",
     "completionCard",
   ]
@@ -2299,19 +2536,68 @@ Reglas obligatorias:
 2. No mezcles objetivos de apply (checklists, acciones concretas) si el intent activo es understand, salvo que la fuente lo requiera explícitamente. No expandas en profundidad exhaustiva si depth activo es rapido.
 3. No infantilices. Escribe con claridad adulta, no con tono de coach ni celebración exagerada.
 4. No inventes. Toda inferencia debe estar apoyada por la fuente proporcionada.
-5. Cada bloque "text" debe contener contenido útil y específico.
+5. Cada bloque debe contener contenido útil y específico. En prose/callout/list el campo "text" es obligatorio; en stat/comparison/accordion/quiz usa los campos propios del tipo (no inventes propiedades de estilo).
 6. Usa referencias siempre que puedas. Si la fuente no ofrece una ubicación exacta, usa el mejor localizador honesto disponible.
 7. La capa "tldr" orienta; no sustituye la lectura completa.
 8. Si falta parte del contenido, señálalo en "coverage" o "sourceMetadata.limitations" con honestidad.
 9. Los bloques callout deben usar labels editoriales sobrios acordes al intent activo: 'Idea clave', 'Matiz', 'Ejemplo', 'Precaución' o 'Para aplicarlo'.
 10. En modo paso a paso móvil cada unidad debe funcionar como una página clara. Prioriza que quepa en pantalla; la app permitirá únicamente un scroll corto cuando haya overflow real o texto ampliado.
 11. No recortes ideas importantes para hacerlas caber. Si una unidad queda demasiado densa, divídela en otro step hasta el límite del contrato activo; si aun así algo requiere scroll corto, conserva la comprensión y decláralo con honestidad en coverage.
-12. Cada step debe tener al menos un bloque callout con una tarjeta destacada y contenido específico.
+12. Cada step debe incluir ≥1 bloque interactivo (stat, comparison, accordion o quiz). En páginas con ≥3 bloques, prose ≤40% de los bloques; en páginas de 2 bloques, como máximo 1 prose. Elige el tipo según la forma de la idea (ver CATÁLOGO DE BLOQUES).
 13. Devuelve solo JSON válido compatible con el esquema pedido.
 14. Filtra el ruido y cubre las ideas relevantes según el contrato de profundidad activo. La cobertura completa tiene prioridad salvo cuando depth activo sea rapido; en rapido debes sintetizar y agrupar, declarando omisiones en coverage.limitations si procede.
 15. El campo "intent" en el JSON debe coincidir exactamente con el intent activo del contrato (understand, study o apply).
-16. La visualization raíz debe usar version 2 y explicar una sola relación dominante con 2-6 elementos: concept para idea central y ramas; flow para proceso; cycle para bucle; hierarchy para niveles; comparison para contraste; timeline para cronología; bar o line solo cuando la fuente contenga valores numéricos finitos, etiquetas y unidades reales. No inventes métricas, series, órdenes ni relaciones. Un step puede incluir visualization solo si mejora materialmente su comprensión.
-17. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, visualization, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).`;
+16. NO generes el campo visualization ni NucleoVisualSpec (canal apagado hasta F3). Cronología/contraste van en bloques list o comparison; relaciones en prose/callout.
+17. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).
+18. CERO HTML, CSS, markdown de presentación o propiedades visuales en el JSON. Solo contenido, rol semántico y emphasis.
+
+CATÁLOGO DE BLOQUES (únicos tipos permitidos en step.content — la UI vive en el cliente):
+- Allowlist EXACTA de type: prose | callout | list | stat | comparison | accordion | quiz.
+- NUNCA emitas type diagram, timeline, graph, flow, concept, hierarchy, cycle ni ningún otro nombre: se descartarán en normalización.
+- Elige el bloque según la forma de la idea: contraste→comparison; número relevante→stat; detalle prescindible→accordion; concepto que debe recordarse→quiz; secuencia/cronología→list o comparison; prosa corta→prose; aviso→callout.
+- emphasis: 'hero' | 'normal' | 'quiet'. Máximo UN 'hero' por página, reservado al clímax informativo.
+- Quiz: opciones plausibles; feedback que explica el porqué (nunca solo "¡correcto!"). correct = índice 0-based válido de options.
+- Accordion: el título debe funcionar como pregunta que da curiosidad; body cerrado por defecto en la app.
+- Sesgo por intent (además del CONTRATO ACTIVO DE INTENCIÓN):
+  · understand: prioriza comparison/stat/accordion; quiz solo al cierre del mapa.
+  · study: quiz y accordion frecuentes.
+  · apply: list/callout de acción dominantes; teoría en accordions; interactivos solo cuando clarifican una decisión.
+
+Ejemplo de página bien compuesta (un step.content):
+[
+  {
+    "type": "stat",
+    "value": "70%",
+    "label": "de la carga cognitiva se reduce al externalizar el plan",
+    "source": "síntesis de la fuente",
+    "emphasis": "hero"
+  },
+  {
+    "type": "comparison",
+    "columns": ["Sin plan", "Con plan escrito"],
+    "rows": [
+      { "label": "Inicio", "values": ["Pospone", "Empieza en <2 min"] },
+      { "label": "Recuerdo", "values": ["Se pierde", "Queda anclado"] }
+    ],
+    "emphasis": "normal"
+  },
+  {
+    "type": "accordion",
+    "title": "¿Por qué escribir el plan baja la ansiedad?",
+    "body": "La memoria de trabajo deja de retener el siguiente paso; la fuente lo describe como descarga, no como disciplina."
+  },
+  {
+    "type": "quiz",
+    "question": "¿Qué hace el plan escrito según la fuente?",
+    "options": [
+      "Aumenta la motivación intrínseca",
+      "Externaliza el siguiente paso y libera memoria de trabajo",
+      "Elimina por completo la procrastinación"
+    ],
+    "correct": 1,
+    "feedback": "La fuente enfatiza la descarga de memoria de trabajo, no la eliminación total de la procrastinación."
+  }
+]`;
 
 function getRepairGenerationConfig(maxOutputTokens: number) {
   return {
@@ -2344,6 +2630,7 @@ function buildIntentGuide(intent: MapIntent): string {
       "Prioriza pasos accionables, decisiones concretas, checklist, errores a evitar y próximos pasos.",
       "Transforma conceptos de la fuente en acciones que el lector pueda ejecutar.",
       "Usa listas con kind 'action' cuando encaje; prioriza callouts 'Para aplicarlo', 'Precaución' y listas accionables.",
+      "BLOQUES INTERACTIVOS: list/callout de acción dominantes; teoría en accordions; stat/comparison solo si clarifican una decisión; quiz escaso.",
       "Evita teoría extensa sin traducirla a qué hacer; cada paso debe dejar claro qué acción, condición o decisión implica.",
       "completionCard.promptQuestion debe invitar a la siguiente acción concreta (qué probar, qué decidir, qué hacer ahora).",
     ].join("\n");
@@ -2356,6 +2643,7 @@ function buildIntentGuide(intent: MapIntent): string {
       "Prioriza conceptos clave, relaciones entre ideas, preguntas de recuperación y guías de repaso.",
       "Incluye matices y definiciones precisas útiles para memorizar y reconectar después.",
       "Usa callouts 'Idea clave', 'Matiz' y 'Ejemplo'; puedes incluir preguntas orientadas al repaso en prose o listas.",
+      "BLOQUES INTERACTIVOS: quiz y accordion frecuentes; comparison cuando haya contrastes a memorizar; stat para cifras ancla.",
       "completionCard.promptQuestion debe invitar a repasar, autoevaluar o profundizar un concepto concreto.",
     ].join("\n");
   }
@@ -2366,6 +2654,7 @@ function buildIntentGuide(intent: MapIntent): string {
     "Prioriza explicación conceptual, tesis, relación causa/efecto, matices y ejemplos explicativos.",
     "Evita convertir el mapa en checklist o manual de acciones salvo que la fuente lo exija explícitamente.",
     "Usa callouts 'Idea clave', 'Matiz' y 'Ejemplo'; limita listas kind 'action' salvo que sean inherentes a la fuente.",
+    "BLOQUES INTERACTIVOS: prioriza comparison, stat y accordion; quiz solo en el cierre del mapa (último step o completion).",
     "completionCard.promptQuestion debe invitar a repasar comprensión, conectar conceptos o explorar el siguiente matiz.",
   ].join("\n");
 }
@@ -2405,13 +2694,18 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function countBlockWords(block: {
-  text?: string;
-  items?: Array<{ strong?: string; span?: string }>;
-}): number {
-  let words = countWords(block.text || "");
-  if (Array.isArray(block.items)) {
-    for (const item of block.items) {
+function countBlockWords(block: unknown): number {
+  // Prefer typed interactive/legacy blocks when available.
+  if (block && typeof block === "object" && "type" in block) {
+    return countBlockPlainWords(block as import("./shared/contracts").StepContentBlock);
+  }
+  const legacy = block as {
+    text?: string;
+    items?: Array<{ strong?: string; span?: string }>;
+  };
+  let words = countWords(legacy.text || "");
+  if (Array.isArray(legacy.items)) {
+    for (const item of legacy.items) {
       if (item?.strong) words += countWords(item.strong);
       if (item?.span) words += countWords(item.span);
     }
@@ -2443,35 +2737,26 @@ function normalizeMapData(
     depth?: TransformRequest["depth"];
     sourceTruncated?: boolean;
     singleNucleoMode?: boolean;
+    /** When false, skip drop warns (partial stream snapshots). Default true. */
+    logDrops?: boolean;
   }
 ): ActionMapData {
   const cappedRawSteps = capStepsForDepth(
     Array.isArray(parsed?.steps) ? parsed.steps : [],
     fallback.depth
   );
+  const logDrops = fallback.logDrops !== false;
+  const dropReasons: string[] = [];
 
   const normalizedSteps = cappedRawSteps.map((step: any, index: number) => {
-        const content = Array.isArray(step?.content)
-          ? step.content.map((block: any) => ({
-              type: String(block?.type || "prose"),
-              text: String(block?.text || "").trim(),
-              kind: block?.kind ? String(block.kind) : undefined,
-              label: block?.label ? String(block.label) : undefined,
-              items: Array.isArray(block?.items)
-                ? block.items
-                    .map((item: any) =>
-                      item?.strong
-                        ? {
-                            strong: String(item.strong),
-                            span: item?.span ? String(item.span) : undefined,
-                          }
-                        : null
-                    )
-                    .filter(Boolean)
-                : undefined,
-              references: normalizeReferences(block?.references),
-            }))
-          : [];
+        const content = normalizeStepContentBlocks(step?.content, {
+          onDrop: logDrops
+            ? (reason) => {
+                dropReasons.push(reason);
+                console.warn(`[normalizeMapData] dropped content block: ${reason}`);
+              }
+            : undefined,
+        });
 
         return {
           id: String(step?.id || `step-${index + 1}`),
@@ -2485,6 +2770,17 @@ function normalizeMapData(
         };
       });
 
+  if (logDrops) {
+    const interactivePerStep = normalizedSteps.map(
+      (step) =>
+        step.content.filter((b) =>
+          b.type === "stat" || b.type === "comparison" || b.type === "accordion" || b.type === "quiz"
+        ).length
+    );
+    console.log(
+      `[normalize-final] dropCount=${dropReasons.length} interactivePerStep=[${interactivePerStep.join(",")}] drops=${JSON.stringify(dropReasons)}`
+    );
+  }
   const normalized: ActionMapData = {
     title: String(parsed?.title || "Mapa sin título"),
     category: resolveMapCategory(parsed?.suggestedCategory ?? parsed?.category),
@@ -2492,7 +2788,7 @@ function normalizeMapData(
     intent: fallback.intent,
     outputLanguage: String(parsed?.outputLanguage || fallback.outputLanguage),
     mapVersion: Number.isFinite(parsed?.mapVersion) ? Number(parsed.mapVersion) : 2,
-    generationMode: parsed?.generationMode === "study-doc-beta" ? "study-doc-beta" : "classic",
+    generationMode: resolveNucleoGenerationMode(parsed?.generationMode),
     sourceMetadata: {
       kind: String(parsed?.sourceMetadata?.kind || fallback.sourceKind) as any,
       label: String(parsed?.sourceMetadata?.label || fallback.sourceLabel),
@@ -2566,18 +2862,21 @@ function normalizeMapData(
     },
   };
 
-  const stepIds = normalized.steps.map((step) => step.id);
+  // F3: re-spec pending — visualization channel off; ignore if present (history or model).
   normalized.steps.forEach((step, index) => {
-    step.visualization = normalizeNucleoVisual(cappedRawSteps[index]?.visualization, {
-      fallback: false,
-      stepIds,
-    });
+    if (cappedRawSteps[index]?.visualization != null) {
+      if (logDrops) {
+        console.warn("[normalizeMapData] ignored step.visualization — F3: re-spec pending");
+      }
+    }
+    step.visualization = undefined;
   });
-  normalized.visualization = normalizeNucleoVisual(parsed?.visualization, {
-    coreIdea: normalized.coreIdea,
-    tldr: normalized.tldr,
-    stepIds,
-  });
+  if (parsed?.visualization != null) {
+    if (logDrops) {
+      console.warn("[normalizeMapData] ignored visualization — F3: re-spec pending");
+    }
+  }
+  normalized.visualization = undefined;
 
   if (normalized.references.length === 0) {
     normalized.references = normalizedSteps.flatMap((step) => step.references ?? []).slice(0, 8);
@@ -2647,6 +2946,7 @@ function buildTransformPrompt({
   const resolvedDepth = depth === "rapido" || depth === "profundo" ? depth : "estandar";
   const intentGuide = buildIntentGuide(intent);
   const depthGuide = buildDepthGuide(resolvedDepth);
+  const interactiveBlocksGuide = buildInteractiveBlocksContract(intent);
 
   const coverageRule =
     resolvedDepth === "rapido"
@@ -2669,24 +2969,38 @@ function buildTransformPrompt({
 
   const mobilePaginationRule = [
     "CONTRATO DE PAGINACIÓN MÓVIL ADAPTATIVA:",
-    "El modo paso a paso se renderiza como páginas fijas: página 1 = coreIdea + coreSupport + tarjeta/fuente; página 2 = visualization (apoyada por tldr); páginas siguientes = steps.",
+    "El modo paso a paso se renderiza como páginas fijas: página 1 = coreIdea + coreSupport + tarjeta/fuente; página 2 = tldr (sin overview visual; canal visualization apagado hasta F3); páginas siguientes = steps.",
     "Escribe cada step para que quepa en una pantalla móvil media: título breve, purpose de 1-2 frases, 2-4 bloques y un selfCheck corto si aporta valor. La app solo habilita un scroll vertical corto ante overflow real o texto ampliado.",
-    "Cada step debe incluir al menos un bloque type='callout' con label editorial ('Idea clave', 'Matiz', 'Ejemplo', 'Precaución' o 'Para aplicarlo'). Esa tarjeta debe contener lo más recordable o delicado de la página.",
+    "Cada step debe incluir ≥1 bloque interactivo (stat|comparison|accordion|quiz). En páginas con ≥3 bloques, prose ≤40%; en páginas de 2, máximo 1 prose. Máximo un emphasis:'hero' por página.",
+    "Callouts siguen siendo válidos como apoyo editorial; no sustituyen el requisito de bloque interactivo.",
+    "Si una unidad supera ese presupuesto, divídela en otro step hasta el máximo del contrato de profundidad. No comprimas ideas críticas en un solo párrafo denso.",
+    "selfCheck debe ser una pregunta breve de comprensión, no un resumen disfrazado.",
     "Evita páginas vacías: si una página queda pobre, añade matiz, ejemplo, relación causa/efecto o implicación útil extraída de la fuente, sin inventar ni rellenar.",
     "Evita páginas sobrecargadas: si una página exigiría un scroll largo, crea otro step y reparte la información. No omitas información importante solo por encaje visual.",
     "En listas, usa 2-4 items concisos. En prose, evita párrafos largos. En callouts, una idea fuerte y específica.",
   ].join("\n");
 
   const visualizationRule = [
-    "CONTRATO VISUAL-FIRST — NucleoVisualSpec VERSION 2:",
-    "Genera exactamente una visualization raíz que haga visible la relación más importante del Núcleo; debe ayudar a comprender, comparar o decidir, no decorar. Incluye version=2, title, summary accesible, 2-6 items y links cuando exista dirección o dependencia.",
-    "Elige concept para idea central con ramas; flow para proceso o causalidad; cycle para bucle cerrado; hierarchy para niveles o dependencias; comparison para columnas alineadas; timeline para hechos cronológicos; bar para magnitudes comparables; line para evolución numérica.",
-    "Cada id debe ser único. Cada link.source y link.target debe coincidir con un id. stepId solo puede ser el id exacto de un step generado. Cada label debe ser directa (1-6 palabras) y detail una frase breve apoyada por la fuente.",
-    "Para comparison asigna group explícito. Para timeline incluye order cuando las etiquetas no basten. Para line asigna group a cada serie y aporta al menos dos puntos por serie.",
-    "REGLA NUMÉRICA ESTRICTA: usa bar o line únicamente si la fuente da valores finitos, categorías y unidades reales. Escribe value como número y unit común o por item. Si falta cualquier dato, usa concept/flow/comparison o no añadas visual al step; jamás estimes, puntúes ni inventes cifras.",
-    "Puedes añadir visualization a un step solo si una relación visual mejora materialmente esa página. No repitas el overview, no fuerces un visual en cada step y no uses un gráfico sin soporte numérico.",
-    "La primera vista debe ser útil sin interacción: todas las etiquetas esenciales deben aparecer directamente.",
+    // F3: re-spec pending
+    "CANAL VISUALIZATION APAGADO: no emitas visualization ni NucleoVisualSpec. No inventes diagramas. Usa bloques content (list/comparison/prose) para estructura.",
   ].join("\n");
+
+  const visualizeHtmlTestRule =
+    generationMode === "visualize-html-test"
+      ? [
+          "MODO TEMPORAL VISUALIZE COMPILER (__DEV__):",
+          "Emite visualizeArtifact version=1 OBLIGATORIO además del ActionMapData clásico.",
+          "Pipeline: intención cognitiva → estructura semántica → gramática → renderer. NO inventes coordenadas.",
+          "Router obligatorio: si hay causalidad secuencial usa grammar=causal-flow (NUNCA concept-map). concept-map solo si la red multi-padre/multi-hijo es esencial.",
+          "causal-flow.spec debe ser: { view:'causal-flow', claim, steps[{id,title,detail?}], relations[{from,to,label}], caveat?, scenarios? }.",
+          "Cada relation.label es un verbo/frase causal visible entre pasos (ej. 'vuelve predecible', 'puede reducir'). Sin aristas sin etiqueta.",
+          "claim debe estar anclado a la fuente ('Según el texto…' / 'puede…'). No presentes opiniones discutibles como leyes universales.",
+          "Si el material distingue dos regímenes (ej. validación sana vs sobrevalidación), emite scenarios[2] con flows distintos y interaction scenario-toggle. Si no hay contraste real, NO inventes interacción ni digas 'manipula'.",
+          "caveat: distinción importante (afecto sano ≠ dependencia). Máximo 3-6 steps. detail del paso solo si aporta; no repitas el claim.",
+          "Prefer structured causal-flow en móvil. adhoc solo para simulation/calculator autocontenida sin red.",
+          "Steps del mapa: lean. El peso cognitivo va en visualizeArtifact.",
+        ].join("\n")
+      : "";
 
   const studyDocBetaRule =
     generationMode === "study-doc-beta"
@@ -2718,13 +3032,15 @@ function buildTransformPrompt({
     "",
     depthGuide,
     "",
+    interactiveBlocksGuide,
+    "",
     `Intent activo confirmado: ${intentLabel(intent)} (${intent}).`,
     `Profundidad activa confirmada: ${resolvedDepth}.`,
     `El campo JSON "intent" debe ser exactamente "${intent}".`,
-    "ORDEN DE EMISIÓN JSON: genera title, coreIdea y coreSupport primero; solo después el resto de campos (sourceMetadata, coverage, tldr, visualization, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).",
+    "ORDEN DE EMISIÓN JSON: genera title, coreIdea y coreSupport primero; solo después el resto de campos (sourceMetadata, coverage, tldr, visualizeArtifact si aplica, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).",
     `Idioma de salida: ${outputLanguage}.`,
     outputLanguage === "es"
-      ? "Debes escribir TODO el mapa en español: title, coreIdea, coreSupport, tldr, visualization, knowledgeSections, shortNav, steps, completionCard y labels editoriales. Solo puedes dejar una cita textual en otro idioma si es imprescindible y debe ir claramente marcada como cita."
+      ? "Debes escribir TODO el mapa en español: title, coreIdea, coreSupport, tldr, knowledgeSections, shortNav, steps, completionCard y labels editoriales. Solo puedes dejar una cita textual en otro idioma si es imprescindible y debe ir claramente marcada como cita."
       : "",
     sourceLabel ? `Etiqueta visible de la fuente: ${sourceLabel}.` : "",
     segmentTitle
@@ -2743,6 +3059,7 @@ function buildTransformPrompt({
     tldrRule,
     visualizationRule,
     mobilePaginationRule,
+    visualizeHtmlTestRule,
     studyDocBetaRule,
     personalizationRule,
     knowledgeSectionsRule,
@@ -3232,10 +3549,29 @@ async function startServer() {
         resolveLlmTimeoutMs(contextResult.resolvedDepth)
       );
 
+      const rawText = response.text || "{}";
+      const finishReason =
+        (response as { candidates?: Array<{ finishReason?: string }> }).candidates?.[0]
+          ?.finishReason ?? null;
+      console.log(
+        `[gemini-finish] model=${usedModel} finishReason=${finishReason ?? "unknown"} maxOutputTokens=${contextResult.maxOutputTokens} textLength=${rawText.length}`
+      );
+      if (finishReason === "MAX_TOKENS") {
+        console.warn(
+          `[gemini-finish] MAX_TOKENS hit — output may be truncated (budget=${contextResult.maxOutputTokens}).`
+        );
+      }
+      dumpLastGenerationRaw(rawText, {
+        model: usedModel,
+        finishReason,
+        maxOutputTokens: contextResult.maxOutputTokens,
+        path: "/api/transform",
+      });
+
       res.setHeader("X-Gemini-Model-Used", usedModel);
       console.log(`Mapa generado con el modelo "${usedModel}".`);
 
-      const normalized = await finalizeMapJson(response.text || "{}", contextResult, usedModel, {
+      const normalized = await finalizeMapJson(rawText, contextResult, usedModel, {
         req,
         res,
       });
@@ -3454,6 +3790,10 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    const schemaProps = Object.keys((schema as { properties?: Record<string, unknown> }).properties ?? {});
+    console.log(
+      `[boot-schema-props] hasVisualizationKey=${schemaProps.includes("visualization")} props=${schemaProps.join(",")}`
+    );
   });
 }
 

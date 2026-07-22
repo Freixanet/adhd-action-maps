@@ -13,7 +13,6 @@ const VISUAL_KINDS = new Set<NucleoVisualKind>([
   'cycle',
   'hierarchy',
   'comparison',
-  'timeline',
   'bar',
   'line',
 ]);
