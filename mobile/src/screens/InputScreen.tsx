@@ -22,7 +22,6 @@ import ComposerSendButton from '../components/ComposerSendButton';
 import ComposerSurface from '../components/ComposerSurface';
 import ComposerDock, { useComposerKeyboardLift } from '../components/ComposerDock';
 import ContinueCard from '../components/ContinueCard';
-import HomeRecents from '../components/HomeRecents';
 import FloatingGlassButton from '../components/FloatingGlassButton';
 import GlassSurface from '../components/GlassSurface';
 import IntentSelector from '../components/IntentSelector';
@@ -38,7 +37,6 @@ import { useAppSession } from '../context/AppSessionContext';
 import EngravedNucleoMark from '../components/EngravedNucleoMark';
 import { KeyboardDismissBackdrop } from '../logic/keyboardDismiss';
 import { CONTINUE_CHIP_FADE_MS, buildContinueChipLabel } from '../logic/continueTransition';
-import { countNucleosThisWeek, selectHomeRecents } from '@shared/homeFeed';
 import {
   COMPOSER_LINE_HEIGHT,
   COMPOSER_MAX_VIEWPORT_RATIO,
@@ -175,15 +173,7 @@ export default function InputScreen() {
     });
   };
 
-  const homeRecents = useMemo(
-    () => selectHomeRecents(session.historyStore.entries, session.continueEntry?.id ?? null, 3),
-    [session.continueEntry?.id, session.historyStore.entries]
-  );
-  const weekCount = useMemo(
-    () => countNucleosThisWeek(session.historyStore.entries),
-    [session.historyStore.entries]
-  );
-  const showHomeFeed = !composerDisabled && !isFirstUse;
+  const showContinueCard = Boolean(session.continueEntry) && !composerDisabled && !isFirstUse;
 
   const handleCancelAutoOpen = () => {
     if (session.inlineGenerationStatus === 'ready') {
@@ -239,45 +229,17 @@ export default function InputScreen() {
                 <View className="w-full flex-1">
                   <InlineGenerationThread />
                 </View>
-              ) : showHomeFeed ? (
-              session.continueEntry || homeRecents.length > 0 || weekCount >= 2 ? (
+              ) : showContinueCard && session.continueEntry ? (
               <View className="w-full flex-1 justify-start pt-8 pb-2 px-1">
-                {session.continueEntry ? (
-                  <Animated.View style={continueChipFadeStyle} className="w-full mb-2">
-                    <ContinueCard
-                      ref={continueChipRef}
-                      entry={session.continueEntry}
-                      onPress={handleContinuePress}
-                      onDismiss={session.dismissContinueChip}
-                    />
-                  </Animated.View>
-                ) : null}
-                <HomeRecents
-                  entries={homeRecents}
-                  weekCount={weekCount}
-                  onSelect={(id) => session.handleSelectHistory(id)}
-                />
-              </View>
-              ) : (
-              <View className="w-full flex-1 justify-center py-2">
-                <Animated.View
-                  style={heroFadeStyle}
-                  pointerEvents={!showHero ? 'none' : 'auto'}
-                  className="w-full items-center px-2"
-                >
-                  {showHero ? (
-                    <KeyboardDismissBackdrop className="w-full items-center justify-center">
-                      <View className="w-full items-center px-2" style={{ marginTop: -24 }}>
-                        <EngravedNucleoMark style={{ marginBottom: 24 }} />
-                        <Text className="text-center text-[15px] leading-6 text-secondary">
-                          Separa lo importante del ruido.
-                        </Text>
-                      </View>
-                    </KeyboardDismissBackdrop>
-                  ) : null}
+                <Animated.View style={continueChipFadeStyle} className="w-full mb-2">
+                  <ContinueCard
+                    ref={continueChipRef}
+                    entry={session.continueEntry}
+                    onPress={handleContinuePress}
+                    onDismiss={session.dismissContinueChip}
+                  />
                 </Animated.View>
               </View>
-              )
               ) : (
               <View className="w-full flex-1 justify-center py-2">
                 <Animated.View
