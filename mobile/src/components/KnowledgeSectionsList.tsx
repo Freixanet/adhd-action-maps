@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ChevronDown, ChevronUp, Layers, Bookmark } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Layers, Bookmark } from '../icons';
 import { RADII } from '@shared/uiTokens';
 import type { KnowledgeSection } from '../logic/contracts';
 import GlassSurface from './GlassSurface';

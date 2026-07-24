@@ -4,6 +4,7 @@ import Animated from 'react-native-reanimated';
 import { CTA_FILL, RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 import { usePressScale } from '../hooks/usePressScale';
+import { useTheme } from '../context/ThemeContext';
 
 /** Fixed height — Atrás and Siguiente must match without flex growth. */
 export const STEP_FOOTER_BUTTON_HEIGHT = 52;
@@ -30,13 +31,18 @@ export default function StepFooterGlassButton({
   accessibilityLabel,
   disabled = false,
 }: StepFooterGlassButtonProps) {
+  const { isDark } = useTheme();
   const isPrimary = variant === 'primary';
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const secondaryOverlay = isDark ? 'bg-white/[0.08]' : 'bg-white/55';
 
   const content = (
     <View style={styles.content}>
       {iconPlacement === 'leading' ? icon : null}
       <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
         className={isPrimary ? 'text-[17px] font-semibold' : 'text-[17px] font-semibold text-body'}
         style={isPrimary ? styles.primaryLabel : undefined}
       >
@@ -63,19 +69,21 @@ export default function StepFooterGlassButton({
       ]}
     >
       <Animated.View style={[styles.pressableInner, animatedStyle]}>
-      {isPrimary ? (
-        <View style={[styles.shell, styles.primaryShell]}>{content}</View>
-      ) : (
-        <GlassSurface
-          liquid
-          liquidBorder="perimeter"
-          borderRadius={RADII.lg}
-          style={[styles.shell, styles.secondaryShell]}
-          contentClassName="h-full w-full items-center justify-center"
-        >
-          {content}
-        </GlassSurface>
-      )}
+        {isPrimary ? (
+          <View style={[styles.shell, styles.primaryShell]}>{content}</View>
+        ) : (
+          <GlassSurface
+            liquid
+            liquidBorder="none"
+            liquidMaterial="clear"
+            borderRadius={RADII.lg}
+            style={[styles.shell, styles.secondaryShell]}
+            overlayClassName={secondaryOverlay}
+            contentClassName="h-full w-full items-center justify-center"
+          >
+            {content}
+          </GlassSurface>
+        )}
       </Animated.View>
     </Pressable>
   );
@@ -109,7 +117,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
   },
   secondaryShell: {
     borderRadius: RADII.lg,

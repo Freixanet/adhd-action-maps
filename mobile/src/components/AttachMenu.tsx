@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus } from 'lucide-react-native';
+import { Plus } from '../icons';
 import { View } from 'react-native';
 import { type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
 import ComposerMenuTrigger from './ComposerMenuTrigger';
@@ -9,6 +9,12 @@ type AttachMenuProps = {
   onPickCamera: () => void;
   onPickImage: () => void;
   onPickFile: () => void;
+  /** DEV-only: replay inline generation UI without a real transform. */
+  onPreviewGeneration?: () => void;
+  /** DEV-only: open the collection loading screen preview. */
+  onPreviewLoadingScreen?: () => void;
+  /** DEV-only: open ResultScreen with the bundled demo Núcleo. */
+  onPreviewNucleo?: () => void;
   disabled?: boolean;
   darkSurface?: boolean;
 };
@@ -21,6 +27,12 @@ const ATTACH_ACTIONS: MenuAction[] = [
   { id: 'file', title: 'Archivo' },
 ];
 
+const DEV_ATTACH_ACTIONS: MenuAction[] = [
+  { id: 'preview-generation', title: 'Preview generación' },
+  { id: 'preview-loading', title: 'Preview colección' },
+  { id: 'preview-nucleo', title: 'Preview Núcleo' },
+];
+
 /**
  * Flat "+" control inside the composer glass — glass-on-glass is intentionally
  * avoided. Uses the native UIMenu (same material/animation as DepthMenu).
@@ -29,12 +41,17 @@ export default function AttachMenu({
   onPickCamera,
   onPickImage,
   onPickFile,
+  onPreviewGeneration,
+  onPreviewLoadingScreen,
+  onPreviewNucleo,
   disabled = false,
   darkSurface = false,
 }: AttachMenuProps) {
   const { isDark } = useTheme();
   const onComposer = darkSurface || isDark;
   const iconMuted = onComposer ? '#d4d4d4' : isDark ? '#a3a3a3' : '#737373';
+
+  const actions = __DEV__ ? [...ATTACH_ACTIONS, ...DEV_ATTACH_ACTIONS] : ATTACH_ACTIONS;
 
   const handlePress = ({ nativeEvent }: NativeActionEvent) => {
     switch (nativeEvent.event) {
@@ -46,6 +63,15 @@ export default function AttachMenu({
         break;
       case 'file':
         onPickFile();
+        break;
+      case 'preview-generation':
+        onPreviewGeneration?.();
+        break;
+      case 'preview-loading':
+        onPreviewLoadingScreen?.();
+        break;
+      case 'preview-nucleo':
+        onPreviewNucleo?.();
         break;
     }
   };
@@ -68,7 +94,7 @@ export default function AttachMenu({
   return (
     <ComposerMenuTrigger
       title="Adjuntar"
-      actions={ATTACH_ACTIONS}
+      actions={actions}
       onPressAction={handlePress}
       accessibilityLabel="Adjuntar"
     >

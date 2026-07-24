@@ -73,6 +73,7 @@ export function normalizeMapData(
     sourceMetadata: {
       kind: raw.sourceMetadata?.kind || 'text',
       label: raw.sourceMetadata?.label || 'Fuente analizada',
+      url: raw.sourceMetadata?.url ? String(raw.sourceMetadata.url) : undefined,
       title: raw.sourceMetadata?.title ? String(raw.sourceMetadata.title) : undefined,
       author: raw.sourceMetadata?.author ? String(raw.sourceMetadata.author) : undefined,
       language: raw.sourceMetadata?.language ? String(raw.sourceMetadata.language) : undefined,
@@ -164,6 +165,16 @@ export function normalizeMapData(
 
   if (!normalized.sourceMetadata!.detected.length) {
     normalized.sourceMetadata!.detected = [normalized.sourceMetadata!.label];
+  }
+  if (!normalized.sourceMetadata!.url) {
+    const meta = normalized.sourceMetadata!;
+    const label = meta.label.trim();
+    if (/^https?:\/\//i.test(label)) {
+      meta.url = label;
+    } else {
+      const fromDetected = meta.detected.find((item) => /^https?:\/\//i.test(item.trim()));
+      if (fromDetected) meta.url = fromDetected.trim();
+    }
   }
   if (options?.sourceTruncated) {
     const limitations = normalized.sourceMetadata!.limitations ?? [];

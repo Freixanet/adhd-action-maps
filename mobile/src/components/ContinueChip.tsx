@@ -1,7 +1,7 @@
 import React, { forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Play, X } from 'lucide-react-native';
+import { Play, X } from '../icons';
 import GlassSurface from './GlassSurface';
 import { buildContinueChipLabel } from '../logic/continueTransition';
 import type { HistoryEntry } from '../logic/history';

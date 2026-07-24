@@ -9,7 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   Plus,
-} from 'lucide-react-native';
+} from '../icons';
 import ProfileMenu from './ProfileMenu';
 import {
   SidebarBrandHeader,
@@ -121,6 +121,10 @@ export default function HistorySheet({
 
   const usedCategories = useMemo(() => collectUsedCategories(entries), [entries]);
   const userCategories = useMemo(() => collectUserCategories(entries), [entries]);
+  const hasIncompleteEntries = useMemo(
+    () => entries.some((entry) => !entry.session.isComplete),
+    [entries]
+  );
 
   useEffect(() => {
     if (!searchActive) {
@@ -129,6 +133,10 @@ export default function HistorySheet({
   }, [searchActive]);
 
   useEffect(() => {
+    if (listFilter === 'incomplete' && !hasIncompleteEntries) {
+      setListFilter('all');
+      return;
+    }
     if (
       listFilter !== 'all' &&
       listFilter !== 'incomplete' &&
@@ -138,7 +146,7 @@ export default function HistorySheet({
     ) {
       setListFilter('all');
     }
-  }, [listFilter, usedCategories]);
+  }, [hasIncompleteEntries, listFilter, usedCategories]);
 
   const filteredEntries = useMemo(() => {
     if (!searchMode) return entries;
@@ -493,9 +501,11 @@ export default function HistorySheet({
           embeddedInHeader
           activeFilter={listFilter}
           onSelectFilter={setListFilter}
+          categories={usedCategories}
+          showIncomplete={hasIncompleteEntries}
         />
       ) : null,
-    [listFilter, searchActive]
+    [hasIncompleteEntries, listFilter, searchActive, usedCategories]
   );
 
   useEffect(() => {
@@ -522,10 +532,10 @@ export default function HistorySheet({
           }}
           style={styles.list}
           showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
           keyboardShouldPersistTaps="always"
           keyboardDismissMode="on-drag"
           scrollEnabled={!openMenuEntryId}
-          pointerEvents={openMenuEntryId ? 'none' : 'auto'}
         >
           {listHeaderComponent}
           {listData.length === 0
@@ -567,13 +577,14 @@ export default function HistorySheet({
 
       {!searchActive ? (
         <View
-          pointerEvents={openMenuEntryId ? 'none' : 'box-none'}
+          pointerEvents="box-none"
           className="absolute left-0 right-0 flex-row items-center justify-between px-5"
           style={{ bottom: floatingActionsBottom }}
         >
           <ProfileMenu placement="bottomLeft" floating />
           <FloatingGlassButton
             onPress={() => {
+              if (openMenuEntryId) return;
               onNewMap?.();
               onClose();
             }}

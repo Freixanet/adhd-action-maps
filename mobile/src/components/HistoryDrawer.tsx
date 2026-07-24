@@ -191,7 +191,12 @@ export default function HistoryDrawer({
   }, [open]);
 
   const handleHistoryMenuOpen = useCallback((entryId: string) => {
-    setOpenHistoryMenuEntryId(entryId);
+    // Defer past the UIContextMenu presentation frame. Sync setState here
+    // re-lays out the sidebar while UIKit is snapshotting/lifting and the
+    // absolute BlurView header goes blank until the menu closes.
+    requestAnimationFrame(() => {
+      setOpenHistoryMenuEntryId(entryId);
+    });
   }, []);
 
   const handleHistoryMenuClose = useCallback(() => {
@@ -376,26 +381,34 @@ export default function HistoryDrawer({
       <Animated.View
         style={[styles.sidebar, sidebarClipStyle, { backgroundColor: sidebarCanvasColor }]}
       >
-        <View pointerEvents={openHistoryMenuEntryId ? 'none' : 'auto'}>
-          <SidebarBrandHeader
-            height={brandHeaderHeight}
-            insetTop={insets.top}
-            backgroundColor={sidebarCanvasColor}
-            isDark={isDark}
-            onPress={() => {
-              onNewMap();
-              onClose();
-            }}
-            searchActive={searchActive}
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
-            onSearchOpen={openSearch}
-            onSearchClose={closeSearch}
-            searchFilters={searchActive ? searchFilters : undefined}
-            searchProgress={searchProgress}
-            searchFieldFocusToken={searchFieldFocusToken}
-          />
-        </View>
+        {/* Keep the brand header outside menu-open pointerEvents toggles.
+            Changing ancestor hit-testing while UIContextMenu presents blanks
+            BlurView / absolute chrome in this overflow:hidden sidebar. */}
+        <SidebarBrandHeader
+          height={brandHeaderHeight}
+          insetTop={insets.top}
+          backgroundColor={sidebarCanvasColor}
+          isDark={isDark}
+          onPress={() => {
+            if (openHistoryMenuEntryId) return;
+            onNewMap();
+            onClose();
+          }}
+          searchActive={searchActive}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          onSearchOpen={() => {
+            if (openHistoryMenuEntryId) return;
+            openSearch();
+          }}
+          onSearchClose={() => {
+            if (openHistoryMenuEntryId) return;
+            closeSearch();
+          }}
+          searchFilters={searchActive ? searchFilters : undefined}
+          searchProgress={searchProgress}
+          searchFieldFocusToken={searchFieldFocusToken}
+        />
         <SidebarOcclusionFade
           top={searchActive ? searchStackHeight : headerSolidHeight}
           color={sidebarCanvasColor}

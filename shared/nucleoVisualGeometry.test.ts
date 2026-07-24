@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { estimateVisualLabelLines, getVisualGeometry } from './nucleoVisualGeometry';
 import type { NucleoVisualKind } from './contracts';
 
-const diagramKinds: NucleoVisualKind[] = ['concept', 'flow', 'cycle', 'hierarchy', 'timeline'];
+const diagramKinds: NucleoVisualKind[] = ['concept', 'flow', 'cycle', 'hierarchy'];
 
 describe('visual geometry', () => {
   it.each([320, 390, 736])('keeps 2–6 nodes inside a %spx viewport', (width) => {

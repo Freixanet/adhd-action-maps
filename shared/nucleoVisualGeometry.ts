@@ -129,11 +129,6 @@ export function getVisualGeometry(
   if (kind === 'concept') return radial(safeWidth, safeLabels, true);
   if (kind === 'cycle') return radial(safeWidth, safeLabels, false);
   if (kind === 'hierarchy') return hierarchy(safeWidth, safeLabels);
-  if (kind === 'timeline') {
-    return safeWidth < 390 || safeLabels.length > 4
-      ? verticalFlow(safeWidth, safeLabels)
-      : horizontalFlow(safeWidth, safeLabels);
-  }
   if (kind === 'flow') {
     return safeWidth < 350 || safeLabels.length > 4
       ? verticalFlow(safeWidth, safeLabels)

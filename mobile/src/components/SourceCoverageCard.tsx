@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { CircleAlert, Layers } from 'lucide-react-native';
+import { CircleAlert, Layers } from '../icons';
 import { RADII } from '@shared/uiTokens';
 import type { Coverage } from '../logic/contracts';
 import GlassSurface from './GlassSurface';

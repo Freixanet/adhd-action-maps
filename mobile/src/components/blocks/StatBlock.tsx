@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   Easing,
@@ -70,15 +70,21 @@ export default function StatBlock({ block, index = 0 }: Props) {
       : block.value
   );
 
+  // formatCounted must run on the JS thread — never as a runOnJS() argument (UI eval).
+  const syncDisplay = useCallback(
+    (value: number) => {
+      setDisplay(formatCounted(value, parsed.decimals, parsed.prefix, parsed.suffix));
+    },
+    [parsed.decimals, parsed.prefix, parsed.suffix]
+  );
+
   useAnimatedReaction(
     () => count.value,
     (value) => {
       if (!parsed.animate) return;
-      runOnJS(setDisplay)(
-        formatCounted(value, parsed.decimals, parsed.prefix, parsed.suffix)
-      );
+      runOnJS(syncDisplay)(value);
     },
-    [parsed.animate, parsed.decimals, parsed.prefix, parsed.suffix]
+    [parsed.animate, syncDisplay]
   );
 
   useEffect(() => {

@@ -1,37 +1,11 @@
 import React from 'react';
 import { Text, View } from 'react-native';
-import { SEM_ALERTA, SEM_CLAVE, SEM_EJEMPLO, SEM_MATIZ } from '@shared/uiTokens';
 import type { SourceReference, StepContentBlock } from '../logic/contracts';
 import StatBlock from './blocks/StatBlock';
 import ComparisonBlock from './blocks/ComparisonBlock';
 import AccordionBlock from './blocks/AccordionBlock';
 import QuizBlock from './blocks/QuizBlock';
-
-type SemTone = 'clave' | 'matiz' | 'ejemplo' | 'alerta';
-
-const TONE_COLOR: Record<SemTone, string> = {
-  clave: SEM_CLAVE,
-  matiz: SEM_MATIZ,
-  ejemplo: SEM_EJEMPLO,
-  alerta: SEM_ALERTA,
-};
-
-const TONE_LABEL: Record<SemTone, string> = {
-  clave: 'Idea clave',
-  matiz: 'Matiz',
-  ejemplo: 'Ejemplo',
-  alerta: 'Límite',
-};
-
-const KIND_TO_TONE: Record<string, SemTone> = {
-  clave: 'clave',
-  matiz: 'matiz',
-  ejemplo: 'ejemplo',
-  alerta: 'alerta',
-  info: 'clave',
-  action: 'ejemplo',
-  alert: 'alerta',
-};
+import CalloutBlock from './blocks/CalloutBlock';
 
 type StepContentBlocksProps = {
   blocks: StepContentBlock[];
@@ -57,52 +31,6 @@ function BlockReferences({ references }: { references?: SourceReference[] }) {
   );
 }
 
-/**
- * Semantic callouts — typography + short rule under the label.
- * No left color stripe / tinted panel (reads as generic AI chrome).
- */
-function SemanticCallout({
-  label,
-  text,
-  tone,
-  references,
-}: {
-  label: string;
-  text: string;
-  tone: SemTone;
-  references?: SourceReference[];
-}) {
-  const color = TONE_COLOR[tone];
-
-  return (
-    <View className="my-7">
-      <Text
-        className="text-[12px] font-semibold uppercase tracking-[0.14em]"
-        style={{ color }}
-        maxFontSizeMultiplier={1.35}
-      >
-        {label}
-      </Text>
-      <View
-        className="mt-2.5 mb-3"
-        style={{
-          width: 28,
-          height: 1.5,
-          borderRadius: 1,
-          backgroundColor: color,
-          opacity: 0.7,
-        }}
-      />
-      {text ? (
-        <Text className="text-[17px] leading-[26px] text-body" maxFontSizeMultiplier={1.35}>
-          {text}
-        </Text>
-      ) : null}
-      <BlockReferences references={references} />
-    </View>
-  );
-}
-
 function renderBlock(block: StepContentBlock, idx: number) {
   switch (block.type) {
     case 'stat':
@@ -113,20 +41,17 @@ function renderBlock(block: StepContentBlock, idx: number) {
       return <AccordionBlock key={`accordion-${idx}`} block={block} index={idx} />;
     case 'quiz':
       return <QuizBlock key={`quiz-${idx}`} block={block} index={idx} />;
-    case 'callout': {
-      const kind = String(block.kind || 'info').toLowerCase();
-      const tone = KIND_TO_TONE[kind] ?? 'clave';
-      const label = String(block.label || TONE_LABEL[tone]);
+    case 'callout':
       return (
-        <SemanticCallout
-          key={idx}
-          label={label}
+        <CalloutBlock
+          key={`callout-${idx}`}
+          label={block.label}
           text={block.text || ''}
-          tone={tone}
+          kind={block.kind}
           references={block.references}
+          index={idx}
         />
       );
-    }
     case 'list':
       return (
         <View key={idx} className="my-6">

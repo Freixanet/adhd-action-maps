@@ -1,8 +1,8 @@
 diff --git a/node_modules/@react-native-menu/menu/ios/MenuViewManager.mm b/node_modules/@react-native-menu/menu/ios/MenuViewManager.mm
-index 3d149b3..becb182 100644
+index 3d149b3..0e73cfb 100644
 --- a/node_modules/@react-native-menu/menu/ios/MenuViewManager.mm
 +++ b/node_modules/@react-native-menu/menu/ios/MenuViewManager.mm
-@@ -15,6 +15,22 @@
+@@ -15,6 +15,25 @@
  
  #endif
  
@@ -18,14 +18,17 @@ index 3d149b3..becb182 100644
 +    }
 +#endif
 +    if ([view respondsToSelector:@selector(showMenu)]) {
-+        [(MenuViewImplementation *)view showMenu];
++        #pragma clang diagnostic push
++        #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
++        [view performSelector:@selector(showMenu)];
++        #pragma clang diagnostic pop
 +    }
 +}
 +
  @interface MenuViewManager : RCTViewManager
  @end
  
-@@ -79,4 +95,11 @@ RCT_EXPORT_VIEW_PROPERTY(themeVariant, NSString)
+@@ -79,4 +98,11 @@ RCT_EXPORT_VIEW_PROPERTY(themeVariant, NSString)
  */
  RCT_EXPORT_VIEW_PROPERTY(hitSlop, UIEdgeInsets)
  
@@ -50,15 +53,16 @@ index ba17ca5..898d473 100644
  
  NS_ASSUME_NONNULL_END
 diff --git a/node_modules/@react-native-menu/menu/ios/NewArch/MenuView.mm b/node_modules/@react-native-menu/menu/ios/NewArch/MenuView.mm
-index a54e619..333875b 100644
+index a54e619..2bc6c54 100644
 --- a/node_modules/@react-native-menu/menu/ios/NewArch/MenuView.mm
 +++ b/node_modules/@react-native-menu/menu/ios/NewArch/MenuView.mm
-@@ -184,6 +184,20 @@ using namespace facebook::react;
+@@ -184,6 +184,22 @@ using namespace facebook::react;
      [super updateProps:props oldProps:oldProps];
  }
  
 +- (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args
 +{
++    NSLog(@"[nucleo-menu] handleCommand %@", commandName);
 +    if ([commandName isEqualToString:@"show"]) {
 +        [self showMenu];
 +    }
@@ -66,6 +70,7 @@ index a54e619..333875b 100644
 +
 +- (void)showMenu
 +{
++    NSLog(@"[nucleo-menu] MenuView.showMenu view=%@", _view);
 +    if ([_view respondsToSelector:@selector(showMenu)]) {
 +        [(MenuViewImplementation *)_view showMenu];
 +    }
@@ -75,53 +80,321 @@ index a54e619..333875b 100644
  {
      return MenuView.class;
 diff --git a/node_modules/@react-native-menu/menu/ios/Shared/MenuViewImplementation.swift b/node_modules/@react-native-menu/menu/ios/Shared/MenuViewImplementation.swift
-index 5c4e0da..3a1bbc0 100644
+index 5c4e0da..28f2053 100644
 --- a/node_modules/@react-native-menu/menu/ios/Shared/MenuViewImplementation.swift
 +++ b/node_modules/@react-native-menu/menu/ios/Shared/MenuViewImplementation.swift
-@@ -124,4 +124,14 @@ public class MenuViewImplementation: UIButton {
+@@ -23,9 +23,9 @@ public class MenuViewImplementation: UIButton {
+         }
+     }
+ 
+-    private var _actions: [UIMenuElement] = [];
++    private var _actions: [UIMenuElement] = []
+ 
+-    private var _title: String = "";
++    private var _title: String = ""
+     @objc public var title: NSString? {
+         didSet {
+             guard let title = self.title else {
+@@ -54,16 +54,18 @@ public class MenuViewImplementation: UIButton {
+ 
+     override init(frame: CGRect) {
+         super.init(frame: frame)
+-        let interaction = UIContextMenuInteraction(delegate: self)
+-        self.addInteraction(interaction)
++        // Do not add UIContextMenuInteraction here. Tap menus use UIButton.menu;
++        // long-press menus add the interaction in setup(). Keeping both attached
++        // and returning nil from the delegate blocks showsMenuAsPrimaryAction.
+         self.setup()
+     }
+ 
+     public override func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
++        guard shouldOpenOnLongPress else { return nil }
+         sendMenuOpen()
+         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+             guard let self = self else { return nil }
+-            return self.menu
++            return UIMenu(title: self._title, identifier: nil, children: self._actions)
+         }
+     }
+ 
+@@ -71,8 +73,21 @@ public class MenuViewImplementation: UIButton {
+         sendMenuClose()
+     }
+ 
+-    func setup () {
+-        let menu = UIMenu(title: _title,
++    private func removeContextMenuInteractions() {
++        for interaction in self.interactions where interaction is UIContextMenuInteraction {
++            self.removeInteraction(interaction)
++        }
++    }
++
++    private func ensureContextMenuInteraction() {
++        let hasContext = self.interactions.contains { $0 is UIContextMenuInteraction }
++        if !hasContext {
++            self.addInteraction(UIContextMenuInteraction(delegate: self))
++        }
++    }
++
++    func setup() {
++        let builtMenu = UIMenu(title: _title,
+             identifier: nil,
+             children: self._actions)
+ 
+@@ -86,12 +101,23 @@ public class MenuViewImplementation: UIButton {
+             }
+         }
+ 
+-        self.menu = menu
+-        self.showsMenuAsPrimaryAction = !shouldOpenOnLongPress
++        if shouldOpenOnLongPress {
++            // Context menu only — clearing UIButton.menu avoids the dual-style bug
++            // where UIButton.menu and UIContextMenuInteraction both handle long-press.
++            self.menu = nil
++            self.showsMenuAsPrimaryAction = false
++            ensureContextMenuInteraction()
++        } else {
++            // Tap pull-down: UIButton.menu only. A lingering UIContextMenuInteraction
++            // (even when the delegate returns nil) prevents the primary menu from opening.
++            removeContextMenuInteractions()
++            self.menu = builtMenu
++            self.showsMenuAsPrimaryAction = true
++        }
+     }
+ 
+     public override func reactSetFrame(_ frame: CGRect) {
+-        super.reactSetFrame(frame);
++        super.reactSetFrame(frame)
+     }
+ 
+     public override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+@@ -124,4 +150,31 @@ public class MenuViewImplementation: UIButton {
      @objc func sendMenuOpen() {
          // NO-OP (should be overriden by parent)
      }
 +
++    public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
++        NSLog(
++            "[nucleo-menu] touchesEnded primary=\(showsMenuAsPrimaryAction) menu=\(self.menu != nil) actions=\(_actions.count) bounds=\(self.bounds.debugDescription)"
++        )
++        super.touchesEnded(touches, with: event)
++    }
++
 +    @objc public func showMenu() {
++        // Imperative open for hosts that cannot rely on UIButton.menu hit-testing.
++        if self.menu == nil && !_actions.isEmpty {
++            self.menu = UIMenu(title: _title, identifier: nil, children: self._actions)
++            self.showsMenuAsPrimaryAction = true
++        }
++        removeContextMenuInteractions()
++        NSLog(
++            "[nucleo-menu] showMenu primary=\(showsMenuAsPrimaryAction) menu=\(self.menu != nil) actions=\(_actions.count)"
++        )
++        sendMenuOpen()
 +        if #available(iOS 17.4, *) {
 +            self.performPrimaryAction()
 +            return
 +        }
 +        if #available(iOS 13.4, *) {
-+            self.sendActions(for: .primaryActionTriggered, to: self, from: self, for: nil)
++            self.sendActions(for: .primaryActionTriggered)
 +        }
 +    }
  }
-diff --git a/node_modules/@react-native-menu/menu/lib/module/UIMenuView.ios.js b/node_modules/@react-native-menu/menu/lib/module/UIMenuView.ios.js
-index 4e630a0..5b95a64 100644
---- a/node_modules/@react-native-menu/menu/lib/module/UIMenuView.ios.js
-+++ b/node_modules/@react-native-menu/menu/lib/module/UIMenuView.ios.js
-@@ -1,5 +1,28 @@
+diff --git a/node_modules/@react-native-menu/menu/lib/commonjs/UIMenuView.ios.js b/node_modules/@react-native-menu/menu/lib/commonjs/UIMenuView.ios.js
+index c8d2c2f..dc4a5ea 100644
+--- a/node_modules/@react-native-menu/menu/lib/commonjs/UIMenuView.ios.js
++++ b/node_modules/@react-native-menu/menu/lib/commonjs/UIMenuView.ios.js
+@@ -1,10 +1,92 @@
  "use strict";
  
--import UIMenuNativeComponent from "./NativeModuleSpecs/UIMenuNativeComponent";
--export default UIMenuNativeComponent;
-+import { findNodeHandle, NativeModules, Platform, requireNativeComponent, UIManager } from "react-native";
+-Object.defineProperty(exports, "__esModule", {
+-  value: true
 +import { forwardRef, useImperativeHandle, useRef } from "react";
++import { findNodeHandle } from "react-native";
++import codegenNativeCommands from "react-native/Libraries/Utilities/codegenNativeCommands";
++import { getFabricUIManager } from "react-native/Libraries/ReactNative/FabricUIManager";
++import UIMenuNativeComponent from "./NativeModuleSpecs/UIMenuNativeComponent";
 +import { jsx as _jsx } from "react/jsx-runtime";
-+const NativeMenuComponent = requireNativeComponent("MenuView");
++
++const Commands = codegenNativeCommands({
++  supportedCommands: ["show"]
++});
++
++function dispatchShow(viewRef) {
++  const tag = findNodeHandle(viewRef);
++  const fabric = getFabricUIManager();
++  if (fabric != null && tag != null) {
++    const node = fabric.findShadowNodeByTag_DEPRECATED(tag);
++    if (node != null) {
++      fabric.dispatchCommand(node, "show", []);
++      return {
++        path: "fabric-shadow-node",
++        tag,
++        hasNode: true
++      };
++    }
++    return {
++      path: "fabric-no-shadow-node",
++      tag,
++      hasNode: false
++    };
++  }
++  Commands.show(viewRef);
++  return {
++    path: "codegen-commands",
++    tag,
++    hasNode: false
++  };
++}
++
 +const MenuComponent = /*#__PURE__*/forwardRef((props, ref) => {
 +  const nativeRef = useRef(null);
 +  useImperativeHandle(ref, () => ({
 +    show: () => {
-+      if (!nativeRef.current) return;
-+      const node = findNodeHandle(nativeRef.current);
-+      if (!node) return;
-+      if (Platform.OS === "android") {
-+        const command = UIManager.getViewManagerConfig("MenuView").Commands.show;
-+        UIManager.dispatchViewManagerCommand(node, command, []);
++      const viewRef = nativeRef.current;
++      if (viewRef == null) {
++        fetch("http://192.168.1.16:8081/agent-debug-log", {
++          method: "POST",
++          headers: {
++            "Content-Type": "application/json",
++            "X-Debug-Session-Id": "7b73da"
++          },
++          body: JSON.stringify({
++            sessionId: "7b73da",
++            runId: "post-fix",
++            hypothesisId: "Q",
++            location: "UIMenuView.ios.tsx:show",
++            message: "show() missing native ref",
++            data: {},
++            timestamp: Date.now(),
++            platform: "ios"
++          })
++        }).catch(() => {});
 +        return;
 +      }
-+      NativeModules.MenuView?.show?.(node);
++      const result = dispatchShow(viewRef);
++      fetch("http://192.168.1.16:8081/agent-debug-log", {
++        method: "POST",
++        headers: {
++          "Content-Type": "application/json",
++          "X-Debug-Session-Id": "7b73da"
++        },
++        body: JSON.stringify({
++          sessionId: "7b73da",
++          runId: "post-fix",
++          hypothesisId: "Q",
++          location: "UIMenuView.ios.tsx:show",
++          message: "show() dispatch result",
++          data: result,
++          timestamp: Date.now(),
++          platform: "ios"
++        })
++      }).catch(() => {});
 +    }
 +  }), []);
-+  return /*#__PURE__*/_jsx(NativeMenuComponent, {
++  return /*#__PURE__*/_jsx(UIMenuNativeComponent, {
++    ...props,
++    ref: nativeRef
++  });
+ });
+-exports.default = void 0;
+-var _UIMenuNativeComponent = _interopRequireDefault(require("./NativeModuleSpecs/UIMenuNativeComponent"));
+-function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
+-var _default = exports.default = _UIMenuNativeComponent.default;
++export default MenuComponent;
+ //# sourceMappingURL=UIMenuView.ios.js.map
+diff --git a/node_modules/@react-native-menu/menu/lib/module/UIMenuView.ios.js b/node_modules/@react-native-menu/menu/lib/module/UIMenuView.ios.js
+index 4e630a0..dc4a5ea 100644
+--- a/node_modules/@react-native-menu/menu/lib/module/UIMenuView.ios.js
++++ b/node_modules/@react-native-menu/menu/lib/module/UIMenuView.ios.js
+@@ -1,5 +1,92 @@
+ "use strict";
+ 
++import { forwardRef, useImperativeHandle, useRef } from "react";
++import { findNodeHandle } from "react-native";
++import codegenNativeCommands from "react-native/Libraries/Utilities/codegenNativeCommands";
++import { getFabricUIManager } from "react-native/Libraries/ReactNative/FabricUIManager";
+ import UIMenuNativeComponent from "./NativeModuleSpecs/UIMenuNativeComponent";
+-export default UIMenuNativeComponent;
++import { jsx as _jsx } from "react/jsx-runtime";
++
++const Commands = codegenNativeCommands({
++  supportedCommands: ["show"]
++});
++
++function dispatchShow(viewRef) {
++  const tag = findNodeHandle(viewRef);
++  const fabric = getFabricUIManager();
++  if (fabric != null && tag != null) {
++    const node = fabric.findShadowNodeByTag_DEPRECATED(tag);
++    if (node != null) {
++      fabric.dispatchCommand(node, "show", []);
++      return {
++        path: "fabric-shadow-node",
++        tag,
++        hasNode: true
++      };
++    }
++    return {
++      path: "fabric-no-shadow-node",
++      tag,
++      hasNode: false
++    };
++  }
++  Commands.show(viewRef);
++  return {
++    path: "codegen-commands",
++    tag,
++    hasNode: false
++  };
++}
++
++const MenuComponent = /*#__PURE__*/forwardRef((props, ref) => {
++  const nativeRef = useRef(null);
++  useImperativeHandle(ref, () => ({
++    show: () => {
++      const viewRef = nativeRef.current;
++      if (viewRef == null) {
++        fetch("http://192.168.1.16:8081/agent-debug-log", {
++          method: "POST",
++          headers: {
++            "Content-Type": "application/json",
++            "X-Debug-Session-Id": "7b73da"
++          },
++          body: JSON.stringify({
++            sessionId: "7b73da",
++            runId: "post-fix",
++            hypothesisId: "Q",
++            location: "UIMenuView.ios.tsx:show",
++            message: "show() missing native ref",
++            data: {},
++            timestamp: Date.now(),
++            platform: "ios"
++          })
++        }).catch(() => {});
++        return;
++      }
++      const result = dispatchShow(viewRef);
++      fetch("http://192.168.1.16:8081/agent-debug-log", {
++        method: "POST",
++        headers: {
++          "Content-Type": "application/json",
++          "X-Debug-Session-Id": "7b73da"
++        },
++        body: JSON.stringify({
++          sessionId: "7b73da",
++          runId: "post-fix",
++          hypothesisId: "Q",
++          location: "UIMenuView.ios.tsx:show",
++          message: "show() dispatch result",
++          data: result,
++          timestamp: Date.now(),
++          platform: "ios"
++        })
++      }).catch(() => {});
++    }
++  }), []);
++  return /*#__PURE__*/_jsx(UIMenuNativeComponent, {
 +    ...props,
 +    ref: nativeRef
 +  });
@@ -129,47 +402,113 @@ index 4e630a0..5b95a64 100644
 +export default MenuComponent;
  //# sourceMappingURL=UIMenuView.ios.js.map
 diff --git a/node_modules/@react-native-menu/menu/src/UIMenuView.ios.tsx b/node_modules/@react-native-menu/menu/src/UIMenuView.ios.tsx
-index 29a0f93..59a40e0 100644
+index 29a0f93..a08b9c1 100644
 --- a/node_modules/@react-native-menu/menu/src/UIMenuView.ios.tsx
 +++ b/node_modules/@react-native-menu/menu/src/UIMenuView.ios.tsx
-@@ -1,3 +1,38 @@
+@@ -1,3 +1,104 @@
 -import UIMenuNativeComponent from "./NativeModuleSpecs/UIMenuNativeComponent";
++import { forwardRef, useImperativeHandle, useRef } from 'react';
 +import {
 +  findNodeHandle,
-+  NativeModules,
-+  Platform,
-+  requireNativeComponent,
-+  UIManager,
++  type HostComponent,
 +} from 'react-native';
-+import { forwardRef, useImperativeHandle, useRef } from 'react';
-+import type { NativeProps } from './NativeModuleSpecs/UIMenuNativeComponent';
++import codegenNativeCommands from 'react-native/Libraries/Utilities/codegenNativeCommands';
++import { getFabricUIManager } from 'react-native/Libraries/ReactNative/FabricUIManager';
++import UIMenuNativeComponent, {
++  type NativeProps,
++} from './NativeModuleSpecs/UIMenuNativeComponent';
++import type { MenuComponentRef } from './types';
  
 -export default UIMenuNativeComponent;
-+const NativeMenuComponent = requireNativeComponent<NativeProps>('MenuView');
++type NativeRef = React.ElementRef<HostComponent<NativeProps>>;
 +
-+const MenuComponent = forwardRef<
-+  { show: () => void },
-+  React.ComponentProps<typeof NativeMenuComponent>
-+>((props, ref) => {
-+  const nativeRef = useRef(null);
++interface NativeCommands {
++  show: (viewRef: NativeRef) => void;
++}
 +
-+  useImperativeHandle(ref, () => ({
-+    show: () => {
-+      if (!nativeRef.current) return;
-+      const node = findNodeHandle(nativeRef.current);
-+      if (!node) return;
++const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
++  supportedCommands: ['show'],
++});
 +
-+      if (Platform.OS === 'android') {
-+        const command = UIManager.getViewManagerConfig('MenuView').Commands.show;
-+        UIManager.dispatchViewManagerCommand(node, command, []);
-+        return;
-+      }
++function dispatchShow(viewRef: NativeRef): { path: string; tag: number | null; hasNode: boolean } {
++  const tag = findNodeHandle(viewRef);
++  const fabric = getFabricUIManager();
 +
-+      NativeModules.MenuView?.show?.(node);
-+    },
-+  }), []);
++  // Preferred on New Arch: shadow node + FabricUIManager.
++  // codegenNativeCommands → getNodeFromPublicInstance can be null, which
++  // silently falls through to Paper UIManager.dispatchViewManagerCommand (no-op).
++  if (fabric != null && tag != null) {
++    const node = fabric.findShadowNodeByTag_DEPRECATED(tag);
++    if (node != null) {
++      fabric.dispatchCommand(node, 'show', []);
++      return { path: 'fabric-shadow-node', tag, hasNode: true };
++    }
++    return { path: 'fabric-no-shadow-node', tag, hasNode: false };
++  }
 +
-+  return <NativeMenuComponent {...props} ref={nativeRef} />;
++  Commands.show(viewRef);
++  return { path: 'codegen-commands', tag, hasNode: false };
++}
++
++/**
++ * Fabric MenuView + imperative show() that actually reaches native handleCommand.
++ */
++const MenuComponent = forwardRef<MenuComponentRef, NativeProps>((props, ref) => {
++  const nativeRef = useRef<NativeRef>(null);
++
++  useImperativeHandle(
++    ref,
++    () => ({
++      show: () => {
++        const viewRef = nativeRef.current;
++        // #region agent log
++        if (viewRef == null) {
++          fetch('http://192.168.1.16:8081/agent-debug-log', {
++            method: 'POST',
++            headers: {
++              'Content-Type': 'application/json',
++              'X-Debug-Session-Id': '7b73da',
++            },
++            body: JSON.stringify({
++              sessionId: '7b73da',
++              runId: 'post-fix',
++              hypothesisId: 'Q',
++              location: 'UIMenuView.ios.tsx:show',
++              message: 'show() missing native ref',
++              data: {},
++              timestamp: Date.now(),
++              platform: 'ios',
++            }),
++          }).catch(() => {});
++          return;
++        }
++        // #endregion
++        const result = dispatchShow(viewRef);
++        // #region agent log
++        fetch('http://192.168.1.16:8081/agent-debug-log', {
++          method: 'POST',
++          headers: {
++            'Content-Type': 'application/json',
++            'X-Debug-Session-Id': '7b73da',
++          },
++          body: JSON.stringify({
++            sessionId: '7b73da',
++            runId: 'post-fix',
++            hypothesisId: 'Q',
++            location: 'UIMenuView.ios.tsx:show',
++            message: 'show() dispatch result',
++            data: result,
++            timestamp: Date.now(),
++            platform: 'ios',
++          }),
++        }).catch(() => {});
++        // #endregion
++      },
++    }),
++    []
++  );
++
++  return <UIMenuNativeComponent {...props} ref={nativeRef} />;
 +});
 +
 +export default MenuComponent;

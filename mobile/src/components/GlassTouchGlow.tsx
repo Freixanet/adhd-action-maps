@@ -1,16 +1,13 @@
 import React, { useId, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { SharedValue, useAnimatedProps } from 'react-native-reanimated';
-import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Animated, { SharedValue, useAnimatedStyle } from 'react-native-reanimated';
+import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import {
   GLASS_TOUCH_GLOW_CENTER_OPACITY_DARK,
   GLASS_TOUCH_GLOW_CENTER_OPACITY_LIGHT,
   GLASS_TOUCH_GLOW_RADIAL_STOP_RATIOS,
   GLASS_TOUCH_GLOW_RADIUS_SCALE,
 } from '@shared/uiTokens';
-
-const AnimatedRect = Animated.createAnimatedComponent(Rect);
-const AnimatedRadialGradient = Animated.createAnimatedComponent(RadialGradient);
 
 type GlassTouchGlowProps = {
   width: number;
@@ -28,6 +25,11 @@ type GlassTouchGlowProps = {
   edgeInset?: number;
 };
 
+/**
+ * Soft press glow. A static radial circle is translated to the touch point.
+ * Animating RadialGradient cx/cy via react-native-svg intermittently fills the
+ * whole rect with hard corners — do not go back to that path.
+ */
 export default function GlassTouchGlow({
   width,
   height,
@@ -53,7 +55,7 @@ export default function GlassTouchGlow({
   const radialStops = useMemo(
     () =>
       GLASS_TOUCH_GLOW_RADIAL_STOP_RATIOS.map((stop) => ({
-        offset: stop.offset,
+        offset: `${Math.round(stop.offset * 100)}%`,
         stopOpacity: centerOpacity * stop.ratio,
       })),
     [centerOpacity]
@@ -64,14 +66,14 @@ export default function GlassTouchGlow({
   const innerHeight = Math.max(0, height - inset * 2);
   const innerRadius = Math.max(0, borderRadius - inset);
   const radius = Math.max(1, Math.min(innerWidth, innerHeight) * radiusScale);
+  const diameter = radius * 2;
 
-  const animatedRectProps = useAnimatedProps(() => ({
+  const blobStyle = useAnimatedStyle(() => ({
     opacity: glowOpacity.value,
-  }));
-
-  const gradientAnimatedProps = useAnimatedProps(() => ({
-    cx: touchX.value - inset,
-    cy: touchY.value - inset,
+    transform: [
+      { translateX: touchX.value - inset - radius },
+      { translateY: touchY.value - inset - radius },
+    ],
   }));
 
   if (width <= 0 || height <= 0 || innerWidth <= 0 || innerHeight <= 0) return null;
@@ -92,32 +94,23 @@ export default function GlassTouchGlow({
         },
       ]}
     >
-      <Svg width={innerWidth} height={innerHeight} pointerEvents="none">
-        <Defs>
-          <AnimatedRadialGradient
-            animatedProps={gradientAnimatedProps}
-            id={gradientId}
-            gradientUnits="userSpaceOnUse"
-            rx={radius}
-            ry={radius}
-          >
-            {radialStops.map((stop) => (
-              <Stop
-                key={stop.offset}
-                offset={stop.offset}
-                stopColor="#FFFFFF"
-                stopOpacity={stop.stopOpacity}
-              />
-            ))}
-          </AnimatedRadialGradient>
-        </Defs>
-        <AnimatedRect
-          animatedProps={animatedRectProps}
-          width={innerWidth}
-          height={innerHeight}
-          fill={`url(#${gradientId})`}
-        />
-      </Svg>
+      <Animated.View style={[{ width: diameter, height: diameter }, blobStyle]}>
+        <Svg width={diameter} height={diameter} pointerEvents="none">
+          <Defs>
+            <RadialGradient id={gradientId} cx="50%" cy="50%" rx="50%" ry="50%">
+              {radialStops.map((stop) => (
+                <Stop
+                  key={stop.offset}
+                  offset={stop.offset}
+                  stopColor="#FFFFFF"
+                  stopOpacity={stop.stopOpacity}
+                />
+              ))}
+            </RadialGradient>
+          </Defs>
+          <Circle cx={radius} cy={radius} r={radius} fill={`url(#${gradientId})`} />
+        </Svg>
+      </Animated.View>
     </View>
   );
 }

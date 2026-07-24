@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && cp dist/index.html ../assets/nucleo-orb.html",
+    "build": "vite build && cp dist/index.html ../assets/nucleo-orb.html && vite build --config vite.config.gallery.ts && cp dist-gallery/thinking-orbs-gallery.html ../assets/thinking-orbs-gallery.html && vite build --config vite.config.live.ts && cp dist-live/thinking-orb-live.html ../assets/thinking-orb-live.html",
+    "build:gallery": "vite build --config vite.config.gallery.ts && cp dist-gallery/thinking-orbs-gallery.html ../assets/thinking-orbs-gallery.html",
+    "build:live": "vite build --config vite.config.live.ts && cp dist-live/thinking-orb-live.html ../assets/thinking-orb-live.html",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -13,6 +15,7 @@
     "@react-three/fiber": "^9.6.1",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "thinking-orbs": "^0.1.1",
     "three": "^0.185.1"
   },
   "devDependencies": {

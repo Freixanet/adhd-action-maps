@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Image, View } from 'react-native';
-import { UserRound } from 'lucide-react-native';
+import { UserRound } from '../icons';
 import { useTheme } from '../context/ThemeContext';
 
 type ProfileAvatarProps = {

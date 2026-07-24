@@ -2,20 +2,20 @@ import type { ActionMapData, MapDepth, TransformStreamEvent } from './contracts'
 import { normalizeMapData } from './mapData';
 
 /** Default idle window when depth is unknown (estándar). */
-export const TRANSFORM_IDLE_TIMEOUT_MS = 90_000;
+export const TRANSFORM_IDLE_TIMEOUT_MS = 150_000;
 export const TRANSFORM_IDLE_TIMEOUT_MESSAGE =
   'La generación se ha detenido. Comprueba tu conexión e inténtalo de nuevo.';
 
 export function resolveTransformIdleTimeoutMs(depth?: MapDepth): number {
-  if (depth === 'rapido') return 75_000;
-  if (depth === 'profundo') return 180_000;
-  return 90_000;
+  if (depth === 'rapido') return 120_000;
+  if (depth === 'profundo') return 240_000;
+  return 150_000;
 }
 
 export function resolveTransformFallbackTimeoutMs(depth?: MapDepth): number {
-  if (depth === 'rapido') return 45_000;
-  if (depth === 'profundo') return 180_000;
-  return 75_000;
+  if (depth === 'rapido') return 90_000;
+  if (depth === 'profundo') return 240_000;
+  return 150_000;
 }
 
 function resolveDepthFromBody(body: unknown): MapDepth {

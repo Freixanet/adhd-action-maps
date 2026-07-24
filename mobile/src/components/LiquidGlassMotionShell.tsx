@@ -222,12 +222,11 @@ export default function LiquidGlassMotionShell({
   }));
 
   const sheenStyle = useAnimatedStyle(() => {
-    const width = shellWidth.value || 1;
+    const bandWidth = shellWidth.value || 1;
     return {
-      opacity: interpolate(sheenProgress.value, [0, 0.2, 0.65, 1], [0, 0.12, 0.08, 0]),
+      opacity: interpolate(sheenProgress.value, [0, 0.18, 0.55, 1], [0, 0.1, 0.06, 0]),
       transform: [
-        { skewX: '-14deg' },
-        { translateX: interpolate(sheenProgress.value, [0, 1], [-width * 0.6, width]) },
+        { translateX: interpolate(sheenProgress.value, [0, 1], [-bandWidth * 0.55, bandWidth * 0.9]) },
       ],
     };
   });
@@ -264,7 +263,13 @@ export default function LiquidGlassMotionShell({
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, styles.sheenClip, { borderRadius }]}
         >
-          <Animated.View style={[styles.sheenBand, { backgroundColor: sheenColor }, sheenStyle]} />
+          <Animated.View
+            style={[
+              styles.sheenBand,
+              { backgroundColor: sheenColor, borderRadius: borderRadius * 0.85 },
+              sheenStyle,
+            ]}
+          />
         </View>
 
         {shellSize.width > 0 && shellSize.height > 0 ? (
@@ -291,7 +296,9 @@ export default function LiquidGlassMotionShell({
           />
         ) : null}
 
-        <View className={`relative z-20 ${contentClassName}`.trim()}>{children}</View>
+        <View style={styles.content} className={contentClassName}>
+          {children}
+        </View>
       </View>
     </Animated.View>
   );
@@ -305,13 +312,17 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
+  content: {
+    position: 'relative',
+    zIndex: 20,
+  },
   sheenClip: {
     overflow: 'hidden',
   },
   sheenBand: {
     position: 'absolute',
-    top: -16,
-    bottom: -16,
-    width: '28%',
+    top: 0,
+    bottom: 0,
+    width: '34%',
   },
 });

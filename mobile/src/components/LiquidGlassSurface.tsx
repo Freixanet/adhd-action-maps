@@ -96,6 +96,7 @@ export default function LiquidGlassSurface({
   if (nativeGlass) {
     return (
       <View
+        pointerEvents="none"
         style={[shellStyle, style]}
         collapsable={false}
         onLayout={isControlled ? undefined : internalGlass.onShellLayout}
@@ -103,6 +104,7 @@ export default function LiquidGlassSurface({
         {active ? (
           <GlassView
             key={mountKey}
+            pointerEvents="none"
             style={StyleSheet.absoluteFill}
             glassEffectStyle={resolveGlassEffectStyle(variant)}
             isInteractive={interactive && !reduceMotion}
@@ -115,7 +117,9 @@ export default function LiquidGlassSurface({
             style={[StyleSheet.absoluteFill, { backgroundColor: fallback.backgroundColor }]}
           />
         )}
-        <View style={styles.content}>{children}</View>
+        <View pointerEvents="none" style={styles.content}>
+          {children}
+        </View>
       </View>
     );
   }

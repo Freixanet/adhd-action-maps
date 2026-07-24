@@ -2,29 +2,37 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Pressable } from 'react-native-gesture-handler';
-import { ArrowUp } from 'lucide-react-native';
+import { ArrowUp } from '../icons';
 import GlassSurface from './GlassSurface';
 import { usePressScale } from '../hooks/usePressScale';
 import { useTheme } from '../context/ThemeContext';
+import { agentLog } from '../logic/agentDebugLog';
 
 const SIZE = 38;
 const ICON_SIZE = 17;
+const STOP_SIZE = 12;
 
 type ComposerSendButtonProps = {
   onPress: () => void;
-  disabled: boolean;
+  disabled?: boolean;
+  /** Send arrow (default) or stop square while a Núcleo is generating. */
+  mode?: 'send' | 'stop';
   accessibilityLabel?: string;
 };
 
 export default function ComposerSendButton({
   onPress,
-  disabled,
-  accessibilityLabel = 'Enviar',
+  disabled = false,
+  mode = 'send',
+  accessibilityLabel,
 }: ComposerSendButtonProps) {
   const { isDark } = useTheme();
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const isStop = mode === 'stop';
+  const effectivelyDisabled = isStop ? false : disabled;
+  const label = accessibilityLabel ?? (isStop ? 'Detener generación' : 'Enviar');
 
-  const iconColor = disabled
+  const iconColor = effectivelyDisabled
     ? isDark
       ? '#737373'
       : '#a3a3a3'
@@ -32,41 +40,64 @@ export default function ComposerSendButton({
       ? '#e8eaff'
       : '#3730a3';
 
+  const glyph = isStop ? (
+    <View style={[styles.stopGlyph, { backgroundColor: iconColor }]} />
+  ) : (
+    <ArrowUp size={ICON_SIZE} color={iconColor} strokeWidth={2.25} />
+  );
+
   return (
     <Pressable
-      onPress={onPress}
-      onPressIn={onPressIn}
+      onPress={() => {
+        // #region agent log
+        agentLog('E', 'ComposerSendButton.tsx:onPress', 'Send Pressable onPress', {
+          effectivelyDisabled,
+          mode,
+          disabled,
+        });
+        // #endregion
+        onPress();
+      }}
+      onPressIn={() => {
+        // #region agent log
+        agentLog('E', 'ComposerSendButton.tsx:onPressIn', 'Send Pressable onPressIn', {
+          effectivelyDisabled,
+          mode,
+        });
+        // #endregion
+        onPressIn();
+      }}
       onPressOut={onPressOut}
-      disabled={disabled}
+      disabled={effectivelyDisabled}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [pressed && !disabled ? styles.pressedOpacity : null]}
+      accessibilityLabel={label}
+      style={({ pressed }) => [pressed && !effectivelyDisabled ? styles.pressedOpacity : null]}
     >
       <Animated.View style={animatedStyle}>
-      {disabled ? (
-        <View
-          style={[
-            styles.shell,
-            isDark ? styles.disabledShellDark : styles.disabledShellLight,
-          ]}
-        >
-          <ArrowUp size={ICON_SIZE} color={iconColor} strokeWidth={2.25} />
-        </View>
-      ) : (
-        <GlassSurface
-          liquid
-          interactive
-          liquidBorder="perimeter"
-          glassInset={1}
-          borderRadius={SIZE / 2}
-          style={styles.shell}
-          tintColor={isDark ? 'rgba(139, 143, 245, 0.62)' : 'rgba(139, 143, 245, 0.54)'}
-          overlayClassName={isDark ? 'bg-accent/100/32' : 'bg-accent/28'}
-          contentClassName="h-full w-full items-center justify-center"
-        >
-          <ArrowUp size={ICON_SIZE} color={iconColor} strokeWidth={2.25} />
-        </GlassSurface>
-      )}
+        {effectivelyDisabled ? (
+          <View
+            style={[
+              styles.shell,
+              isDark ? styles.disabledShellDark : styles.disabledShellLight,
+            ]}
+          >
+            {glyph}
+          </View>
+        ) : (
+          <GlassSurface
+            liquid
+            interactive
+            liquidBorder="perimeter"
+            glassInset={1}
+            borderRadius={SIZE / 2}
+            style={styles.shell}
+            tintColor={isDark ? 'rgba(139, 143, 245, 0.62)' : 'rgba(139, 143, 245, 0.54)'}
+            overlayClassName={isDark ? 'bg-accent/100/32' : 'bg-accent/28'}
+            contentClassName="h-full w-full items-center justify-center"
+          >
+            {glyph}
+          </GlassSurface>
+        )}
       </Animated.View>
     </Pressable>
   );
@@ -80,6 +111,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  stopGlyph: {
+    width: STOP_SIZE,
+    height: STOP_SIZE,
+    borderRadius: 2.5,
   },
   disabledShellLight: {
     backgroundColor: 'rgba(115, 115, 115, 0.08)',

@@ -20,8 +20,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   CheckCircle2,
-  Clock,
-} from 'lucide-react-native';
+} from '../icons';
 import AppIcon from '../components/AppIcon';
 import CompletionGlassButton from '../components/CompletionGlassButton';
 import CompletionOverflowMenu from '../components/CompletionOverflowMenu';
@@ -45,28 +44,14 @@ import { ensureVisualizeArtifact } from '@shared/visualizeCompiler';
 import { stepHaptic, useAppSession } from '../context/AppSessionContext';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useViewAllScrollSpy } from '../hooks/useViewAllScrollSpy';
-import { getIntentLabel, getSourceTypeLabel } from '@shared/categories';
 import { formatReadingProgressLabel } from '@shared/nucleoPipeline';
 // F3: re-spec pending — NucleoVisualSpec normalize unused while channel is off.
 // import { normalizeNucleoVisual } from '@shared/nucleoVisual';
 import type { SourceReference } from '../logic/contracts';
 import { debugTransitionLog } from '../logic/debugTransitionLog';
+import { BG_BASE } from '@shared/uiTokens';
 
 const PREVIEW_TOP_INSET = initialWindowMetrics?.insets.top ?? 0;
-
-function parseTotalMinutes(steps: Array<{ time?: string }> | undefined): number | null {
-  if (!steps?.length) return null;
-  let total = 0;
-  let found = false;
-  for (const step of steps) {
-    const match = String(step.time || '').match(/(\d+)\s*min/i);
-    if (match) {
-      total += parseInt(match[1] ?? '0', 10);
-      found = true;
-    }
-  }
-  return found ? total : null;
-}
 
 function ReferencesChips({ references }: { references?: SourceReference[] }) {
   if (!references?.length) return null;
@@ -186,7 +171,6 @@ export default function ResultScreen({
     }
   }, [scrollProgress, session.viewAll]);
 
-  const totalMinutes = useMemo(() => parseTotalMinutes(data?.steps), [data?.steps]);
   // F3: re-spec pending — classic NucleoVisualSpec overview off.
   const openVisualStep = useCallback(
     (stepId: string) => {
@@ -238,13 +222,6 @@ export default function ResultScreen({
   const completionCheckStyle = useAnimatedStyle(() => ({
     transform: [{ scale: completionCheckScale.value }],
   }));
-
-  const remainingMinutes = useMemo(() => {
-    if (session.viewAll || session.isComplete || session.currentStep < 2) return null;
-    return parseTotalMinutes(data?.steps?.slice(session.currentStep - 1));
-  }, [data?.steps, session.currentStep, session.isComplete, session.viewAll]);
-  const remainingLabel =
-    remainingMinutes && remainingMinutes > 0 ? `~${remainingMinutes} min restantes` : undefined;
 
   const isStepMode = !session.isComplete && !session.viewAll;
   const swipeEnabled = isStepMode && !session.historyOpen && !session.isStreamGenerating;
@@ -437,7 +414,11 @@ export default function ResultScreen({
   };
 
   const renderMapMeta = () => (
-    <View onLayout={handleMapMetaAnchorLayout} collapsable={false} className="mb-10">
+    <View
+      onLayout={handleMapMetaAnchorLayout}
+      collapsable={false}
+      className="mb-20"
+    >
       <View className="flex-row items-center gap-2">
         <Text className="text-xs font-bold uppercase tracking-[0.16em] text-secondary text-body shrink">
           {data.title}
@@ -457,19 +438,6 @@ export default function ResultScreen({
           </View>
         ) : null}
       </View>
-      <Text className="mt-2 text-xs text-secondary">
-        {[
-          getSourceTypeLabel(
-            session.historyStore.entries.find(
-              (entry) => entry.id === session.historyStore.activeId
-            )?.sourceType ?? 'text',
-            data.sourceMetadata?.kind
-          ),
-          data.intent ? getIntentLabel(data.intent) : null,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      </Text>
     </View>
   );
 
@@ -482,21 +450,11 @@ export default function ResultScreen({
     return (
     <View className={interactive ? VIEW_ALL_SECTION_DIVIDER : 'mb-8'}>
       {interactive ? renderMapMeta() : null}
-      <View className="flex-row items-center flex-wrap gap-x-3 gap-y-2 mb-4">
-        <View className="flex-row items-center gap-2">
-          <AppIcon size={20} />
-          <Text className="text-sm font-bold tracking-widest uppercase text-primary">
-            Idea central
-          </Text>
-        </View>
-        {!session.isComplete && totalMinutes !== null ? (
-          <View className="flex-row items-center gap-1.5">
-            <Clock size={16} color="#4338ca" />
-            <Text className="text-sm font-semibold text-accent">
-              ~{totalMinutes} min
-            </Text>
-          </View>
-        ) : null}
+      <View className="flex-row items-center gap-2 mb-4">
+        <AppIcon size={20} />
+        <Text className="text-sm font-bold tracking-widest uppercase text-primary">
+          Idea central
+        </Text>
       </View>
       <Text className="text-2xl font-bold text-primary leading-9">{data.coreIdea}</Text>
       {data.coreSupport ? (
@@ -504,7 +462,16 @@ export default function ResultScreen({
       ) : null}
 
       {data.sourceMetadata ? (
-        <SourceMetadataGlassCard sourceMetadata={data.sourceMetadata} />
+        <View className="mt-8">
+          <SourceMetadataGlassCard
+            sourceMetadata={data.sourceMetadata}
+            sourceUrl={
+              data.sourceMetadata.url ||
+              session.inlineUserTurn?.sourceUrl ||
+              null
+            }
+          />
+        </View>
       ) : null}
 
       {includeTldr && (visualizeRun || visualizeArtifact || (data.tldr?.length ?? 0) > 0) ? (
@@ -770,7 +737,8 @@ export default function ResultScreen({
       contentContainerStyle={styles.adaptiveScrollContent}
       keyboardShouldPersistTaps="handled"
       nestedScrollEnabled
-      showsVerticalScrollIndicator={step !== 0}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
       scrollEnabled={!session.historyOpen}
       onLayout={step === session.currentStep ? handleScrollViewLayout : undefined}
       onScroll={step === session.currentStep ? scrollHandler : undefined}
@@ -821,28 +789,25 @@ export default function ResultScreen({
 
   const resultShell = (
     <GestureDetector gesture={backHomeGesture}>
-      <View className="flex-1 relative overflow-hidden">
+      <View className="flex-1 relative overflow-hidden bg-base">
       <ReadingProgressBar
         viewAll={session.viewAll}
-        isComplete={session.isComplete}
         stepProgress={session.stepProgress}
         progressLabel={session.progressLabel}
         scrollProgressShared={scrollProgress}
         headerVisibleShared={headerVisible}
         hideProgressLine={hideProgressLine}
-        remainingLabel={remainingLabel}
         onToggleSidebar={() => session.toggleHistoryDrawer()}
-        onToggleViewMode={session.isComplete ? undefined : session.toggleViewMode}
       />
 
       <SessionErrorBanner className="px-5" />
 
       <IncompleteTransformBanner />
 
-      <View className="flex-1">
+      <View className="flex-1 bg-base">
         {isStepMode ? (
           <GestureDetector gesture={stepGesture}>
-            <Animated.View className="flex-1 px-5" style={stepPageChromeStyle}>
+            <Animated.View className="flex-1 px-5 bg-base" style={stepPageChromeStyle}>
               {showStepSlide ? (
                 <StepSlideTransition step={session.currentStep} reduceMotion={reduceMotion}>
                   {renderAdaptiveStepPage}
@@ -877,7 +842,8 @@ export default function ResultScreen({
               paddingBottom: 128,
             }}
             keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={!isIntroStep}
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
             scrollEnabled={!session.historyOpen}
             onLayout={handleScrollViewLayout}
             onScroll={scrollHandler}
@@ -932,6 +898,7 @@ export default function ResultScreen({
   ) : (
     <SafeAreaView
       className="flex-1 bg-base"
+      style={{ flex: 1, backgroundColor: BG_BASE }}
       edges={['top', 'left', 'right']}
       onLayout={handleRootLayout}
       pointerEvents="auto"

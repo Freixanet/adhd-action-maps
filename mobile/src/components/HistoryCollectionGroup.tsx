@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { ChevronDown, ChevronRight } from 'lucide-react-native';
+import { ChevronDown, ChevronRight } from '../icons';
 import type { Coleccion } from '@shared/collections';
 import { formatCollectionProgress, getCollectionProgress } from '@shared/collections';
 import { APP_DARK_BACKGROUND } from '@shared/uiTokens';

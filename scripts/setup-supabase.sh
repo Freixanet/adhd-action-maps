@@ -23,6 +23,8 @@ Examples:
 Redirect URLs to add in Supabase → Authentication → URL Configuration:
   - http://localhost:3000/**
   - http://127.0.0.1:3000/**
+  - http://localhost:8082/**
+  - http://127.0.0.1:8082/**
   - nucleo://login-callback
   - nucleo://**
   - com.freixanet.nucleo://login-callback

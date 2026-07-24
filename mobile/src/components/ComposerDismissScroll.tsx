@@ -15,11 +15,14 @@ export default function ComposerDismissScroll({ children }: ComposerDismissScrol
       style={styles.shell}
       contentContainerStyle={styles.content}
       keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-      keyboardShouldPersistTaps="handled"
+      // always: composer menu chips must open UIMenu without dismissing the keyboard
+      // (keyboard dismiss mid-open anchors the system menu to a stale rect).
+      keyboardShouldPersistTaps="always"
       scrollEnabled={false}
       alwaysBounceVertical={Platform.OS === 'ios'}
       bounces={Platform.OS === 'ios'}
       showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
       nestedScrollEnabled
       {...(Platform.OS === 'ios' ? { clipsToBounds: false } : null)}
     >

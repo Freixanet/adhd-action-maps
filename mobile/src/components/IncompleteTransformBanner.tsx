@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { X } from 'lucide-react-native';
+import { X } from '../icons';
 import { useAppSession } from '../context/AppSessionContext';
 
 export default function IncompleteTransformBanner() {

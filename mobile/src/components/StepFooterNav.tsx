@@ -7,7 +7,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check } from 'lucide-react-native';
+import { Check } from '../icons';
 import StepFooterGlassButton from './StepFooterGlassButton';
 import { GenerationProgressBar } from './loadingGenerationUi';
 import { useAppSession } from '../context/AppSessionContext';
@@ -128,13 +128,16 @@ export default function StepFooterNav({
 const styles = StyleSheet.create({
   row: {
     width: '100%',
+    alignItems: 'stretch',
   },
+  /** Fixed-ish width so Liquid Glass is not crushed / edge-clipped next to Siguiente. */
   backSlot: {
-    flex: 1,
-    minWidth: 0,
+    width: 108,
+    flexGrow: 0,
+    flexShrink: 0,
   },
   forwardSlot: {
-    flex: 2,
+    flex: 1,
     minWidth: 0,
   },
   footerProgress: {

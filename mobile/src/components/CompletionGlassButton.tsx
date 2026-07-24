@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { RADII } from '@shared/uiTokens';
+import { CTA_FILL, RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 import { usePressScale } from '../hooks/usePressScale';
 import { useTheme } from '../context/ThemeContext';
@@ -31,8 +31,6 @@ export default function CompletionGlassButton({
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
   const isAccent = variant === 'accent';
 
-  const accentTint = isDark ? 'rgba(139, 143, 245, 0.52)' : 'rgba(139, 143, 245, 0.46)';
-  const accentOverlay = isDark ? 'bg-accent/100/32' : 'bg-accent/28';
   const neutralOverlay = isDark ? 'bg-white/[0.05]' : 'bg-white/45';
 
   const showLoading = loading;
@@ -43,6 +41,25 @@ export default function CompletionGlassButton({
     : isDark
       ? '#d4d4d4'
       : '#525252';
+
+  const labelNode = (
+    <Text
+      className={
+        isAccent
+          ? 'text-center font-semibold text-white'
+          : 'text-center font-semibold text-body'
+      }
+    >
+      {showLoading ? (loadingLabel ?? label) : label}
+    </Text>
+  );
+
+  const content = (
+    <View style={styles.content}>
+      {showLoading ? <ActivityIndicator size="small" color={spinnerColor} /> : icon}
+      {labelNode}
+    </View>
+  );
 
   return (
     <Pressable
@@ -59,32 +76,21 @@ export default function CompletionGlassButton({
       ]}
     >
       <Animated.View style={[styles.pressableInner, animatedStyle]}>
-      <GlassSurface
-        liquid
-        liquidBorder="none"
-        borderRadius={RADII.lg}
-        style={styles.shell}
-        tintColor={isAccent ? accentTint : undefined}
-        overlayClassName={isAccent ? accentOverlay : neutralOverlay}
-        contentClassName="w-full items-center justify-center"
-      >
-        <View style={styles.content}>
-          {showLoading ? (
-            <ActivityIndicator size="small" color={spinnerColor} />
-          ) : (
-            icon
-          )}
-          <Text
-            className={
-              isAccent
-                ? 'text-center font-semibold text-white'
-                : 'text-center font-semibold text-body'
-            }
+        {isAccent ? (
+          // Solid fill — liquid glass + deferred mount sometimes left this CTA with no background.
+          <View style={styles.accentShell}>{content}</View>
+        ) : (
+          <GlassSurface
+            liquid
+            liquidBorder="none"
+            borderRadius={RADII.lg}
+            style={styles.shell}
+            overlayClassName={neutralOverlay}
+            contentClassName="w-full items-center justify-center"
           >
-            {showLoading ? (loadingLabel ?? label) : label}
-          </Text>
-        </View>
-      </GlassSurface>
+            {content}
+          </GlassSurface>
+        )}
       </Animated.View>
     </Pressable>
   );
@@ -102,6 +108,14 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: RADII.lg,
     overflow: 'hidden',
+  },
+  accentShell: {
+    width: '100%',
+    borderRadius: RADII.lg,
+    overflow: 'hidden',
+    backgroundColor: CTA_FILL,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flexDirection: 'row',

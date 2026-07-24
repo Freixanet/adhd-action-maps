@@ -7,11 +7,17 @@ export { SCREEN_WIDTH, SCREEN_HEIGHT };
 
 export const DRAWER_SPAN = SCREEN_WIDTH - DRAWER_WIDTH;
 
+/** Horizontal inset for sidebar header chrome (lupa ↔ right edge). */
+export const SIDEBAR_EDGE_INSET = 24;
+
+/** Matches NativeWind `px-3` on the main input / reading chrome. */
+export const MAIN_CONTENT_GUTTER = 12;
+
 /** Circle glass buttons in the sidebar header (lupa, etc.). */
 export const SIDEBAR_HEADER_BUTTON_SIZE = 36;
 
-/** Horizontal padding (24×2) + gap (8) + trailing button (36). */
-export const SIDEBAR_SEARCH_SLOT_INSET = 48 + 8 + 36;
+/** Horizontal padding (inset×2) + gap (8) + trailing button (36). */
+export const SIDEBAR_SEARCH_SLOT_INSET = SIDEBAR_EDGE_INSET * 2 + 8 + SIDEBAR_HEADER_BUTTON_SIZE;
 
 export function sidebarSearchSlotWidth(drawerWidth: number) {
   return Math.max(0, drawerWidth - SIDEBAR_SEARCH_SLOT_INSET);

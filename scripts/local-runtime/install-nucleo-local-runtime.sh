@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/Users/mfreixanet/antigravity/Untitled-mobile-preview"
-SCRIPT_DIR="${ROOT}/scripts/local-runtime"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_common.sh
 source "${SCRIPT_DIR}/_common.sh"
 
@@ -14,9 +13,10 @@ for arg in "$@"; do
       cat <<'EOF'
 Usage: install-nucleo-local-runtime.sh [--fix-env]
 
-Installs LaunchAgents for Núcleo backend (3000) and Metro (8081).
+Installs LaunchAgents for Núcleo backend (3000, canonical repo) and Metro (8081, preview tree with ios/).
 
-  --fix-env   Update mobile/.env EXPO_PUBLIC_API_BASE_URL to current Mac IP
+  --fix-env   Update mobile/.env EXPO_PUBLIC_API_BASE_URL to current Mac IP :3000
+               (canonical + preview)
 EOF
       exit 0
       ;;
@@ -36,26 +36,24 @@ if [[ -z "${MAC_IP}" ]]; then
 fi
 
 EXPECTED_URL="$(expected_api_url "${MAC_IP}")"
-CURRENT_URL="$(read_env_api_url || true)"
+CURRENT_URL="$(read_env_api_url "${ENV_FILE}" || true)"
+PREVIEW_URL="$(read_env_api_url "${PREVIEW_ENV_FILE}" || true)"
 
+echo "Canonical ROOT: ${ROOT}"
+echo "Preview ROOT:   ${PREVIEW_ROOT}"
 echo "Detected Mac IP: ${MAC_IP}"
 echo "Expected API URL: ${EXPECTED_URL}"
-echo "Current mobile/.env API URL: ${CURRENT_URL:-<missing>}"
+echo "Canonical mobile/.env API URL: ${CURRENT_URL:-<missing>}"
+echo "Preview mobile/.env API URL:   ${PREVIEW_URL:-<missing>}"
 
-if [[ "${CURRENT_URL}" != "${EXPECTED_URL}" ]]; then
+if [[ "${CURRENT_URL}" != "${EXPECTED_URL}" || "${PREVIEW_URL}" != "${EXPECTED_URL}" ]]; then
   if [[ "${FIX_ENV}" -eq 1 ]]; then
-    if [[ -f "${ENV_FILE}" ]]; then
-      if grep -q '^EXPO_PUBLIC_API_BASE_URL=' "${ENV_FILE}"; then
-        sed -i '' "s|^EXPO_PUBLIC_API_BASE_URL=.*|EXPO_PUBLIC_API_BASE_URL=${EXPECTED_URL}|" "${ENV_FILE}"
-      else
-        printf '\nEXPO_PUBLIC_API_BASE_URL=%s\n' "${EXPECTED_URL}" >> "${ENV_FILE}"
-      fi
-    else
-      printf 'EXPO_PUBLIC_API_BASE_URL=%s\n' "${EXPECTED_URL}" > "${ENV_FILE}"
-    fi
+    upsert_env_api_url "${ENV_FILE}" "${EXPECTED_URL}"
+    upsert_env_api_url "${PREVIEW_ENV_FILE}" "${EXPECTED_URL}"
     echo "Updated ${ENV_FILE}"
+    echo "Updated ${PREVIEW_ENV_FILE}"
   else
-    echo "ERROR: mobile/.env API URL does not match current IP." >&2
+    echo "ERROR: mobile/.env API URL does not match current IP :3000." >&2
     echo "Re-run with --fix-env to update EXPO_PUBLIC_API_BASE_URL." >&2
     exit 1
   fi
@@ -69,6 +67,8 @@ chmod +x \
   "${SCRIPT_DIR}/stop-nucleo-local-runtime.sh" \
   "${SCRIPT_DIR}/uninstall-nucleo-local-runtime.sh" \
   "${SCRIPT_DIR}/status-nucleo-local-runtime.sh"
+
+sync_canonical_to_preview
 
 cat > "${BACKEND_PLIST}" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -100,6 +100,8 @@ cat > "${BACKEND_PLIST}" <<EOF
     <string>${HOME}</string>
     <key>TRANSFORM_DEBUG</key>
     <string>1</string>
+    <key>PORT</key>
+    <string>3000</string>
   </dict>
 </dict>
 </plist>
@@ -118,7 +120,7 @@ cat > "${METRO_PLIST}" <<EOF
     <string>${SCRIPT_DIR}/nucleo-metro-service.sh</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>${ROOT}/mobile</string>
+  <string>${PREVIEW_ROOT}/mobile</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -171,6 +173,9 @@ curl_metro_status "http://${MAC_IP}:8081" || echo "WARN: metro /status on ${MAC_
 cat <<EOF
 
 Núcleo local runtime installed.
+
+Canonical ROOT: ${ROOT}
+Preview (Metro/ios): ${PREVIEW_ROOT}
 
 LaunchAgents:
   ${BACKEND_PLIST}

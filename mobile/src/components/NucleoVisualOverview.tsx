@@ -202,95 +202,6 @@ function DiagramVisual(props: VisualRendererProps) {
     [visual.kind, visual.items, width]
   );
   const links = visual.links ?? [];
-  const isTimeline = visual.kind === 'timeline';
-
-  if (isTimeline) {
-    const vertical = geometry.vertical;
-    const firstFrame = geometry.frames[0];
-    const lastFrame = geometry.frames[geometry.frames.length - 1];
-    const firstX = firstFrame ? firstFrame.x + firstFrame.width / 2 : geometry.width / 2;
-    const firstY = firstFrame ? firstFrame.y + firstFrame.height / 2 : 0;
-    const lastX = lastFrame ? lastFrame.x + lastFrame.width / 2 : geometry.width / 2;
-    const lastY = lastFrame ? lastFrame.y + lastFrame.height / 2 : 0;
-
-    return (
-      <View style={{ width: geometry.width, height: geometry.height }}>
-        {geometry.frames.length > 1 ? (
-          <Svg
-            width={geometry.width}
-            height={geometry.height}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          >
-            <Line x1={firstX} y1={firstY} x2={lastX} y2={lastY} stroke={VIZ_MUTED} strokeWidth={1.5} />
-            {geometry.frames.map((frame, index) => (
-              <React.Fragment key={visual.items[index].id}>
-                <Circle
-                  cx={frame.x + frame.width / 2}
-                  cy={frame.y + frame.height / 2}
-                  r={visual.items[index].id === selectedId ? 5 : 4}
-                  fill={visual.items[index].id === selectedId ? ACCENT : VIZ_GRID}
-                  stroke={visual.items[index].id === selectedId ? TEXT_PRIMARY : VIZ_GRID}
-                  strokeWidth={visual.items[index].id === selectedId ? 1.5 : 0}
-                />
-                {vertical ? (
-                  <SvgText
-                    x={frame.x + frame.width / 2 - 14}
-                    y={frame.y + frame.height / 2 + 4}
-                    fill={TEXT_SECONDARY}
-                    fontSize={10}
-                    fontWeight="700"
-                    textAnchor="end"
-                  >
-                    {index + 1}
-                  </SvgText>
-                ) : null}
-              </React.Fragment>
-            ))}
-          </Svg>
-        ) : null}
-        {visual.items.map((item, index) => {
-          const frame = geometry.frames[index];
-          const centerX = frame.x + frame.width / 2;
-          const centerY = frame.y + frame.height / 2;
-          const selected = item.id === selectedId;
-          return (
-            <Pressable
-              key={item.id}
-              accessibilityRole="button"
-              accessibilityLabel={itemAccessibilityLabel(item, visual)}
-              accessibilityState={{ selected }}
-              hitSlop={6}
-              onPress={() => onSelect(item.id)}
-              style={({ pressed }) => [
-                styles.timelineItem,
-                vertical
-                  ? {
-                      left: centerX + 14,
-                      top: centerY - 24,
-                      width: Math.max(80, geometry.width - centerX - 18),
-                      height: 48,
-                      alignItems: 'flex-start',
-                    }
-                  : {
-                      left: frame.x,
-                      top: centerY + 10,
-                      width: frame.width,
-                      height: Math.max(34, frame.height / 2),
-                      alignItems: 'center',
-                    },
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text numberOfLines={3} style={[styles.timelineLabel, selected && styles.nodeLabelSelected]}>
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    );
-  }
 
   return (
     <View style={{ width: geometry.width, height: geometry.height }}>
@@ -674,7 +585,7 @@ export default function NucleoVisualOverview({
       {visual.kind === 'comparison' ? <ComparisonVisual {...rendererProps} /> : null}
       {visual.kind === 'bar' ? <BarVisual {...rendererProps} /> : null}
       {visual.kind === 'line' ? <LineVisual {...rendererProps} /> : null}
-      {['concept', 'flow', 'cycle', 'hierarchy', 'timeline'].includes(visual.kind) ? (
+      {['concept', 'flow', 'cycle', 'hierarchy'].includes(visual.kind) ? (
         <DiagramVisual {...rendererProps} />
       ) : null}
 
@@ -747,17 +658,6 @@ const styles = StyleSheet.create({
   },
   nodeLabelSelected: {
     color: TEXT_PRIMARY,
-  },
-  timelineItem: {
-    position: 'absolute',
-    justifyContent: 'center',
-  },
-  timelineLabel: {
-    color: TEXT_SECONDARY,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   pressed: {
     opacity: 0.7,

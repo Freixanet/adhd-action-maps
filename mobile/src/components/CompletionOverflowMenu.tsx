@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { MenuView, type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
-import { MoreHorizontal } from 'lucide-react-native';
+import { MoreHorizontal } from '../icons';
 import { RADII } from '@shared/uiTokens';
 import { stepHaptic } from '../context/AppSessionContext';
 import GlassSurface from './GlassSurface';

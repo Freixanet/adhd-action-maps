@@ -6,7 +6,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { ChevronDown } from 'lucide-react-native';
+import { ChevronDown } from '../../icons';
 import * as Haptics from 'expo-haptics';
 import { RADII, TEXT_BODY, TEXT_PRIMARY, TEXT_SECONDARY } from '@shared/uiTokens';
 import type { SourceReference, StepContentBlockAccordion } from '@shared/contracts';

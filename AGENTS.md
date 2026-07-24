@@ -14,6 +14,13 @@ This repository is the single source of truth for the project formerly called
   UI back into `mobile/`.
 - Read `mobile/AGENTS.md` before changing anything under `mobile/`.
 
+## Product writing
+
+All user-facing copy and LLM generations follow `no-ai-slop`
+(`.cursor/skills/no-ai-slop`, `shared/noAiSlopWriting.ts`,
+`.cursor/rules/no-ai-slop.mdc`). Keep prose concrete, active, and free of
+AI-slop patterns.
+
 ## Local workflow
 
 Use the repository root as the workspace in Codex, Cursor, Antigravity, or any

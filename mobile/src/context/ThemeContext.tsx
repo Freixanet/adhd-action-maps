@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
-import { colorScheme as nativeWindColorScheme } from 'nativewind';
+import { Uniwind } from 'uniwind';
 
 type ThemeContextValue = {
   theme: 'dark';
@@ -11,7 +11,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    nativeWindColorScheme.set('dark');
+    Uniwind.setTheme('dark');
   }, []);
 
   const value = useMemo(

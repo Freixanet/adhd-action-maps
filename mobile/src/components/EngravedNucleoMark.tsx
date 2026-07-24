@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Text as RNText, View, type StyleProp, type ViewStyle } from 'react-native';
 import {
   Canvas,
   LinearGradient,
@@ -9,6 +9,8 @@ import {
   vec,
 } from '@shopify/react-native-skia';
 import { useTheme } from '../context/ThemeContext';
+
+const IS_WEB = Platform.OS === 'web';
 
 export const ENGRAVED_NUCLEO_FONT_SIZE = 40;
 export const ENGRAVED_NUCLEO_COMPACT_FONT_SIZE = 28;
@@ -113,15 +115,20 @@ function EngravedNucleoMark({
 
   const font = useMemo(
     () =>
-      matchFont({
-        fontFamily: Platform.select({ ios: 'Helvetica Neue', default: 'sans-serif' }),
-        fontSize,
-        fontWeight: '200',
-      }),
+      IS_WEB
+        ? null
+        : matchFont({
+            fontFamily: Platform.select({ ios: 'Helvetica Neue', default: 'sans-serif' }),
+            fontSize,
+            fontWeight: '200',
+          }),
     [fontSize]
   );
 
   const { layouts, canvasWidth } = useMemo(() => {
+    if (!font) {
+      return { layouts: [] as LetterLayout[], canvasWidth: 0 };
+    }
     const letterLayouts = measureLetters(font, letterGap);
     const width =
       letterLayouts.length === 0
@@ -130,7 +137,40 @@ function EngravedNucleoMark({
     return { layouts: letterLayouts, canvasWidth: width };
   }, [font, letterGap]);
 
-  if (canvasWidth === 0) {
+  if (IS_WEB) {
+    return (
+      <View
+        style={[
+          {
+            height: markHeight,
+            justifyContent: 'center',
+          },
+          style,
+        ]}
+        accessibilityRole="text"
+        accessibilityLabel="nucleo"
+        pointerEvents="none"
+      >
+        <RNText
+          style={{
+            color: palette.gradient[1],
+            fontSize,
+            fontWeight: '200',
+            letterSpacing: 0.6 * scale,
+            lineHeight: fontSize * 1.1,
+            fontFamily: Platform.select({
+              ios: 'Helvetica Neue',
+              default: 'system-ui, sans-serif',
+            }),
+          }}
+        >
+          {WORD}
+        </RNText>
+      </View>
+    );
+  }
+
+  if (!font || canvasWidth === 0) {
     return null;
   }
 

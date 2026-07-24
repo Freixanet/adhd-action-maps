@@ -8,15 +8,15 @@ import Animated, {
   useAnimatedStyle,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
-import { Search, X } from 'lucide-react-native';
+import { Search, X } from '../icons';
 import EngravedNucleoMark, { ENGRAVED_NUCLEO_COMPACT_FONT_SIZE } from './EngravedNucleoMark';
 import AppIcon from './AppIcon';
 import FloatingGlassButton from './FloatingGlassButton';
 import { TEXT_PRIMARY, TEXT_SECONDARY } from '@shared/uiTokens';
-import { SCREEN_WIDTH, SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
+import { SCREEN_WIDTH, SIDEBAR_EDGE_INSET, SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
 
-/** Content row width at full-screen search (24px padding × 2). */
-const FULL_PILL_WIDTH = SCREEN_WIDTH - 48;
+/** Content row width at full-screen search (edge inset × 2). */
+const FULL_PILL_WIDTH = SCREEN_WIDTH - SIDEBAR_EDGE_INSET * 2;
 
 /** Mirrors web CSS vars on .mobile-sidebar */
 export const SIDEBAR_OCCLUSION = {
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
   },
   brandShell: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: SIDEBAR_EDGE_INSET,
     justifyContent: 'flex-start',
     paddingBottom: 0,
   },

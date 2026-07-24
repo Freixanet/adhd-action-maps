@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Check } from 'lucide-react-native';
+import { Check } from '../icons';
 import { ACCENT, RADII, TEXT_PRIMARY } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 import { privacyPolicyUrl, termsOfUseUrl } from '../logic/legalUrls';

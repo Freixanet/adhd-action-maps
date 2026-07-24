@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, X } from 'lucide-react-native';
+import { Check, X } from '../icons';
 import {
   getCategoryEditSections,
   sanitizeUserCategory,
@@ -115,7 +115,12 @@ export default function CategoryEditSheet({
           <View className="mb-4" />
         )}
 
-        <ScrollView className="max-h-80" keyboardShouldPersistTaps="handled">
+        <ScrollView
+          className="max-h-80"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+        >
           {used.length ? (
             <View className="mb-2">
               <Text className="pb-2 text-[11px] font-bold uppercase tracking-widest text-secondary">

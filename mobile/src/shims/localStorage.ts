@@ -65,9 +65,32 @@ declare global {
 }
 
 export async function bootstrapStorage(): Promise<void> {
+  try {
+    const webStorage =
+      typeof window !== 'undefined' && typeof window.localStorage?.getItem === 'function'
+        ? window.localStorage
+        : null;
+
+    if (webStorage) {
+      // Probe read/write — Cursor/browser embeds can throw SecurityError.
+      webStorage.getItem('nucleo-app-variant');
+      configureStorage(webStorage);
+      if (!webStorage.getItem('nucleo-app-variant')) {
+        webStorage.setItem('nucleo-app-variant', 'comprension');
+      }
+      return;
+    }
+  } catch (error) {
+    console.warn('Browser localStorage unavailable; using in-memory shim.', error);
+  }
+
   await localStorageShim.init();
   configureStorage(localStorageShim);
-  globalThis.localStorage = localStorageShim as unknown as Storage;
+  try {
+    globalThis.localStorage = localStorageShim as unknown as Storage;
+  } catch {
+    // Some runtimes expose a read-only Window.localStorage getter.
+  }
 
   if (!localStorageShim.getItem('nucleo-app-variant')) {
     localStorageShim.setItem('nucleo-app-variant', 'comprension');

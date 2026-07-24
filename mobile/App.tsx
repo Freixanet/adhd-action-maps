@@ -4,6 +4,8 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { HeroUINativeProvider } from 'heroui-native';
+import { Uniwind } from 'uniwind';
 import AuthSheet from './src/components/AuthSheet';
 import PaywallSheet from './src/components/PaywallSheet';
 import OAuthRedirectListener from './src/components/OAuthRedirectListener';
@@ -11,12 +13,15 @@ import { AppSessionProvider, useAppSession } from './src/context/AppSessionConte
 import { ThemeProvider } from './src/context/ThemeContext';
 import { NetworkStatusProvider } from './src/context/NetworkStatusContext';
 import { bootstrapStorage } from './src/shims/localStorage';
+import { hideScrollIndicatorsGlobally } from './src/logic/hideScrollIndicators';
 import {
   isBrandLiveActivitySupported,
   startNucleoBrandLiveActivity,
 } from './src/logic/nucleoBrandLiveActivity';
 import ComprensionApp from './src/screens/ComprensionApp';
 import { ACCENT } from '@shared/uiTokens';
+
+hideScrollIndicatorsGlobally();
 
 function AuthHost() {
   const session = useAppSession();
@@ -42,7 +47,7 @@ function PaywallHost() {
 
 function AppShell() {
   return (
-    <View className="dark flex-1" style={{ flex: 1 }}>
+    <View className="flex-1 bg-base" style={{ flex: 1 }}>
       <StatusBar style="light" />
       <AppSessionProvider>
         <View style={{ flex: 1 }}>
@@ -61,6 +66,7 @@ export default function App() {
   const [bootError, setBootError] = useState<string | null>(null);
 
   useEffect(() => {
+    Uniwind.setTheme('dark');
     bootstrapStorage()
       .then(() => setReady(true))
       .catch((error) => {
@@ -91,11 +97,15 @@ export default function App() {
             <Text className="text-center text-body">{bootError}</Text>
           </View>
         ) : (
-          <ThemeProvider>
-            <NetworkStatusProvider>
-              <AppShell />
-            </NetworkStatusProvider>
-          </ThemeProvider>
+          // HeroUINativeProvider already owns SafeAreaListener → Uniwind.updateInsets.
+          // Nesting a second listener breaks frame/inset measurement (composer dock drifts).
+          <HeroUINativeProvider>
+            <ThemeProvider>
+              <NetworkStatusProvider>
+                <AppShell />
+              </NetworkStatusProvider>
+            </ThemeProvider>
+          </HeroUINativeProvider>
         )}
       </SafeAreaProvider>
     </GestureHandlerRootView>

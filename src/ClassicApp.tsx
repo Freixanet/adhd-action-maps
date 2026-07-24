@@ -2272,7 +2272,8 @@ export default function ClassicApp() {
         >
           <MenuTwoLines className="w-4.5 h-4.5" />
         </button>
-        <div ref={contentRef} className="page-scroll flex-1 flex flex-col items-center justify-center px-4 sm:px-8">
+        <div className="home-center-stage flex-1 min-h-0 flex flex-col">
+        <div ref={contentRef} className="page-scroll flex-1 flex flex-col items-center justify-center px-4 sm:px-8 lg:flex-none">
           <div
             className="home-hero-copy text-center space-y-2 sm:space-y-3 max-w-lg select-none"
             onSelectStart={(e) => e.preventDefault()}
@@ -2305,7 +2306,7 @@ export default function ClassicApp() {
 
         {!isNativeIOS && (
         <div className="composer-dock">
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-3xl mx-auto lg:max-w-none lg:mx-0">
             <div className="rounded-3xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-app-surface shadow-sm dark:shadow-none">
               {uploadedFile && (
                 <div className="flex items-center gap-2 px-3 pt-3">
@@ -2460,6 +2461,7 @@ export default function ClassicApp() {
           </div>
         </div>
         )}
+        </div>
       </div>
     );
   };

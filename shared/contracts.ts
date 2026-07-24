@@ -116,6 +116,8 @@ export type SourceReference = {
 export type SourceMetadata = {
   kind: SourceKind;
   label: string;
+  /** Canonical source URL when the input was a link / YouTube video. */
+  url?: string;
   title?: string;
   author?: string;
   language?: string;
@@ -389,6 +391,19 @@ export type MapChatResponse = {
   followUps: string[];
   citations: SourceReference[];
   limitations?: string[];
+};
+
+/** Open-world home ask (not grounded in a Núcleo). */
+export type AskRequest = {
+  question: string;
+  depth?: MapDepth;
+  /** Nombre visible opcional para tono. No debe ser email. */
+  userDisplayName?: string;
+};
+
+export type AskResponse = {
+  answer: string;
+  title?: string;
 };
 
 export type TransformStreamEvent = {

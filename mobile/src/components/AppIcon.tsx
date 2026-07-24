@@ -6,11 +6,13 @@ type AppIconProps = {
   className?: string;
   size?: number;
   color?: string;
+  /** Overrides the inner dot fill (defaults to `color` or accent). */
+  dotColor?: string;
 };
 
-export default function AppIcon({ size = 24, color }: AppIconProps) {
+export default function AppIcon({ size = 24, color, dotColor }: AppIconProps) {
   const strokeColor = color ?? TEXT_PRIMARY;
-  const fillColor = color ?? ACCENT;
+  const fillColor = dotColor ?? color ?? ACCENT;
 
   return (
     <Svg viewBox="0 0 24 24" fill="none" width={size} height={size} aria-hidden={true}>

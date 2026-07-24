@@ -6,9 +6,15 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import {
+  markComposerNativeMenuEnded,
+  restoreComposerInputFocus,
+  shouldSuppressKeyboardDismissForComposerMenu,
+} from './composerNativeMenuSession';
 
 export function useDismissKeyboardOnScroll() {
   return () => {
+    if (shouldSuppressKeyboardDismissForComposerMenu()) return;
     Keyboard.dismiss();
   };
 }
@@ -27,7 +33,13 @@ export function KeyboardDismissBackdrop({
     <Pressable
       accessible={false}
       onPress={(event) => {
-        Keyboard.dismiss();
+        // Outside tap while a composer UIMenu is up should close only the menu.
+        if (shouldSuppressKeyboardDismissForComposerMenu()) {
+          markComposerNativeMenuEnded();
+          restoreComposerInputFocus();
+        } else {
+          Keyboard.dismiss();
+        }
         onPress?.(event);
       }}
       {...props}

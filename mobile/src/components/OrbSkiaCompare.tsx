@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, Modal, Pressable, Text, View } from 'react-native';
+import { AccessibilityInfo, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BG_BASE } from '@shared/uiTokens';
 import NucleoOrb from './NucleoOrb';
 import NucleoGlyphOrb from './NucleoGlyphOrb';
+import ThinkingOrbsGalleryWebView from './ThinkingOrbsGalleryWebView';
 
 const COMPARE_SIZE = 72;
 
@@ -13,8 +14,7 @@ type OrbSkiaCompareProps = {
 };
 
 /**
- * Dev preview: keeps the current Three.js / atom production orb for comparison,
- * side-by-side with the loading glyph orb.
+ * Dev preview: production orbs + full thinking-orbs gallery to pick a replacement.
  */
 export default function OrbSkiaCompare({ visible, onClose }: OrbSkiaCompareProps) {
   const insets = useSafeAreaInsets();
@@ -32,25 +32,52 @@ export default function OrbSkiaCompare({ visible, onClose }: OrbSkiaCompareProps
       <View className="flex-1" style={{ backgroundColor: BG_BASE }}>
         <View
           className="absolute left-0 right-0 z-10 items-center px-3"
-          style={{ top: insets.top + 16 }}
+          style={{ top: insets.top + 12 }}
           pointerEvents="box-none"
         >
           <Text className="text-center text-[15px] font-semibold text-primary">Orb preview</Text>
           <Text className="mt-1 text-center text-[12px] text-secondary">
-            Carga (glifo) · Three.js (actual)
+            Actual · thinking-orbs (elige uno)
           </Text>
         </View>
 
-        <View className="flex-1 items-center justify-center gap-14 px-6">
-          <View className="items-center">
-            <NucleoGlyphOrb size={COMPARE_SIZE} reduceMotion={reduceMotion} />
-            <Text className="mt-3 text-[12px] text-secondary">Glifo · carga</Text>
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{
+            paddingTop: insets.top + 56,
+            paddingBottom: insets.bottom + 88,
+            paddingHorizontal: 20,
+            gap: 28,
+          }}
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+        >
+          <View className="gap-4">
+            <Text className="text-[11px] font-bold uppercase tracking-widest text-secondary">
+              Actual
+            </Text>
+            <View className="flex-row items-center justify-around">
+              <View className="items-center">
+                <NucleoGlyphOrb size={COMPARE_SIZE} reduceMotion={reduceMotion} />
+                <Text className="mt-3 text-[12px] text-secondary">Glifo · carga</Text>
+              </View>
+              <View className="items-center">
+                <NucleoOrb size={COMPARE_SIZE} state="thinking" reduceMotion={reduceMotion} />
+                <Text className="mt-3 text-[12px] text-secondary">Three.js</Text>
+              </View>
+            </View>
           </View>
-          <View className="items-center">
-            <NucleoOrb size={COMPARE_SIZE} state="thinking" reduceMotion={reduceMotion} />
-            <Text className="mt-3 text-[12px] text-secondary">Three.js · conservado</Text>
+
+          <View className="gap-3">
+            <Text className="text-[11px] font-bold uppercase tracking-widest text-secondary">
+              thinking-orbs
+            </Text>
+            <Text className="text-[12px] leading-4 text-secondary">
+              Seis estados · tamaño 64 y 20 · theme dark
+            </Text>
+            <ThinkingOrbsGalleryWebView />
           </View>
-        </View>
+        </ScrollView>
 
         <View
           className="absolute left-0 right-0 items-center px-3"

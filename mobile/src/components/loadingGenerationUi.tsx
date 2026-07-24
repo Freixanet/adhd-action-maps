@@ -111,8 +111,8 @@ export const ANALYZING_SOURCE_LABEL = 'Analizando la fuente…';
 
 export const LOADING_PHASE_LABELS = [
   'Leyendo la fuente…',
-  'Destilando la idea central…',
-  'Construyendo tu Núcleo…',
+  'Sacando la idea central…',
+  'Montando tu Núcleo…',
 ] as const;
 
 type PhaseLabelProps = {

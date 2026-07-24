@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import NucleoGlyphOrb from './NucleoGlyphOrb';
+import ThinkingOrbWebView from './ThinkingOrbWebView';
 import { formatCollectionProgress } from '@shared/collections';
 import {
   ANALYZING_SOURCE_LABEL,
@@ -10,6 +10,8 @@ import {
   LOADING_PHASE_LABELS,
 } from './loadingGenerationUi';
 import { useAppSession } from '../context/AppSessionContext';
+import { useGenerationSoftStage } from '../hooks/useGenerationSoftStage';
+import { resolveThinkingOrbState } from '@shared/resolveThinkingOrbState';
 
 type LoadingStateProps = {
   onCancel?: () => void;
@@ -18,6 +20,14 @@ type LoadingStateProps = {
 export default function LoadingState(_props: LoadingStateProps) {
   const session = useAppSession();
   const [reduceMotion, setReduceMotion] = useState(false);
+  const softStage = useGenerationSoftStage(
+    session.isStreamGenerating || session.isAnalyzingSource
+  );
+  const thinkingState = resolveThinkingOrbState({
+    isAnalyzingSource: session.isAnalyzingSource,
+    streamLoadPhase: session.streamLoadPhase,
+    softStage,
+  });
 
   useEffect(() => {
     void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
@@ -34,7 +44,13 @@ export default function LoadingState(_props: LoadingStateProps) {
 
   return (
     <View className="flex-1 items-center justify-center px-6 bg-base">
-      <NucleoGlyphOrb size={72} reduceMotion={reduceMotion} />
+      <ThinkingOrbWebView
+        state={thinkingState}
+        size={64}
+        paused={reduceMotion}
+        speed={reduceMotion ? 0 : 1}
+        theme="dark"
+      />
       <View className="mt-6 min-h-[22px] justify-center">
         <LoadingPhaseLabel text={phaseLabel} reduceMotion={reduceMotion} />
       </View>

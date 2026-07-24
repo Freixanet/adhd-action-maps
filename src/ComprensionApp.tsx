@@ -2729,7 +2729,8 @@ export default function ComprensionApp() {
           <div className="w-11 shrink-0" aria-hidden="true" />
         </div>
 
-        <div ref={contentRef} className="page-scroll flex-1 flex flex-col items-center justify-center px-4 sm:px-8">
+        <div className="home-center-stage flex-1 min-h-0 flex flex-col">
+        <div ref={contentRef} className="page-scroll flex-1 flex flex-col items-center justify-center px-4 sm:px-8 lg:flex-none">
           {showHero ? (
             <div
               className="home-hero-copy text-center max-w-md select-none"
@@ -2752,7 +2753,7 @@ export default function ComprensionApp() {
 
         {!isNativeIOS && (
         <div className="composer-dock">
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-3xl mx-auto lg:max-w-none lg:mx-0">
             <div className="relative overflow-visible group" ref={attachMenuRef}>
               <div className="relative overflow-hidden rounded-[24px] bg-[#3E4041] backdrop-blur-[40px] backdrop-saturate-[2] shadow-[0_2px_24px_rgba(0,0,0,0.25),inset_0_1px_0.5px_rgba(255,255,255,0.12),inset_0_-1px_0.5px_rgba(255,255,255,0.06)] transition-all duration-500">
                 <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 pointer-events-none" />
@@ -2967,6 +2968,7 @@ export default function ComprensionApp() {
           </div>
         </div>
         )}
+        </div>
       </div>
     );
   };

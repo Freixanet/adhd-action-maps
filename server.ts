@@ -9,6 +9,8 @@ import { fetchTranscript } from "youtube-transcript";
 import { extractYouTubeVideoId } from "./youtube";
 import type {
   ActionMapData,
+  AskRequest,
+  AskResponse,
   MapChatRequest,
   MapChatResponse,
   MapIntent,
@@ -25,7 +27,9 @@ import {
 } from "./shared/categories";
 import {
   analyzeSourceText,
+  capCollectionParts,
   LONG_SOURCE_WORD_THRESHOLD,
+  MAX_COLLECTION_PARTS,
   SINGLE_NUCLEO_SYNTHESIS_NOTICE,
 } from "./shared/collections";
 import {
@@ -49,6 +53,7 @@ import {
 //   normalizeNucleoVisual,
 // } from "./shared/nucleoVisual";
 import { normalizeVisualizeArtifact, ensureVisualizeArtifact } from "./shared/visualizeCompiler";
+import { NO_AI_SLOP_WRITING_CONTRACT } from "./shared/noAiSlopWriting";
 import { countBlockPlainWords, getBlockPlainText, normalizeStepContentBlocks } from "./shared/stepContentBlocks";
 import {
   authenticateOptional,
@@ -1324,7 +1329,7 @@ async function attemptQualityRepair(
       },
       resolveRepairModelChain(usedModel),
       undefined,
-      resolveLlmTimeoutMs(context.resolvedDepth)
+      resolveLlmTimeoutMs(context.resolvedDepth, context.generationMode)
     );
 
     return parseAndNormalizeMapJson(response.text || "{}", context, repairModel);
@@ -1870,7 +1875,7 @@ async function parseMapJsonWithRetry(
           context.resolvedDepth,
           model
         ),
-      resolveLlmTimeoutMs(context.resolvedDepth)
+      resolveLlmTimeoutMs(context.resolvedDepth, context.generationMode)
     );
 
     try {
@@ -2000,7 +2005,7 @@ async function handleTransformStream(
     { contents: context.contents },
     context.modelChain,
     (model) => geminiGenerationConfig(context.maxOutputTokens, context.resolvedDepth, model),
-    resolveLlmTimeoutMs(context.resolvedDepth)
+    resolveLlmTimeoutMs(context.resolvedDepth, context.generationMode)
   );
   usedModel = activeModel;
   fullText = response.text || "{}";
@@ -2531,6 +2536,8 @@ const SYSTEM_PROMPT = `Eres Núcleo, una capa de comprensión fiel, adaptable y 
 
 Transformas fuentes en mapas claros según el intent y la profundidad activos indicados en el prompt del usuario (understand, study o apply; rapido, estandar o profundo).
 
+${NO_AI_SLOP_WRITING_CONTRACT}
+
 Reglas obligatorias:
 1. Sigue siempre el CONTRATO ACTIVO DE INTENCIÓN y el CONTRATO ACTIVO DE PROFUNDIDAD del prompt del usuario. Prevén sobre reglas genéricas de este mensaje cuando entren en conflicto.
 2. No mezcles objetivos de apply (checklists, acciones concretas) si el intent activo es understand, salvo que la fuente lo requiera explícitamente. No expandas en profundidad exhaustiva si depth activo es rapido.
@@ -2550,6 +2557,7 @@ Reglas obligatorias:
 16. NO generes el campo visualization ni NucleoVisualSpec (canal apagado hasta F3). Cronología/contraste van en bloques list o comparison; relaciones en prose/callout.
 17. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).
 18. CERO HTML, CSS, markdown de presentación o propiedades visuales en el JSON. Solo contenido, rol semántico y emphasis.
+19. Aplica el CONTRATO DE REDACCIÓN a title, coreIdea, coreSupport, tldr, knowledgeSections, shortNav, titles, prose, callouts, quiz, completionCard y cualquier texto visible.
 
 CATÁLOGO DE BLOQUES (únicos tipos permitidos en step.content — la UI vive en el cliente):
 - Allowlist EXACTA de type: prose | callout | list | stat | comparison | accordion | quiz.
@@ -2790,8 +2798,25 @@ function normalizeMapData(
     mapVersion: Number.isFinite(parsed?.mapVersion) ? Number(parsed.mapVersion) : 2,
     generationMode: resolveNucleoGenerationMode(parsed?.generationMode),
     sourceMetadata: {
-      kind: String(parsed?.sourceMetadata?.kind || fallback.sourceKind) as any,
+      kind:
+        fallback.sourceKind === "youtube" || fallback.sourceKind === "link"
+          ? fallback.sourceKind
+          : (String(parsed?.sourceMetadata?.kind || fallback.sourceKind) as any),
       label: String(parsed?.sourceMetadata?.label || fallback.sourceLabel),
+      url: (() => {
+        const fromParsed =
+          typeof parsed?.sourceMetadata?.url === "string"
+            ? parsed.sourceMetadata.url.trim()
+            : "";
+        if (/^https?:\/\//i.test(fromParsed)) return fromParsed;
+        if (fallback.sourceKind === "youtube" || fallback.sourceKind === "link") {
+          const fromRequest = String(fallback.sourceLabel || "").trim();
+          if (/^https?:\/\//i.test(fromRequest)) return fromRequest;
+        }
+        const fromLabel = String(parsed?.sourceMetadata?.label || "").trim();
+        if (/^https?:\/\//i.test(fromLabel)) return fromLabel;
+        return undefined;
+      })(),
       title: parsed?.sourceMetadata?.title ? String(parsed.sourceMetadata.title) : undefined,
       author: parsed?.sourceMetadata?.author ? String(parsed.sourceMetadata.author) : undefined,
       language: parsed?.sourceMetadata?.language
@@ -3051,6 +3076,7 @@ function buildTransformPrompt({
       : "",
     formatGuide,
     "Genera una lectura fiel, útil a la primera y sin tono infantil.",
+    NO_AI_SLOP_WRITING_CONTRACT,
     `Clasificación automática: asigna suggestedCategory (exactamente una de: ${DEFAULT_MAP_CATEGORIES.join(
       " | "
     )}) y suggestedTags (entre 2 y 5 etiquetas cortas en español).`,
@@ -3097,12 +3123,35 @@ const chatResponseSchema = {
 
 const CHAT_SYSTEM_PROMPT = `Respondes preguntas únicamente con la información contenida en el mapa y sus referencias.
 
+${NO_AI_SLOP_WRITING_CONTRACT}
+
 Reglas:
 1. Si el mapa no contiene la respuesta suficiente, dilo con claridad.
 2. No completes huecos con conocimiento externo.
 3. Responde con lenguaje directo y útil.
 4. Devuelve solo JSON válido.
 5. Incluye citas solo si están realmente respaldadas por el mapa recibido.`;
+
+const askResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    answer: { type: Type.STRING },
+    title: { type: Type.STRING },
+  },
+  required: ["answer"],
+};
+
+const ASK_SYSTEM_PROMPT = `Eres Núcleo. Respondes preguntas abiertas con claridad adulta pensada para mente sobrecargada: idea primero, trozos cortos, sin relleno.
+
+${NO_AI_SLOP_WRITING_CONTRACT}
+
+Reglas:
+1. Puedes usar conocimiento general. Si no estás seguro, dilo en una frase y no inventes cifras ni citas.
+2. Estructura la respuesta en párrafos cortos (2–4 frases). Usa saltos de línea entre ideas. Sin markdown decorativo, sin listas interminables, sin emoji.
+3. Empieza por la respuesta directa. Después el mecanismo o el matiz útil. Termina en el último hecho o en la siguiente acción concreta si aplica.
+4. Respeta la profundidad pedida: rapido = respuesta breve; estandar = cobertura clara sin divagar; profundo = más matices y ejemplos sin hinchar.
+5. Tono sobrio. Nada de coach, celebración ni eslóganes.
+6. Devuelve solo JSON válido con "answer" (texto completo) y opcionalmente "title" (etiqueta corta de 3–6 palabras).`;
 
 async function fetchYouTubeTranscript(url: string): Promise<string> {
   const videoId = extractYouTubeVideoId(url);
@@ -3286,6 +3335,32 @@ async function startServer() {
     });
   });
 
+  // Bridge for Expo web OAuth: Supabase already allows localhost:3000/**.
+  // After Google, land here and bounce the ?code= back to the Expo web origin (PKCE verifier lives there).
+  app.get("/auth/callback", (req, res) => {
+    const rawTarget =
+      (typeof req.query.next === "string" && req.query.next) ||
+      process.env.EXPO_WEB_ORIGIN?.trim() ||
+      "http://localhost:8082";
+    let target: URL;
+    try {
+      target = new URL(rawTarget);
+    } catch {
+      return res.status(400).type("text").send("Invalid next origin.");
+    }
+    if (target.protocol !== "http:" && target.protocol !== "https:") {
+      return res.status(400).type("text").send("Invalid next origin protocol.");
+    }
+    if (!["localhost", "127.0.0.1"].includes(target.hostname)) {
+      return res.status(400).type("text").send("next must be a local Expo web origin.");
+    }
+    for (const [key, value] of Object.entries(req.query)) {
+      if (key === "next") continue;
+      if (typeof value === "string") target.searchParams.set(key, value);
+    }
+    res.redirect(302, target.toString());
+  });
+
   app.get("/privacidad", (_req, res) => {
     res.type("html").send(PRIVACY_HTML);
   });
@@ -3376,7 +3451,7 @@ async function startServer() {
 
     const prompt = [
       "Analiza este PDF y detecta si tiene capítulos o secciones claramente separadas aptas para dividir en unidades de lectura independientes.",
-      "Si el documento tiene 2 o más capítulos/secciones distintas Y (estima más de 15000 palabras O estructura clara de capítulos), establece shouldProposeSplit en true y lista cada parte con un título breve.",
+      `Si el documento tiene 2 o más capítulos/secciones distintas Y (estima más de 15000 palabras O estructura clara de capítulos), establece shouldProposeSplit en true y lista como máximo ${MAX_COLLECTION_PARTS} partes con un título breve (prioriza los capítulos principales; no listes subapartados menores).`,
       "Si el documento es corto, unificado o no conviene dividirlo, establece shouldProposeSplit en false con parts vacío.",
       "Responde solo en JSON.",
     ].join("\n");
@@ -3408,11 +3483,13 @@ async function startServer() {
       parts?: Array<{ title?: string }>;
     };
 
-    const parts = Array.isArray(parsed.parts)
-      ? parsed.parts
-          .map((part) => ({ title: String(part?.title || "").trim() }))
-          .filter((part) => part.title)
-      : [];
+    const parts = capCollectionParts(
+      Array.isArray(parsed.parts)
+        ? parsed.parts
+            .map((part) => ({ title: String(part?.title || "").trim() }))
+            .filter((part) => part.title)
+        : []
+    );
     const totalWords = Number.isFinite(parsed.totalWordsEstimate)
       ? Number(parsed.totalWordsEstimate)
       : 0;
@@ -3546,7 +3623,7 @@ async function startServer() {
             contextResult.resolvedDepth,
             model
           ),
-        resolveLlmTimeoutMs(contextResult.resolvedDepth)
+        resolveLlmTimeoutMs(contextResult.resolvedDepth, contextResult.generationMode)
       );
 
       const rawText = response.text || "{}";
@@ -3677,6 +3754,74 @@ async function startServer() {
           ? parsed.limitations.map((item) => String(item))
           : [],
       } satisfies MapChatResponse);
+    } catch (err: any) {
+      console.error(err);
+      const { statusCode, errorMessage } = describeGeminiError(err);
+      res.status(statusCode).json({ error: errorMessage });
+    }
+  });
+
+  app.post("/api/ask", async (req: AuthenticatedRequest, res) => {
+    try {
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      if (!isWithinRateLimit(ip)) {
+        return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
+      }
+      if (!(await requireLlmAccess(req, res))) return;
+      if (!enforceUsageQuota(req, res, "chat")) return;
+
+      const payload = req.body as AskRequest;
+      const question = payload?.question?.trim();
+      if (!question) {
+        return res.status(400).json({ error: "Escribe una pregunta para continuar." });
+      }
+
+      const depth =
+        payload.depth === "rapido" || payload.depth === "profundo" ? payload.depth : "estandar";
+      const depthLine =
+        depth === "rapido"
+          ? "Profundidad: rapido — respuesta breve, un mecanismo y listo."
+          : depth === "profundo"
+            ? "Profundidad: profundo — más matices y un ejemplo concreto, sin hinchar."
+            : "Profundidad: estandar — cobertura clara en pocos párrafos.";
+
+      const name = payload.userDisplayName?.trim().split(/\s+/)[0];
+      const prompt = [
+        depthLine,
+        name ? `Nombre del usuario (solo tono, no lo fuerces): ${name}` : "",
+        `Pregunta:\n${question}`,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      const maxTokens =
+        depth === "rapido" ? 1024 : depth === "profundo" ? MAX_CHAT_OUTPUT_TOKENS * 2 : MAX_CHAT_OUTPUT_TOKENS;
+
+      const { response } = await generateWithFallback({
+        contents: prompt,
+        config: {
+          systemInstruction: ASK_SYSTEM_PROMPT,
+          responseMimeType: "application/json",
+          responseSchema: askResponseSchema as any,
+          temperature: 0.35,
+          topP: 0.9,
+          maxOutputTokens: maxTokens,
+        },
+      });
+
+      const parsed = JSON.parse(response.text || "{}") as AskResponse;
+      const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : "";
+      if (!answer) {
+        return res.status(502).json({ error: "No se pudo generar una respuesta." });
+      }
+
+      res.json({
+        answer,
+        title:
+          typeof parsed.title === "string" && parsed.title.trim()
+            ? parsed.title.trim().slice(0, 80)
+            : undefined,
+      } satisfies AskResponse);
     } catch (err: any) {
       console.error(err);
       const { statusCode, errorMessage } = describeGeminiError(err);

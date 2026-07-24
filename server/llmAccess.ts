@@ -12,6 +12,7 @@ export type AuthenticatedRequest = Request & {
 const PREMIUM_MODEL_IDS = new Set([
   "gemini-3.5-flash",
   "gemini-3-pro-preview",
+  "gemini-3.1-pro-preview",
   ...(process.env.GEMINI_DEEP_MODEL ?? "")
     .split(",")
     .map((m) => m.trim())

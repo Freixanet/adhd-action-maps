@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
-import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
 import type { HistoryEntry, HistoryStore } from './history';
 import { supabase } from './supabase';
 
@@ -8,6 +8,15 @@ WebBrowser.maybeCompleteAuthSession();
 
 /** URL estable registrada en Supabase (evita exp:// que redirige al sitio web). */
 export function getAuthRedirectUrl(): string {
+  // Expo web: land on the local API bridge (allowlisted as http://127.0.0.1:3000/**),
+  // which bounces ?code= back to Expo web. Avoids Supabase falling back to Railway Site URL.
+  if (Platform.OS === 'web') {
+    return (
+      process.env.EXPO_PUBLIC_AUTH_WEB_BRIDGE_URL?.trim() ||
+      'http://127.0.0.1:3000/auth/callback'
+    );
+  }
+
   const override = process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL?.trim();
   if (override) return override;
 
@@ -70,14 +79,30 @@ export async function signInWith(provider: 'google' | 'apple') {
 }
 
 function paramFromUrl(url: string, key: string): string | undefined {
-  const parsed = Linking.parse(url);
-  const fromQuery = parsed.queryParams?.[key];
-  if (typeof fromQuery === 'string') return fromQuery;
+  // Pure JS parse — avoids requiring the ExpoLinking native module at startup.
+  try {
+    const normalized = /:\/\//.test(url) ? url : `nucleo://${url}`;
+    const parsed = new URL(normalized);
+    const fromQuery = parsed.searchParams.get(key);
+    if (fromQuery) return fromQuery;
+    if (parsed.hash.length > 1) {
+      const fromHash = new URLSearchParams(parsed.hash.slice(1)).get(key);
+      if (fromHash) return fromHash;
+    }
+  } catch {
+    /* fall through */
+  }
+
+  const qIndex = url.indexOf('?');
+  if (qIndex >= 0) {
+    const query = url.slice(qIndex + 1).split('#')[0] ?? '';
+    const fromQuery = new URLSearchParams(query).get(key);
+    if (fromQuery) return fromQuery;
+  }
 
   const hashIndex = url.indexOf('#');
   if (hashIndex >= 0) {
-    const hashParams = new URLSearchParams(url.slice(hashIndex + 1));
-    return hashParams.get(key) ?? undefined;
+    return new URLSearchParams(url.slice(hashIndex + 1)).get(key) ?? undefined;
   }
   return undefined;
 }
@@ -122,13 +147,24 @@ export async function completeOAuthRedirect(url: string): Promise<boolean> {
 }
 
 /**
- * Flujo OAuth completo para móvil: abre el navegador de autenticación del sistema,
- * recoge la redirección hacia la app y canjea el código/token por una sesión persistida.
+ * Flujo OAuth completo: en nativo abre el auth session del sistema; en web
+ * redirige la pestaña a Google/Apple y vuelve a `window.location.origin`.
  */
 export async function signInWithProvider(provider: 'google' | 'apple') {
   if (!supabase) throw new Error('La sincronización todavía no está configurada.');
 
   const redirectTo = getAuthRedirectUrl();
+
+  if (Platform.OS === 'web') {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo },
+    });
+    if (error) throw error;
+    if (!data?.url) throw new Error('No se pudo iniciar el acceso con el proveedor.');
+    window.location.assign(data.url);
+    return true;
+  }
 
   const { data, error } = await signInWith(provider);
   if (error) throw error;

@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { MessageSquareText, X, ArrowUp } from 'lucide-react-native';
+import { MessageSquareText, X, ArrowUp } from '../icons';
 import { apiUrl } from '../logic/apiBase';
 import type { ActionMapData, ChatTurn, MapChatResponse } from '../logic/contracts';
 import { supabase } from '../logic/supabase';
@@ -268,6 +268,8 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
             contentContainerStyle={chatHistory.length === 0 ? { flexGrow: 1, justifyContent: 'center' } : undefined}
             contentContainerClassName="px-5 py-5 pb-4"
             keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
           >
             {chatHistory.length === 0 ? (
               <View className="items-center justify-center py-6 px-4">

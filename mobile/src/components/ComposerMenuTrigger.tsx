@@ -1,18 +1,12 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
+import type { MenuAction, NativeActionEvent } from '@react-native-menu/menu';
+import { NucleoUIMenuAnchor } from '../../modules/nucleo-ui-menu/src';
+import { agentLog } from '../logic/agentDebugLog';
 import {
-  Keyboard,
-  Pressable,
-  StyleSheet,
-  View,
-  type View as RNView,
-} from 'react-native';
-import {
-  MenuView,
-  type MenuAction,
-  type MenuComponentRef,
-  type NativeActionEvent,
-} from '@react-native-menu/menu';
-import { useComposerKeyboard } from '../context/ComposerKeyboardContext';
+  markComposerNativeMenuEnded,
+  markComposerNativeMenuPresented,
+} from '../logic/composerNativeMenuSession';
 
 type ComposerMenuTriggerProps = {
   title: string;
@@ -25,9 +19,9 @@ type ComposerMenuTriggerProps = {
 };
 
 /**
- * Native composer menu trigger. When the keyboard is open, intercepts the tap,
- * dismisses the keyboard, waits for the dock animation to finish, measures the
- * chip, then opens the menu at its settled position.
+ * Composer chips: real iOS UIMenu via a native UIButton host.
+ * Imperative performPrimaryAction on a temp button never presented; the user
+ * tap must hit UIButton.menu directly.
  */
 export default function ComposerMenuTrigger({
   title,
@@ -38,68 +32,76 @@ export default function ComposerMenuTrigger({
   themeVariant = 'dark',
   accessibilityLabel,
 }: ComposerMenuTriggerProps) {
-  const { keyboardVisible, waitForComposerDockSettle } = useComposerKeyboard();
-  const menuRef = useRef<MenuComponentRef>(null);
-  const anchorRef = useRef<RNView>(null);
-  const openingRef = useRef(false);
-  const [deferring, setDeferring] = useState(false);
-
-  const openMenuAtAnchor = useCallback(() => {
-    anchorRef.current?.measureInWindow((_x, _y, _width, _height) => {
-      requestAnimationFrame(() => {
-        menuRef.current?.show();
-      });
-    });
-  }, []);
-
-  const handleDeferredPress = useCallback(async () => {
-    if (openingRef.current || disabled) return;
-    openingRef.current = true;
-    setDeferring(true);
-    try {
-      Keyboard.dismiss();
-      await waitForComposerDockSettle();
-      openMenuAtAnchor();
-    } finally {
-      setDeferring(false);
-      openingRef.current = false;
-    }
-  }, [disabled, openMenuAtAnchor, waitForComposerDockSettle]);
-
-  if (disabled) {
+  if (disabled || Platform.OS !== 'ios') {
     return <>{children}</>;
   }
 
-  const blockNativeTap = keyboardVisible || deferring;
+  const menuActions = actions
+    .filter((action): action is MenuAction & { id: string } => Boolean(action.id))
+    .map((action) => ({
+      id: action.id,
+      title: action.title,
+      state: action.state,
+    }));
 
   return (
-    <View ref={anchorRef} collapsable={false} style={styles.anchor}>
-      <MenuView
-        ref={menuRef}
-        title={title}
-        actions={actions}
-        onPressAction={onPressAction}
-        shouldOpenOnLongPress={false}
-        themeVariant={themeVariant}
+    <NucleoUIMenuAnchor
+      title={title}
+      themeVariant={themeVariant}
+      actions={menuActions}
+      onPresent={(event) => {
+        markComposerNativeMenuPresented();
+        // #region agent log
+        agentLog(
+          'T',
+          'ComposerMenuTrigger.tsx:present',
+          'NucleoUIMenuAnchor onPresent',
+          {
+            title,
+            delayed: event?.nativeEvent?.delayed,
+            keyboardHeight: event?.nativeEvent?.keyboardHeight,
+          },
+          'post-fix'
+        );
+        // #endregion
+      }}
+      onDismiss={() => {
+        markComposerNativeMenuEnded();
+      }}
+      onSelect={(event) => {
+        const id = event?.nativeEvent?.id;
+        markComposerNativeMenuEnded();
+        // #region agent log
+        agentLog(
+          'S',
+          'ComposerMenuTrigger.tsx:action',
+          'NucleoUIMenuAnchor onSelect',
+          { title, id },
+          'post-fix'
+        );
+        // #endregion
+        if (!id) return;
+        onPressAction({ nativeEvent: { event: id } } as NativeActionEvent);
+      }}
+      style={styles.host}
+    >
+      <View
+        pointerEvents="none"
+        collapsable={false}
+        onLayout={() => {
+          // #region agent log
+          agentLog('S', 'ComposerMenuTrigger.tsx:layout', 'anchor children laid out', { title }, 'post-fix');
+          // #endregion
+        }}
       >
         {children}
-      </MenuView>
-      {blockNativeTap ? (
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={() => {
-            void handleDeferredPress();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel ?? title}
-        />
-      ) : null}
-    </View>
+      </View>
+    </NucleoUIMenuAnchor>
   );
 }
 
 const styles = StyleSheet.create({
-  anchor: {
-    position: 'relative',
+  host: {
+    alignSelf: 'flex-start',
   },
 });

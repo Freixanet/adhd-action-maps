@@ -6,7 +6,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { X } from 'lucide-react-native';
+import { X } from '../icons';
 import { SEM_ALERTA } from '@shared/uiTokens';
 import { useAppSession } from '../context/AppSessionContext';
 import { useNetworkStatus } from '../context/NetworkStatusContext';

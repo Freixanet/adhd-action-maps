@@ -1,6 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, AppState, AccessibilityInfo } from 'react-native';
+import { Alert, AppState, AccessibilityInfo, Keyboard } from 'react-native';
 import {
   cacheDirectory,
   deleteAsync,
@@ -12,12 +12,15 @@ import * as Haptics from 'expo-haptics';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import type {
   ActionMapData,
+  AskRequest,
+  AskResponse,
   MapIntent,
   NucleoGenerationMode,
   SourceAnalysisResponse,
   SourceType,
   TransformRequest,
 } from '../logic/contracts';
+import { getBlockPlainText } from '@shared/stepContentBlocks';
 import {
   deleteAllCloudHistory,
   deleteCloudHistoryEntry,
@@ -51,9 +54,9 @@ import {
 } from '../logic/collectionAnalyze';
 import {
   formatReadingProgressLabel,
-  isLastStepInReadingSection,
 } from '@shared/nucleoPipeline';
 import { resolveClientIsPro } from '@shared/proEntitlement';
+import { ensureVisualizeArtifact } from '@shared/visualizeCompiler';
 import { normalizeMapData } from '../logic/mapData';
 import {
   getInitialModelPreference,
@@ -95,6 +98,7 @@ import {
 } from '../logic/devHistoryBackup';
 import {
   fetchTransformWithProgress,
+  resolveTransformFallbackTimeoutMs,
   TRANSFORM_IDLE_TIMEOUT_MESSAGE,
 } from '../logic/transformStream';
 import { apiUrl } from '../logic/apiBase';
@@ -108,6 +112,7 @@ import {
 } from '../logic/continueTransition';
 import { useRevenueCatPro } from '../hooks/useRevenueCatPro';
 import { debugTransitionLog } from '../logic/debugTransitionLog';
+import { clearComposerNativeMenuSession } from '../logic/composerNativeMenuSession';
 
 export type AppPhase = 'input' | 'loading' | 'result';
 
@@ -117,6 +122,7 @@ import {
   buildInlineUserTurnSnapshot,
   type InlineUserTurnSnapshot,
 } from '../logic/inlineUserBubble';
+import { classifyComposerSubmit } from '../logic/classifyComposerSubmit';
 
 export type { InlineUserTurnSnapshot } from '../logic/inlineUserBubble';
 
@@ -139,7 +145,7 @@ function applyStudyDocBetaClientShape(map: ActionMapData): ActionMapData {
       ? map.knowledgeSections
       : map.steps.slice(0, 9).map((step, index) => ({
           title: step.shortNav || `Concepto ${index + 1}`,
-          summary: step.purpose || step.content?.[0]?.text || step.title,
+          summary: step.purpose || (step.content?.[0] ? getBlockPlainText(step.content[0]) : '') || step.title,
           references: step.references,
         }));
 
@@ -147,7 +153,7 @@ function applyStudyDocBetaClientShape(map: ActionMapData): ActionMapData {
     ...map.tldr,
     ...map.steps.map((step) => ({
       title: step.shortNav || step.title,
-      desc: step.purpose || step.content?.[0]?.text || step.title,
+      desc: step.purpose || (step.content?.[0] ? getBlockPlainText(step.content[0]) : '') || step.title,
     })),
   ].filter((item) => item.title && item.desc);
 
@@ -170,9 +176,7 @@ function applyStudyDocBetaClientShape(map: ActionMapData): ActionMapData {
       : map.sourceMetadata,
     steps: map.steps.map((step, index) => {
       const hasStudySignal = step.content.some((block) =>
-        /pretest|comprueba|explica con tus palabras|self/i.test(
-          `${block.text ?? ''} ${block.label ?? ''}`
-        )
+        /pretest|comprueba|explica con tus palabras|self/i.test(getBlockPlainText(block))
       );
       const conceptName =
         knowledgeSections[index % Math.max(knowledgeSections.length, 1)]?.title ||
@@ -221,6 +225,26 @@ const INTRO_TRANSITION_BAR_MS = 520;
 const OFFLINE_TRANSFORM_MESSAGE = 'Sin conexión. Comprueba tu red y vuelve a intentarlo.';
 const GENERIC_TRANSFORM_ERROR = 'No se pudo procesar la fuente.';
 
+function isTransientNetworkError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return (
+    /network connection was lost/i.test(message) ||
+    /fetch failed/i.test(message) ||
+    /Failed to fetch/i.test(message) ||
+    /Network request failed/i.test(message) ||
+    /The Internet connection appears to be offline/i.test(message) ||
+    /socket hang up/i.test(message) ||
+    /ECONNRESET/i.test(message) ||
+    /ETIMEDOUT/i.test(message) ||
+    /timed out/i.test(message) ||
+    /tardando demasiado/i.test(message)
+  );
+}
+
+async function sleepMs(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function isDeviceOffline(): Promise<boolean> {
   const state = await NetInfo.fetch();
   return state.isConnected === false || state.isInternetReachable === false;
@@ -251,6 +275,55 @@ function generateMapId(): string {
 function toSourceType(requestType: TransformRequest['type']): SourceType {
   if (requestType === 'image' || requestType === 'video') return 'file';
   return requestType;
+}
+
+function asHttpUrl(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? '';
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  try {
+    // eslint-disable-next-line no-new
+    new URL(trimmed);
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
+/** Keep the paste/Youtube URL on the map so Fuente survives reopen after the model renames the label. */
+function withPersistedSourceUrl(
+  map: ActionMapData,
+  request: TransformRequest
+): ActionMapData {
+  if (!map.sourceMetadata) return map;
+  const requestUrl =
+    request.type === 'youtube' || request.type === 'link'
+      ? asHttpUrl(request.text) || asHttpUrl(request.sourceLabel)
+      : null;
+  const existingUrl =
+    asHttpUrl(map.sourceMetadata.url) || asHttpUrl(map.sourceMetadata.label);
+  const url = existingUrl || requestUrl;
+  if (!url && request.type !== 'youtube' && request.type !== 'link') {
+    return map;
+  }
+
+  const kind =
+    request.type === 'youtube' || request.type === 'link'
+      ? request.type
+      : map.sourceMetadata.kind;
+  let label = map.sourceMetadata.label;
+  if (asHttpUrl(label) && map.sourceMetadata.title?.trim()) {
+    label = map.sourceMetadata.title.trim();
+  }
+
+  return {
+    ...map,
+    sourceMetadata: {
+      ...map.sourceMetadata,
+      kind,
+      url: url ?? map.sourceMetadata.url,
+      label,
+    },
+  };
 }
 
 function resolveTransformSourceKind(
@@ -319,7 +392,6 @@ type AppSessionContextValue = {
   continueEntry: HistoryEntry | null;
   dismissContinueChip: () => void;
   progressLabel: string;
-  sectionCompleteCue: number | null;
   stepProgress: number;
   goToStep: (idx: number, fromViewAll?: boolean) => void;
   syncReadingStep: (step: number) => void;
@@ -330,12 +402,17 @@ type AppSessionContextValue = {
   handlePickFile: () => Promise<void>;
   removeUploadedFile: () => void;
   handleTransform: () => Promise<void>;
+  handleComposerSubmit: () => Promise<void>;
   handleOpenDemoNucleo: () => void;
   devHistoryHidden?: boolean;
   devHideHistory?: () => void;
   devRestoreHistory?: () => void;
   previewInlineGeneration?: () => void;
+  /** True while DEV “Preview generation” is simulating the inline flow. */
+  devPreviewGenerationActive?: boolean;
   previewLoadingScreen?: () => void;
+  /** DEV-only: open live ResultScreen with fresh demo Núcleo data. */
+  previewNucleo?: () => void;
   handleNewMap: () => void;
   handleSelectHistory: (id: string) => void;
   beginContinueTransition: (id: string, chipRect: ContinueChipRect, chipLabel: string) => void;
@@ -378,6 +455,8 @@ type AppSessionContextValue = {
   handleDeleteAccount: () => Promise<void>;
   inlineGenerationStatus: InlineGenerationStatus;
   inlineUserTurn: InlineUserTurnSnapshot | null;
+  /** Full ask answer once the /api/ask response arrives (typed out in the thread). */
+  inlineAskAnswer: string | null;
   cancelInlineAutoOpen: () => void;
   registerInlineAutoOpenCancel: (handler: (() => void) | null) => void;
   openInlineResult: (chipRect: ContinueChipRect) => void;
@@ -427,6 +506,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const openHistoryDrawer = useCallback(() => {
     if (historyOpenRef.current) return;
     historyOpenRef.current = true;
+    clearComposerNativeMenuSession();
+    Keyboard.dismiss();
     stepHaptic();
     setHistoryOpenState(true);
   }, []);
@@ -464,9 +545,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [depthPreference, setDepthPreferenceState] = useState<DepthPreference>(() =>
     getInitialDepthPreference()
   );
-  const [generationMode, setGenerationModeState] = useState<NucleoGenerationMode>('classic');
+  const [generationMode] = useState<NucleoGenerationMode>('classic');
   const [essentialsReview, setEssentialsReview] = useState(false);
-  const [sectionCompleteCue, setSectionCompleteCue] = useState<number | null>(null);
   const [isStreamGenerating, setIsStreamGenerating] = useState(false);
   const [isAnalyzingSource, setIsAnalyzingSource] = useState(false);
   const [collectionGenerationProgress, setCollectionGenerationProgress] = useState<{
@@ -479,6 +559,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
   const [inlineGenerationStatus, setInlineGenerationStatus] = useState<InlineGenerationStatus>('idle');
   const [inlineUserTurn, setInlineUserTurn] = useState<InlineUserTurnSnapshot | null>(null);
+  const [inlineAskAnswer, setInlineAskAnswer] = useState<string | null>(null);
+  const [devPreviewGenerationActive, setDevPreviewGenerationActive] = useState(false);
 
   const streamProgressCapRef = useRef(0);
   const reduceMotionRef = useRef(false);
@@ -492,6 +574,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     headers?: Record<string, string>;
     sourceKind: TransformSourceKind;
   } | null>(null);
+  const askRetryQuestionRef = useRef<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const transformCancelledRef = useRef(false);
@@ -499,7 +582,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const historyStoreRef = useRef(historyStore);
   const isPdfGeneratingRef = useRef(false);
   const sourceKeyRef = useRef('');
-  const intentUserOverrideRef = useRef(false);
   const draftRestoredRef = useRef(false);
 
   const pendingDeletesRef = useRef<string[]>([]);
@@ -556,10 +638,13 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const clearInlineGeneration = useCallback(() => {
     clearInlineAutoOpen();
     clearInlineReadyTimeout();
+    setDevPreviewGenerationActive(false);
     setInlineGenerationStatus('idle');
     setInlineUserTurn(null);
+    setInlineAskAnswer(null);
     inlineResultEntryIdRef.current = null;
     inlineRetryPayloadRef.current = null;
+    askRetryQuestionRef.current = null;
   }, [clearInlineAutoOpen, clearInlineReadyTimeout]);
 
   useEffect(() => {
@@ -668,8 +753,12 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
   const totalSteps = data?.steps.length ?? 0;
   const composerBodyText = pastedText?.trim() ?? inputText.trim();
+  const askTurnOpen =
+    inlineUserTurn?.kind === 'ask' &&
+    (inlineGenerationStatus === 'ready' || inlineGenerationStatus === 'error');
   const canSubmit =
-    inlineGenerationStatus === 'idle' && Boolean(composerBodyText || uploadedFile);
+    Boolean(composerBodyText || uploadedFile) &&
+    (inlineGenerationStatus === 'idle' || askTurnOpen);
   const hideTextInput = Boolean(uploadedFile?.isPdf || uploadedFile?.isVideo);
   const composerPlaceholder = uploadedFile?.isImage
     ? 'Añade una indicación (opcional)…'
@@ -677,7 +766,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       ? 'Añade una indicación sobre el video (opcional)…'
       : uploadedFile
         ? 'Archivo adjunto listo para convertir'
-        : 'Pega texto, un enlace o adjunta un archivo';
+        : 'Pregunta algo, o pega un texto, enlace o archivo';
 
   const hasAnyNucleo = historyStore.entries.length > 0;
 
@@ -707,9 +796,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   }, [continueEntry, dismissedContinueId]);
 
   const setIntent = useCallback((value: MapIntent) => {
-    intentUserOverrideRef.current = true;
     setIntentState(value);
-    stepHaptic();
   }, []);
 
   const persistComposerDraft = useCallback(() => {
@@ -771,9 +858,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     stepHaptic();
   }, []);
 
-  const setGenerationMode = useCallback((value: NucleoGenerationMode) => {
-    setGenerationModeState(value);
-    stepHaptic();
+  const setGenerationMode = useCallback((_value: NucleoGenerationMode) => {
+    /* Selector removed — generation is locked to classic (interactive blocks). */
   }, []);
 
   const saveStepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -905,11 +991,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     const key = buildComposerSourceKey(inputText, uploadedFile, pastedText);
     if (!key || key === 'text:') return;
-    if (key !== sourceKeyRef.current) {
-      sourceKeyRef.current = key;
-      intentUserOverrideRef.current = false;
-    }
-    if (intentUserOverrideRef.current) return;
+    sourceKeyRef.current = key;
     const detection =
       !uploadedFile && composerBodyText ? detectUrlInput(composerBodyText) : null;
     const suggested = suggestIntentFromSource(composerBodyText, uploadedFile, detection);
@@ -983,7 +1065,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   // Eliminado el useEffect de sincronización global masiva para favorecer sync selectivo
 
   const goToStep = useCallback((idx: number, fromViewAll = false) => {
-    const previousStep = currentStep;
     const totalReadingPages = totalSteps + 1;
     const safeIdx = Math.max(0, Math.min(idx, totalReadingPages));
     setIsComplete(false);
@@ -991,20 +1072,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     const nextViewAll = fromViewAll ? false : viewAll;
     if (fromViewAll) setViewAll(false);
     persistSessionState(safeIdx, false, nextViewAll);
-
-    if (
-      safeIdx > previousStep &&
-      previousStep > 1 &&
-      data?.readingSections?.length &&
-      isLastStepInReadingSection(previousStep - 1, data.readingSections)
-    ) {
-      setSectionCompleteCue(previousStep - 1);
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      setTimeout(() => setSectionCompleteCue(null), 1200);
-    } else {
-      stepHaptic();
-    }
-  }, [currentStep, data?.readingSections, persistSessionState, totalSteps, viewAll]);
+    stepHaptic();
+  }, [persistSessionState, totalSteps, viewAll]);
 
   const syncReadingStep = useCallback((step: number) => {
     const pageStep = step <= 0 ? 0 : step + 1;
@@ -1147,9 +1216,139 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     if (uploadedFile?.isPdf || uploadedFile?.isVideo) setInputText('');
   }, [uploadedFile?.isPdf, uploadedFile?.isVideo]);
 
+  const handleAsk = useCallback(async () => {
+    const isAskRetry =
+      inlineGenerationStatusRef.current === 'error' &&
+      inlineUserTurn?.kind === 'ask' &&
+      Boolean(askRetryQuestionRef.current);
+
+    const question = isAskRetry
+      ? (askRetryQuestionRef.current ?? '').trim()
+      : (pastedText?.trim() ?? inputText.trim());
+    if (!question) return;
+
+    if (await isDeviceOffline()) {
+      setError(OFFLINE_TRANSFORM_MESSAGE);
+      setPhase('input');
+      return;
+    }
+
+    setError(null);
+    setTransformIncomplete(false);
+    setAttachMenuOpen(false);
+    clearComposerDraft();
+    clearDevPreviewTimers();
+
+    const accessToken = supabase
+      ? (await supabase.auth.getSession()).data.session?.access_token
+      : undefined;
+    const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+
+    if (!isAskRetry) {
+      clearInlineGeneration();
+      clearInlineAutoOpen();
+      clearInlineReadyTimeout();
+      setInlineAskAnswer(null);
+      setInlineUserTurn(
+        buildInlineUserTurnSnapshot({
+          inputText: question,
+          pastedText: null,
+          uploadedFile: null,
+          conversationalMessage: '',
+          kind: 'ask',
+        })
+      );
+      setInputText('');
+      inputTextRef.current = '';
+      setPastedText(null);
+      setUploadedFile(null);
+    } else {
+      setInlineAskAnswer(null);
+    }
+
+    askRetryQuestionRef.current = question;
+    setInlineGenerationStatus('generating');
+    transformCancelledRef.current = false;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const body: AskRequest = {
+      question,
+      depth: depthPreference,
+      userDisplayName: cloudUserDisplayName ?? undefined,
+    };
+
+    try {
+      const response = await fetchWithTimeout(
+        apiUrl('/api/ask'),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(headers ?? {}),
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        },
+        {
+          timeoutMs: 60000,
+          timeoutMessage: 'La respuesta está tardando demasiado. Inténtalo de nuevo.',
+        }
+      );
+
+      if (transformCancelledRef.current) return;
+
+      const parsed = (await response.json()) as AskResponse & { error?: string };
+      if (!response.ok) {
+        throw new Error(parsed?.error || 'No se pudo responder a esta pregunta.');
+      }
+
+      const answer = parsed.answer?.trim();
+      if (!answer) {
+        throw new Error('No se pudo responder a esta pregunta.');
+      }
+
+      if (inlineGenerationStatusRef.current !== 'generating') return;
+      setInlineAskAnswer(answer);
+      setInlineGenerationStatus('ready');
+      setPhase('input');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      if (transformCancelledRef.current || (err instanceof Error && err.name === 'AbortError')) {
+        return;
+      }
+      const message = err instanceof Error ? err.message : 'No se pudo responder a esta pregunta.';
+      setError(message);
+      setInlineGenerationStatus('error');
+      setPhase('input');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+    }
+  }, [
+    clearComposerDraft,
+    clearDevPreviewTimers,
+    clearInlineAutoOpen,
+    clearInlineGeneration,
+    clearInlineReadyTimeout,
+    cloudUserDisplayName,
+    depthPreference,
+    inlineUserTurn?.kind,
+    inputText,
+    pastedText,
+  ]);
+
   const handleTransform = useCallback(async () => {
+    // Inline retry must run even with an empty composer: the first attempt clears
+    // input/paste/file and keeps the request in inlineRetryPayloadRef.
+    const isInlineRetry =
+      inlineGenerationStatusRef.current === 'error' && inlineRetryPayloadRef.current != null;
+
     const bodyText = pastedText?.trim() ?? inputText.trim();
-    if (!bodyText && !uploadedFile) return;
+    if (!isInlineRetry && !bodyText && !uploadedFile) return;
 
     if (await isDeviceOffline()) {
       setError(OFFLINE_TRANSFORM_MESSAGE);
@@ -1158,7 +1357,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     }
 
     let urlDetection: ReturnType<typeof detectUrlInput> | null = null;
-    if (!uploadedFile && bodyText) {
+    if (!isInlineRetry && !uploadedFile && bodyText) {
       urlDetection = detectUrlInput(bodyText);
       if (urlDetection.kind === 'invalid') {
         setError(urlDetection.message);
@@ -1172,114 +1371,114 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     clearComposerDraft();
     clearDevPreviewTimers();
 
-    const sourceKind = resolveTransformSourceKind(uploadedFile, urlDetection);
-    const mapId = generateMapId();
-    const sourceLabel =
-      uploadedFile?.name || bodyText.split('\n')[0]?.slice(0, 80) || 'Fuente analizada';
-
-    let body: TransformRequest;
-    if (uploadedFile?.isPdf && uploadedFile.fileData) {
-      body = {
-        type: 'pdf',
-        fileData: uploadedFile.fileData,
-        mimeType: uploadedFile.mimeType || 'application/pdf',
-        preferredModel: 'auto',
-        intent,
-        depth: depthPreference,
-        generationMode,
-        outputLanguage: 'es',
-        sourceLabel,
-        mapId,
-        userDisplayName: cloudUserDisplayName ?? undefined,
-      };
-    } else if (uploadedFile?.isVideo && uploadedFile.fileData) {
-      body = {
-        type: 'video',
-        fileData: uploadedFile.fileData,
-        mimeType: uploadedFile.mimeType || 'video/mp4',
-        preferredModel: 'auto',
-        intent,
-        depth: depthPreference,
-        generationMode,
-        outputLanguage: 'es',
-        sourceLabel,
-        mapId,
-        userDisplayName: cloudUserDisplayName ?? undefined,
-      };
-      if (inputText.trim()) body.text = inputText.trim();
-    } else if (uploadedFile?.isImage && uploadedFile.fileData) {
-      body = {
-        type: 'image',
-        fileData: uploadedFile.fileData,
-        mimeType: uploadedFile.mimeType || 'image/jpeg',
-        preferredModel: 'auto',
-        intent,
-        depth: depthPreference,
-        generationMode,
-        outputLanguage: 'es',
-        sourceLabel,
-        mapId,
-        userDisplayName: cloudUserDisplayName ?? undefined,
-      };
-      if (inputText.trim()) body.text = inputText.trim();
-    } else if (urlDetection?.kind === 'youtube') {
-      body = {
-        text: urlDetection.url,
-        type: 'youtube',
-        preferredModel: 'auto',
-        intent,
-        depth: depthPreference,
-        generationMode,
-        outputLanguage: 'es',
-        sourceLabel: urlDetection.url,
-        mapId,
-        userDisplayName: cloudUserDisplayName ?? undefined,
-      };
-    } else if (urlDetection?.kind === 'link') {
-      body = {
-        text: urlDetection.url,
-        type: 'link',
-        preferredModel: 'auto',
-        intent,
-        depth: depthPreference,
-        generationMode,
-        outputLanguage: 'es',
-        sourceLabel: urlDetection.url,
-        mapId,
-        userDisplayName: cloudUserDisplayName ?? undefined,
-      };
-    } else {
-      body = {
-        text: bodyText,
-        type: 'text',
-        preferredModel: 'auto',
-        intent,
-        depth: depthPreference,
-        generationMode,
-        outputLanguage: 'es',
-        sourceLabel,
-        mapId,
-        userDisplayName: cloudUserDisplayName ?? undefined,
-      };
-    }
-
     const accessToken = supabase
       ? (await supabase.auth.getSession()).data.session?.access_token
       : undefined;
     const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
 
-    const isInlineRetry =
-      inlineGenerationStatusRef.current === 'error' && inlineRetryPayloadRef.current != null;
+    let body: TransformRequest;
+    let sourceKind: TransformSourceKind;
+    let mapId = generateMapId();
 
     if (isInlineRetry && inlineRetryPayloadRef.current) {
-      setError(null);
       setInlineGenerationStatus('generating');
-      body = { ...inlineRetryPayloadRef.current.body, mapId: generateMapId() };
+      body = { ...inlineRetryPayloadRef.current.body, mapId };
+      sourceKind = inlineRetryPayloadRef.current.sourceKind;
       inlineRetryPayloadRef.current = {
         ...inlineRetryPayloadRef.current,
         body,
+        headers,
       };
     } else {
+      sourceKind = resolveTransformSourceKind(uploadedFile, urlDetection);
+      const sourceLabel =
+        uploadedFile?.name || bodyText.split('\n')[0]?.slice(0, 80) || 'Fuente analizada';
+
+      if (uploadedFile?.isPdf && uploadedFile.fileData) {
+        body = {
+          type: 'pdf',
+          fileData: uploadedFile.fileData,
+          mimeType: uploadedFile.mimeType || 'application/pdf',
+          preferredModel: 'auto',
+          intent,
+          depth: depthPreference,
+          generationMode,
+          outputLanguage: 'es',
+          sourceLabel,
+          mapId,
+          userDisplayName: cloudUserDisplayName ?? undefined,
+        };
+      } else if (uploadedFile?.isVideo && uploadedFile.fileData) {
+        body = {
+          type: 'video',
+          fileData: uploadedFile.fileData,
+          mimeType: uploadedFile.mimeType || 'video/mp4',
+          preferredModel: 'auto',
+          intent,
+          depth: depthPreference,
+          generationMode,
+          outputLanguage: 'es',
+          sourceLabel,
+          mapId,
+          userDisplayName: cloudUserDisplayName ?? undefined,
+        };
+        if (inputText.trim()) body.text = inputText.trim();
+      } else if (uploadedFile?.isImage && uploadedFile.fileData) {
+        body = {
+          type: 'image',
+          fileData: uploadedFile.fileData,
+          mimeType: uploadedFile.mimeType || 'image/jpeg',
+          preferredModel: 'auto',
+          intent,
+          depth: depthPreference,
+          generationMode,
+          outputLanguage: 'es',
+          sourceLabel,
+          mapId,
+          userDisplayName: cloudUserDisplayName ?? undefined,
+        };
+        if (inputText.trim()) body.text = inputText.trim();
+      } else if (urlDetection?.kind === 'youtube') {
+        body = {
+          text: urlDetection.url,
+          type: 'youtube',
+          preferredModel: 'auto',
+          intent,
+          depth: depthPreference,
+          generationMode,
+          outputLanguage: 'es',
+          sourceLabel: urlDetection.url,
+          mapId,
+          userDisplayName: cloudUserDisplayName ?? undefined,
+        };
+      } else if (urlDetection?.kind === 'link') {
+        body = {
+          text: urlDetection.url,
+          type: 'link',
+          preferredModel: 'auto',
+          intent,
+          depth: depthPreference,
+          generationMode,
+          outputLanguage: 'es',
+          sourceLabel: urlDetection.url,
+          mapId,
+          userDisplayName: cloudUserDisplayName ?? undefined,
+        };
+      } else {
+        body = {
+          text: bodyText,
+          type: 'text',
+          preferredModel: 'auto',
+          intent,
+          depth: depthPreference,
+          generationMode,
+          outputLanguage: 'es',
+          sourceLabel,
+          mapId,
+          userDisplayName: cloudUserDisplayName ?? undefined,
+        };
+      }
+
       clearInlineGeneration();
       clearInlineAutoOpen();
       clearInlineReadyTimeout();
@@ -1290,6 +1489,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           pastedText,
           uploadedFile,
           conversationalMessage: pickInlineConversationalMessage(cloudUserDisplayName),
+          kind: 'source',
         })
       );
       setInlineGenerationStatus('generating');
@@ -1344,8 +1544,12 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
     try {
       if (collectionPlan) {
-        clearInlineGeneration();
-        setPhase('loading');
+        // Stay on InputScreen with composer + stop — do not swap to LoadingScreen.
+        setIsStreamGenerating(true);
+        setCollectionGenerationProgress({
+          completed: 0,
+          total: collectionPlan.parts.length,
+        });
         const collectionId = generateMapId();
         let store = createCollection(historyStoreRef.current, {
           id: collectionId,
@@ -1354,65 +1558,121 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         commitHistoryStore(store);
 
         const generatedIds: string[] = [];
+        const partTimeoutMs = resolveTransformFallbackTimeoutMs(
+          (body.depth as 'rapido' | 'estandar' | 'profundo' | undefined) ?? depthPreference
+        );
+        const failedParts: string[] = [];
+        const COLLECTION_PART_RETRIES = 3;
+
         for (let index = 0; index < collectionPlan.parts.length; index += 1) {
           if (transformCancelledRef.current) return;
 
           const part = collectionPlan.parts[index];
           setCollectionGenerationProgress({
-            completed: index,
+            completed: generatedIds.length,
             total: collectionPlan.parts.length,
           });
           streamProgressShared.value = Math.round(
-            (index / Math.max(collectionPlan.parts.length, 1)) * 100
+            (generatedIds.length / Math.max(collectionPlan.parts.length, 1)) * 100
           );
 
           const partMapId = generateMapId();
           const partBody = buildCollectionPartBody(body, part, partMapId);
-          const response = await fetchWithTimeout(apiUrl('/api/transform'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(headers ?? {}),
-            },
-            body: JSON.stringify(partBody),
-            signal: controller.signal,
-          });
+          let partOk = false;
+          let lastPartError: unknown = null;
 
-          if (!response.ok) {
-            const payload = (await response.json().catch(() => ({}))) as { error?: string };
-            throw new Error(payload.error || GENERIC_TRANSFORM_ERROR);
+          for (let attempt = 1; attempt <= COLLECTION_PART_RETRIES; attempt += 1) {
+            if (transformCancelledRef.current) return;
+            try {
+              const response = await fetchWithTimeout(
+                apiUrl('/api/transform'),
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...(headers ?? {}),
+                  },
+                  body: JSON.stringify(partBody),
+                  signal: controller.signal,
+                },
+                {
+                  timeoutMs: partTimeoutMs,
+                  timeoutMessage:
+                    'Este Núcleo de la colección está tardando demasiado. Se reintenta o se continúa con el resto.',
+                }
+              );
+
+              if (!response.ok) {
+                const payload = (await response.json().catch(() => ({}))) as { error?: string };
+                throw new Error(payload.error || GENERIC_TRANSFORM_ERROR);
+              }
+
+              const normalizedRaw = normalizeMapData(await response.json());
+              const normalized =
+                partBody.generationMode === 'study-doc-beta' && normalizedRaw
+                  ? applyStudyDocBetaClientShape(normalizedRaw)
+                  : normalizedRaw;
+              if (!normalized) {
+                throw new Error(GENERIC_TRANSFORM_ERROR);
+              }
+              store = createEntry(
+                store,
+                { data: normalized, currentStep: 0, isComplete: false, viewAll: false },
+                toSourceType(partBody.type),
+                partMapId,
+                collectionId
+              );
+              store = registerNucleoInCollection(store, collectionId, partMapId);
+              commitHistoryStore(store);
+
+              const createdEntry = store.entries.find((item) => item.id === partMapId);
+              if (createdEntry) {
+                syncCloudEntry(createdEntry);
+              }
+              generatedIds.push(partMapId);
+              partOk = true;
+              break;
+            } catch (partErr) {
+              if (partErr instanceof Error && partErr.name === 'AbortError' && transformCancelledRef.current) {
+                return;
+              }
+              lastPartError = partErr;
+              console.error(
+                `[collection] part ${index + 1}/${collectionPlan.parts.length} attempt ${attempt}/${COLLECTION_PART_RETRIES} failed`,
+                partErr
+              );
+              if (attempt < COLLECTION_PART_RETRIES && isTransientNetworkError(partErr)) {
+                await sleepMs(1500 * attempt);
+                continue;
+              }
+              break;
+            }
           }
 
-          const normalizedRaw = normalizeMapData(await response.json());
-          const normalized =
-            partBody.generationMode === 'study-doc-beta' && normalizedRaw
-              ? applyStudyDocBetaClientShape(normalizedRaw)
-              : normalizedRaw;
-          if (!normalized) {
-            throw new Error(GENERIC_TRANSFORM_ERROR);
+          if (!partOk) {
+            failedParts.push(part.title || `Parte ${index + 1}`);
+            console.error(
+              `[collection] part ${index + 1}/${collectionPlan.parts.length} gave up`,
+              lastPartError
+            );
+            // Continue with remaining parts — one bad chapter should not abort the book.
           }
-          store = createEntry(
-            store,
-            { data: normalized, currentStep: 0, isComplete: false, viewAll: false },
-            toSourceType(partBody.type),
-            partMapId,
-            collectionId
+        }
+
+        if (generatedIds.length === 0) {
+          throw new Error(
+            failedParts.length > 0
+              ? `No se pudo generar ningún Núcleo de la colección (${failedParts[0]}).`
+              : GENERIC_TRANSFORM_ERROR
           );
-          store = registerNucleoInCollection(store, collectionId, partMapId);
-          commitHistoryStore(store);
-
-          const createdEntry = store.entries.find((item) => item.id === partMapId);
-          if (createdEntry) {
-            syncCloudEntry(createdEntry);
-          }
-          generatedIds.push(partMapId);
         }
 
         setCollectionGenerationProgress({
-          completed: collectionPlan.parts.length,
+          completed: generatedIds.length,
           total: collectionPlan.parts.length,
         });
         streamProgressShared.value = 100;
+        setIsStreamGenerating(false);
 
         const firstId = generatedIds[0];
         store = setActiveId(store, firstId);
@@ -1431,8 +1691,16 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setPastedText(null);
         setInputText('');
         inputTextRef.current = '';
+        setCollectionGenerationProgress(null);
+        clearInlineGeneration();
+        resetStreamGenerationUi();
         setPhase('result');
         setTransformIncomplete(false);
+        if (failedParts.length > 0) {
+          setError(
+            `Se generaron ${generatedIds.length} de ${collectionPlan.parts.length} Núcleos. Fallaron: ${failedParts.slice(0, 3).join(', ')}${failedParts.length > 3 ? '…' : ''}.`
+          );
+        }
         stepHaptic();
         return;
       }
@@ -1449,10 +1717,23 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       };
 
       const saveCompletedMap = (normalized: ActionMapData) => {
-        const finalMap =
+        let finalMap =
           body.generationMode === 'study-doc-beta'
             ? applyStudyDocBetaClientShape(normalized)
-            : normalized;
+            : body.generationMode === 'visualize-html-test'
+              ? { ...normalized, generationMode: 'visualize-html-test' as const }
+              : normalized;
+        finalMap = withPersistedSourceUrl(finalMap, body);
+        if (body.generationMode === 'visualize-html-test') {
+          finalMap = {
+            ...finalMap,
+            visualizeArtifact: ensureVisualizeArtifact(finalMap.visualizeArtifact, {
+              coreIdea: finalMap.coreIdea,
+              tldr: finalMap.tldr,
+              visualization: finalMap.visualization,
+            }),
+          };
+        }
         const session = {
           data: finalMap,
           currentStep: 0,
@@ -1483,10 +1764,23 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       };
 
       const applyPartialMap = (partialMap: ActionMapData) => {
-        const displayMap =
+        let displayMap =
           body.generationMode === 'study-doc-beta'
             ? applyStudyDocBetaClientShape(partialMap)
-            : partialMap;
+            : body.generationMode === 'visualize-html-test'
+              ? { ...partialMap, generationMode: 'visualize-html-test' as const }
+              : partialMap;
+        displayMap = withPersistedSourceUrl(displayMap, body);
+        if (body.generationMode === 'visualize-html-test') {
+          displayMap = {
+            ...displayMap,
+            visualizeArtifact: ensureVisualizeArtifact(displayMap.visualizeArtifact, {
+              coreIdea: displayMap.coreIdea,
+              tldr: displayMap.tldr,
+              visualization: displayMap.visualization,
+            }),
+          };
+        }
         setData(displayMap);
         setStreamLoadPhase(resolveStreamLoadPhase(displayMap));
 
@@ -1580,6 +1874,35 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     syncCloudEntry,
   ]);
 
+  const handleComposerSubmit = useCallback(async () => {
+    const isTransformRetry =
+      inlineGenerationStatusRef.current === 'error' && inlineRetryPayloadRef.current != null;
+    const isAskRetry =
+      inlineGenerationStatusRef.current === 'error' &&
+      askRetryQuestionRef.current != null &&
+      inlineUserTurn?.kind === 'ask';
+
+    if (isAskRetry) {
+      await handleAsk();
+      return;
+    }
+    if (isTransformRetry) {
+      await handleTransform();
+      return;
+    }
+
+    const kind = classifyComposerSubmit({
+      inputText,
+      pastedText,
+      uploadedFile,
+    });
+    if (kind === 'ask') {
+      await handleAsk();
+      return;
+    }
+    await handleTransform();
+  }, [handleAsk, handleTransform, inlineUserTurn?.kind, inputText, pastedText, uploadedFile]);
+
   const handleNewMap = useCallback(() => {
     flushPendingSessionPersist();
     const currentStore = historyStoreRef.current;
@@ -1622,15 +1945,17 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       commitHistoryStore(updatedStore);
       setData(normalized);
       setIntentState(normalized.intent ?? 'understand');
-      setCurrentStep(existing.session.currentStep);
-      setIsComplete(existing.session.isComplete ?? false);
-      setViewAll(existing.session.viewAll ?? false);
+      const wasComplete = existing.session.isComplete ?? false;
+      setCurrentStep(0);
+      setIsComplete(wasComplete);
+      setViewAll(wasComplete);
       setHistoryOpen(false);
       setChatOpen(false);
       setEssentialsReview(false);
       setPhase('result');
       setError(null);
       setTransformIncomplete(false);
+      persistSessionState(0, wasComplete, wasComplete);
       stepHaptic();
       return;
     }
@@ -1655,7 +1980,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setError(null);
     setTransformIncomplete(false);
     stepHaptic();
-  }, [commitHistoryStore, flushPendingSessionPersist]);
+  }, [commitHistoryStore, flushPendingSessionPersist, persistSessionState]);
 
   const handleSignOut = useCallback(async () => {
     flushPendingSessionPersist();
@@ -1807,6 +2132,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setCollectionGenerationProgress(null);
     setData(null);
     inlineResultEntryIdRef.current = null;
+    setDevPreviewGenerationActive(true);
 
     setInlineUserTurn(
       buildInlineUserTurnSnapshot({
@@ -1815,23 +2141,25 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         pastedText: null,
         uploadedFile: null,
         conversationalMessage: pickInlineConversationalMessage(cloudUserDisplayName),
+        kind: 'source',
       })
     );
     setInlineGenerationStatus('generating');
     setIsAnalyzingSource(true);
     streamProgressShared.value = 0;
 
+    // Intentionally slow so DEV preview phases are easy to inspect (~25s total).
     scheduleDevPreview(() => {
       setIsAnalyzingSource(false);
       setIsStreamGenerating(true);
       bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[0]);
       streamProgressShared.value = STREAM_PROGRESS_MILESTONES[0];
       setStreamLoadPhase(0);
-    }, 700);
+    }, 3000);
 
     scheduleDevPreview(() => {
       bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[1]);
-    }, 1600);
+    }, 7000);
 
     scheduleDevPreview(() => {
       setData({
@@ -1840,13 +2168,13 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       });
       setStreamLoadPhase(1);
       bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[2]);
-    }, 2600);
+    }, 13000);
 
     scheduleDevPreview(() => {
       setData(DEMO_NUCLEO_DATA);
       setStreamLoadPhase(2);
       bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[3]);
-    }, 3600);
+    }, 19000);
 
     scheduleDevPreview(() => {
       setIsStreamGenerating(false);
@@ -1874,9 +2202,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
       scheduleDevPreview(() => {
         if (inlineGenerationStatusRef.current !== 'generating') return;
+        setDevPreviewGenerationActive(false);
         setInlineGenerationStatus('ready');
       }, INTRO_TRANSITION_BAR_MS);
-    }, 4600);
+    }, 25000);
   }, [
     bumpStreamProgressCap,
     clearDevPreviewTimers,
@@ -1893,53 +2222,123 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     if (!__DEV__) return;
 
     clearDevPreviewTimers();
-    clearInlineGeneration();
+    clearInlineAutoOpen();
+    clearInlineReadyTimeout();
     resetStreamGenerationUi();
     setError(null);
     setTransformIncomplete(false);
-    setPhase('loading');
+    setPhase('input');
+    setDevPreviewGenerationActive(true);
     setIsAnalyzingSource(false);
     setIsStreamGenerating(true);
-    setCollectionGenerationProgress(null);
+    setCollectionGenerationProgress({ completed: 0, total: 4 });
     streamProgressShared.value = 0;
+    setInlineUserTurn(
+      buildInlineUserTurnSnapshot({
+        inputText: 'Libro de prueba para previsualizar la generación de una colección.',
+        pastedText: null,
+        uploadedFile: null,
+        conversationalMessage: pickInlineConversationalMessage(cloudUserDisplayName),
+        kind: 'source',
+      })
+    );
+    setInlineGenerationStatus('generating');
 
     scheduleDevPreview(() => {
-      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[0]);
-      streamProgressShared.value = STREAM_PROGRESS_MILESTONES[0];
-    }, 200);
-
-    scheduleDevPreview(() => {
-      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[1]);
-      setStreamLoadPhase(0);
+      setCollectionGenerationProgress({ completed: 1, total: 4 });
+      streamProgressShared.value = 25;
     }, 1200);
 
     scheduleDevPreview(() => {
-      setStreamLoadPhase(1);
-      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[2]);
+      setCollectionGenerationProgress({ completed: 2, total: 4 });
+      streamProgressShared.value = 50;
     }, 2400);
 
     scheduleDevPreview(() => {
-      setStreamLoadPhase(2);
-      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[3]);
+      setCollectionGenerationProgress({ completed: 3, total: 4 });
+      streamProgressShared.value = 75;
     }, 3600);
 
     scheduleDevPreview(() => {
-      bumpStreamProgressCap(STREAM_PROGRESS_MILESTONES[4]);
+      setCollectionGenerationProgress({ completed: 4, total: 4 });
       streamProgressShared.value = 100;
       setIsStreamGenerating(false);
     }, 4800);
 
     scheduleDevPreview(() => {
-      setPhase('input');
+      setCollectionGenerationProgress(null);
+      setDevPreviewGenerationActive(false);
+      clearInlineGeneration();
       resetStreamGenerationUi();
-    }, 9000);
+    }, 7000);
   }, [
-    bumpStreamProgressCap,
     clearDevPreviewTimers,
+    clearInlineAutoOpen,
     clearInlineGeneration,
+    clearInlineReadyTimeout,
+    cloudUserDisplayName,
     resetStreamGenerationUi,
     scheduleDevPreview,
     streamProgressShared,
+  ]);
+
+  const previewNucleo = useCallback(() => {
+    if (!__DEV__) return;
+
+    clearDevPreviewTimers();
+    clearInlineGeneration();
+    resetStreamGenerationUi();
+    setIsStreamGenerating(false);
+    setIsAnalyzingSource(false);
+    setCollectionGenerationProgress(null);
+    setDevPreviewGenerationActive(false);
+
+    // Always inject the live demo fixture so ResultScreen shows current presentation.
+    const normalized = normalizeMapData(DEMO_NUCLEO_DATA) ?? DEMO_NUCLEO_DATA;
+    flushPendingSessionPersist();
+    const currentStore = historyStoreRef.current;
+    const existing = currentStore.entries.find((entry) => entry.id === DEMO_NUCLEO_ID);
+    const demoSession = {
+      data: normalized,
+      currentStep: 0,
+      isComplete: false,
+      viewAll: false,
+    };
+
+    if (existing) {
+      const updatedEntries = currentStore.entries.map((entry) =>
+        entry.id === DEMO_NUCLEO_ID
+          ? {
+              ...entry,
+              title: normalized.title,
+              session: demoSession,
+              updatedAt: Date.now(),
+            }
+          : entry
+      );
+      commitHistoryStore(setActiveId({ ...currentStore, entries: updatedEntries }, DEMO_NUCLEO_ID));
+    } else {
+      commitHistoryStore(createEntry(currentStore, demoSession, 'text', DEMO_NUCLEO_ID));
+    }
+
+    setData(normalized);
+    setIntentState(normalized.intent ?? 'understand');
+    setCurrentStep(0);
+    setIsComplete(false);
+    setViewAll(false);
+    setHistoryOpen(false);
+    setChatOpen(false);
+    setEssentialsReview(false);
+    setError(null);
+    setTransformIncomplete(false);
+    setPhase('result');
+    stepHaptic();
+  }, [
+    clearDevPreviewTimers,
+    clearInlineGeneration,
+    commitHistoryStore,
+    flushPendingSessionPersist,
+    resetStreamGenerationUi,
   ]);
 
   const handleSelectHistory = useCallback(
@@ -1956,11 +2355,13 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       commitHistoryStore(updatedStore);
 
       setData(normalized);
-      intentUserOverrideRef.current = false;
       setIntentState(normalized.intent ?? 'understand');
-      setCurrentStep(entry.session.currentStep);
-      setIsComplete(entry.session.isComplete ?? false);
-      setViewAll(entry.session.viewAll ?? false);
+      // Sidebar opens always land on the first reading page (Idea central), not the
+      // last saved step. Continue-chip resume keeps mid-progress separately.
+      const wasComplete = entry.session.isComplete ?? false;
+      setCurrentStep(0);
+      setIsComplete(wasComplete);
+      setViewAll(wasComplete);
       setHistoryOpen(false);
       setChatOpen(false);
       setEssentialsReview(false);
@@ -1973,9 +2374,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setPhase('result');
       setError(null);
       setTransformIncomplete(false);
+      persistSessionState(0, wasComplete, wasComplete);
       stepHaptic();
     },
-    [commitHistoryStore, flushPendingSessionPersist]
+    [commitHistoryStore, flushPendingSessionPersist, persistSessionState]
   );
 
   const beginContinueTransition = useCallback(
@@ -1992,7 +2394,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       commitHistoryStore(updatedStore);
 
       setData(normalized);
-      intentUserOverrideRef.current = false;
       setIntentState(normalized.intent ?? 'understand');
       setCurrentStep(entry.session.currentStep);
       setIsComplete(entry.session.isComplete ?? false);
@@ -2474,7 +2875,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       continueEntry: visibleContinueEntry,
       dismissContinueChip,
       progressLabel,
-      sectionCompleteCue,
       stepProgress,
       goToStep,
       syncReadingStep,
@@ -2485,6 +2885,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       handlePickFile,
       removeUploadedFile,
       handleTransform,
+      handleComposerSubmit,
       handleOpenDemoNucleo,
       ...(__DEV__
         ? {
@@ -2492,7 +2893,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
             devHideHistory,
             devRestoreHistory,
             previewInlineGeneration,
+            devPreviewGenerationActive,
             previewLoadingScreen,
+            previewNucleo,
           }
         : {}),
       handleNewMap,
@@ -2536,6 +2939,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       handleDeleteAccount,
       inlineGenerationStatus,
       inlineUserTurn,
+      inlineAskAnswer,
       cancelInlineAutoOpen,
       registerInlineAutoOpenCancel,
       openInlineResult,
@@ -2584,7 +2988,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       visibleContinueEntry,
       dismissContinueChip,
       progressLabel,
-      sectionCompleteCue,
       stepProgress,
       goToStep,
       syncReadingStep,
@@ -2595,12 +2998,15 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       handlePickFile,
       removeUploadedFile,
       handleTransform,
+      handleComposerSubmit,
       handleOpenDemoNucleo,
       devHistoryHidden,
       devHideHistory,
       devRestoreHistory,
       previewInlineGeneration,
+      devPreviewGenerationActive,
       previewLoadingScreen,
+      previewNucleo,
       handleNewMap,
       handleSelectHistory,
       beginContinueTransition,
@@ -2641,6 +3047,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       handleDeleteAccount,
       inlineGenerationStatus,
       inlineUserTurn,
+      inlineAskAnswer,
       cancelInlineAutoOpen,
       registerInlineAutoOpenCancel,
       openInlineResult,

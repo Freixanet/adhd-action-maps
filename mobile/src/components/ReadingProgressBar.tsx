@@ -10,16 +10,15 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { Layers, List } from 'lucide-react-native';
+import { MenuTwoLines } from '../icons';
 import FloatingGlassButton from './FloatingGlassButton';
-import MenuTwoLines from './MenuTwoLines';
-import { SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
+import { SIDEBAR_EDGE_INSET, SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
 import { useTheme } from '../context/ThemeContext';
 import { debugTransitionLog } from '../logic/debugTransitionLog';
 
 /** Fallback for nav row height before onLayout (py-2.5 + 36px button). */
 export const READING_PROGRESS_BAR_HEIGHT = 60;
-export const READING_PROGRESS_LINE_HEIGHT = 8;
+export const READING_PROGRESS_LINE_HEIGHT = 3;
 
 export function readingProgressBarTotalHeight(hideProgressLine?: boolean): number {
   return READING_PROGRESS_BAR_HEIGHT + (hideProgressLine ? 0 : READING_PROGRESS_LINE_HEIGHT);
@@ -37,11 +36,9 @@ function clampRatio(value: number): number {
 
 type ReadingProgressBarProps = {
   viewAll: boolean;
-  isComplete: boolean;
   stepProgress: number;
   progressLabel: string;
   onToggleSidebar: () => void;
-  onToggleViewMode?: () => void;
   /** UI-thread scroll ratio for fluid view-all progress (0–1). */
   scrollProgressShared?: SharedValue<number>;
   headerVisibleShared?: SharedValue<boolean>;
@@ -53,11 +50,9 @@ type ReadingProgressBarProps = {
 
 export default function ReadingProgressBar({
   viewAll,
-  isComplete,
   stepProgress,
   progressLabel,
   onToggleSidebar,
-  onToggleViewMode,
   scrollProgressShared,
   headerVisibleShared,
   hideProgressLine,
@@ -178,11 +173,6 @@ export default function ReadingProgressBar({
     };
   });
 
-  const viewModeIconColor = viewAll ? (isDark ? '#a5b4fc' : '#8B8FF5') : isDark ? '#a3a3a3' : '#737373';
-  const viewModeLabelClass = viewAll
-    ? 'text-accent'
-    : 'text-body';
-
   return (
     <Animated.View
       style={{ height: clipHeight, overflow: 'hidden' }}
@@ -212,55 +202,43 @@ export default function ReadingProgressBar({
           style={[{ height: navH }, navAnimatedStyle]}
           className="bg-base"
         >
-          <View className="flex-row items-center justify-between gap-3 px-3 py-2.5">
-            <View className="min-w-0 flex-1 flex-row items-center gap-4">
-              <FloatingGlassButton
-                onPress={onToggleSidebar}
-                accessibilityLabel="Abrir navegación"
-                shape="circle"
-                size={SIDEBAR_HEADER_BUTTON_SIZE}
+          <View
+            className="flex-row items-center gap-3 py-2.5"
+            style={{ paddingHorizontal: SIDEBAR_EDGE_INSET }}
+          >
+            <FloatingGlassButton
+              onPress={onToggleSidebar}
+              accessibilityLabel="Abrir navegación"
+              shape="circle"
+              size={SIDEBAR_HEADER_BUTTON_SIZE}
+            >
+              <MenuTwoLines size={17} color={navIconColor} />
+            </FloatingGlassButton>
+            <View className="min-w-0 flex-1">
+              <Text
+                className="text-sm font-bold text-primary"
+                numberOfLines={1}
               >
-                <MenuTwoLines size={17} color={navIconColor} />
-              </FloatingGlassButton>
-              <View className="min-w-0 flex-1">
-                <Text
-                  className="text-sm font-bold text-primary"
-                  numberOfLines={1}
-                >
-                  {progressLabel}
+                {progressLabel}
+              </Text>
+              {remainingLabel ? (
+                <Text className="text-[13px] text-secondary" numberOfLines={1}>
+                  {remainingLabel}
                 </Text>
-                {remainingLabel ? (
-                  <Text className="text-[13px] text-secondary" numberOfLines={1}>
-                    {remainingLabel}
-                  </Text>
-                ) : null}
-              </View>
+              ) : null}
             </View>
-            {!isComplete && onToggleViewMode ? (
-              <FloatingGlassButton
-                onPress={onToggleViewMode}
-                accessibilityLabel={viewAll ? 'Cambiar a paso a paso' : 'Cambiar a vista completa'}
-                shape="rounded"
-              >
-                {viewAll ? <List size={14} color={viewModeIconColor} /> : <Layers size={14} color={viewModeIconColor} />}
-                <Text className={`text-[11px] font-semibold ${viewModeLabelClass}`}>
-                  {viewAll ? 'Paso a paso' : 'Vista completa'}
-                </Text>
-              </FloatingGlassButton>
-            ) : null}
           </View>
         </Animated.View>
 
         {!hideProgressLine ? (
-          <View style={{ height: lineH }}>
-            <View className="h-full bg-neutral-200 bg-surface-2 overflow-hidden">
+          <View style={{ height: lineH }} className="bg-base overflow-hidden">
+            <View className="h-full bg-neutral-200/70 dark:bg-white/[0.06] overflow-hidden">
               <Animated.View
                 style={barStyle}
-                className="h-full bg-accent dark:bg-accent/100 rounded-r-full"
+                className="h-full bg-accent"
                 accessibilityRole="progressbar"
               />
             </View>
-            <View className="absolute left-0 right-0 bottom-0 h-[1px] bg-neutral-200 dark:bg-white/10" />
           </View>
         ) : null}
       </Animated.View>

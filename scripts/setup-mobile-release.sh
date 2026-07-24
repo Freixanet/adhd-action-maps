@@ -74,13 +74,15 @@ configure_supabase_redirects() {
     echo "  exp://**"
     echo "  http://localhost:3000/**"
     echo "  http://127.0.0.1:3000/**"
+    echo "  http://localhost:8082/**"
+    echo "  http://127.0.0.1:8082/**"
     return 1
   fi
 
   local project_ref="oxvfiyuljzchdjotyshl"
   local allow_list
   allow_list="$(cat <<'URLS'
-nucleo://login-callback,nucleo://**,com.freixanet.nucleo://login-callback,com.nucleo.app://login-callback,exp://**,http://localhost:3000/**,http://127.0.0.1:3000/**
+nucleo://login-callback,nucleo://**,com.freixanet.nucleo://login-callback,com.nucleo.app://login-callback,exp://**,http://localhost:3000/**,http://127.0.0.1:3000/**,http://localhost:8082/**,http://127.0.0.1:8082/**
 URLS
 )"
 

@@ -11,7 +11,10 @@ export type InlineAttachmentSnapshot = {
   previewUri?: string;
 };
 
+export type InlineUserTurnKind = 'ask' | 'source';
+
 export type InlineUserTurnSnapshot = {
+  kind: InlineUserTurnKind;
   conversationalMessage: string;
   text: string | null;
   pastedText: string | null;
@@ -65,8 +68,9 @@ export function buildInlineUserTurnSnapshot(params: {
   pastedText: string | null;
   uploadedFile: UploadedFile | null;
   conversationalMessage: string;
+  kind?: InlineUserTurnKind;
 }): InlineUserTurnSnapshot {
-  const { inputText, pastedText, uploadedFile, conversationalMessage } = params;
+  const { inputText, pastedText, uploadedFile, conversationalMessage, kind = 'source' } = params;
   const bodyText = pastedText?.trim() ?? inputText.trim();
 
   let urlDetection: ReturnType<typeof detectUrlInput> | null = null;
@@ -75,6 +79,7 @@ export function buildInlineUserTurnSnapshot(params: {
   }
 
   return {
+    kind,
     conversationalMessage,
     text: inputText.trim() || null,
     pastedText,

@@ -1,18 +1,20 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { Alert, Dimensions, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { FileText, LogIn, LogOut, Trash2 } from 'lucide-react-native';
+import { ChevronRight, FileText, LogIn, LogOut, Settings, Trash2 } from '../icons';
 import ProfileAvatar from './ProfileAvatar';
 import GlassSurface from './GlassSurface';
 import { FloatingGlassShell, FLOATING_CIRCLE_SIZE } from './FloatingGlassButton';
 import { useAppSession, stepHaptic } from '../context/AppSessionContext';
 import { privacyPolicyUrl, termsOfUseUrl } from '../logic/legalUrls';
-import { TEXT_BODY, TEXT_PRIMARY } from '@shared/uiTokens';
+import { SEM_ALERTA, TEXT_BODY, TEXT_PRIMARY } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
 
 type ProfileMenuProps = {
   placement?: 'topRight' | 'bottomLeft';
   floating?: boolean;
 };
+
+type MenuPanel = 'root' | 'settings';
 
 const MENU_WIDTH = 196;
 const MENU_GAP = 10;
@@ -25,15 +27,48 @@ type MenuAnchor = {
   height: number;
 };
 
+function MenuRow({
+  label,
+  icon,
+  onPress,
+  accessibilityLabel,
+  destructive = false,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  destructive?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="menuitem"
+      accessibilityLabel={accessibilityLabel ?? label}
+      className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+    >
+      {icon}
+      <Text
+        className={`flex-1 text-base font-semibold ${destructive ? '' : 'text-body'}`}
+        style={destructive ? { color: SEM_ALERTA } : undefined}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function ProfileMenu({ placement = 'topRight', floating = false }: ProfileMenuProps) {
   const session = useAppSession();
   const { isDark } = useTheme();
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState<MenuPanel>('root');
   const [anchor, setAnchor] = useState<MenuAnchor | null>(null);
 
   const closeMenu = useCallback(() => {
     setOpen(false);
+    setPanel('root');
   }, []);
 
   const updateAnchor = useCallback(() => {
@@ -45,19 +80,23 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
   React.useEffect(() => {
     if (!open) {
       setAnchor(null);
+      setPanel('root');
       return;
     }
     updateAnchor();
   }, [open, updateAnchor]);
 
-  const openLegalUrl = useCallback(async (url: string, label: string) => {
-    closeMenu();
-    try {
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert('No se pudo abrir', `No se pudo abrir ${label}.`);
-    }
-  }, [closeMenu]);
+  const openLegalUrl = useCallback(
+    async (url: string, label: string) => {
+      closeMenu();
+      try {
+        await Linking.openURL(url);
+      } catch {
+        Alert.alert('No se pudo abrir', `No se pudo abrir ${label}.`);
+      }
+    },
+    [closeMenu]
+  );
 
   const confirmDeleteAccount = useCallback(() => {
     closeMenu();
@@ -67,14 +106,27 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Eliminar',
+          text: 'Continuar',
           style: 'destructive',
           onPress: () => {
-            void session.handleDeleteAccount().catch((err: unknown) => {
-              const message =
-                err instanceof Error ? err.message : 'No se pudo eliminar la cuenta.';
-              Alert.alert('Error', message);
-            });
+            Alert.alert(
+              '¿Eliminar de verdad?',
+              'Si fue un error, cancela ahora. Si confirmas, la cuenta se elimina de forma permanente.',
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                  text: 'Eliminar cuenta',
+                  style: 'destructive',
+                  onPress: () => {
+                    void session.handleDeleteAccount().catch((err: unknown) => {
+                      const message =
+                        err instanceof Error ? err.message : 'No se pudo eliminar la cuenta.';
+                      Alert.alert('Error', message);
+                    });
+                  },
+                },
+              ]
+            );
           },
         },
       ]
@@ -144,76 +196,76 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
             >
               <GlassSurface liquid borderRadius={16} className="rounded-card shadow-xl">
                 <View className="py-2 px-2">
-                  {session.cloudSignedIn ? (
-                    <Pressable
-                      onPress={() => {
-                        closeMenu();
-                        void session.handleSignOut();
-                        stepHaptic();
-                      }}
-                      accessibilityRole="menuitem"
-                      accessibilityLabel="Cerrar sesión"
-                      className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
-                    >
-                      <LogOut size={20} color={menuIconColor} strokeWidth={iconStroke} />
-                      <Text className="text-base font-semibold text-body">Cerrar sesión</Text>
-                    </Pressable>
-                  ) : session.isCloudSyncConfigured ? (
-                    <Pressable
-                      onPress={() => {
-                        closeMenu();
-                        session.openAuthSheet();
-                        stepHaptic();
-                      }}
-                      accessibilityRole="menuitem"
-                      accessibilityLabel="Iniciar sesión"
-                      className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
-                    >
-                      <LogIn size={20} color={menuIconColor} strokeWidth={iconStroke} />
-                      <Text className="text-base font-semibold text-body">Iniciar sesión</Text>
-                    </Pressable>
-                  ) : null}
+                  {panel === 'root' ? (
+                    <>
+                      <Pressable
+                        onPress={() => {
+                          setPanel('settings');
+                          stepHaptic();
+                        }}
+                        accessibilityRole="menuitem"
+                        accessibilityLabel="Ajustes"
+                        className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+                      >
+                        <Settings size={20} color={menuIconColor} strokeWidth={iconStroke} />
+                        <Text className="flex-1 text-base font-semibold text-body">Ajustes</Text>
+                        <ChevronRight size={16} color={menuIconColor} strokeWidth={iconStroke} />
+                      </Pressable>
 
-                  <Pressable
-                    onPress={() => {
-                      void openLegalUrl(privacyPolicyUrl(), 'Privacidad');
-                      stepHaptic();
-                    }}
-                    accessibilityRole="menuitem"
-                    accessibilityLabel="Privacidad"
-                    className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
-                  >
-                    <FileText size={20} color={menuIconColor} strokeWidth={iconStroke} />
-                    <Text className="text-base font-semibold text-body">Privacidad</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => {
-                      void openLegalUrl(termsOfUseUrl(), 'Términos');
-                      stepHaptic();
-                    }}
-                    accessibilityRole="menuitem"
-                    accessibilityLabel="Términos de uso"
-                    className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
-                  >
-                    <FileText size={20} color={menuIconColor} strokeWidth={iconStroke} />
-                    <Text className="text-base font-semibold text-body">Términos</Text>
-                  </Pressable>
-
-                  {session.cloudSignedIn ? (
-                    <Pressable
-                      onPress={() => {
-                        confirmDeleteAccount();
-                        stepHaptic();
-                      }}
-                      accessibilityRole="menuitem"
-                      accessibilityLabel="Eliminar cuenta"
-                      className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
-                    >
-                      <Trash2 size={20} color={menuIconColor} strokeWidth={iconStroke} />
-                      <Text className="text-base font-semibold text-body">Eliminar cuenta</Text>
-                    </Pressable>
-                  ) : null}
+                      {session.cloudSignedIn ? (
+                        <MenuRow
+                          label="Cerrar sesión"
+                          icon={<LogOut size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                          onPress={() => {
+                            closeMenu();
+                            void session.handleSignOut();
+                            stepHaptic();
+                          }}
+                        />
+                      ) : session.isCloudSyncConfigured ? (
+                        <MenuRow
+                          label="Iniciar sesión"
+                          icon={<LogIn size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                          onPress={() => {
+                            closeMenu();
+                            session.openAuthSheet();
+                            stepHaptic();
+                          }}
+                        />
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <MenuRow
+                        label="Privacidad"
+                        icon={<FileText size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                        onPress={() => {
+                          void openLegalUrl(privacyPolicyUrl(), 'Privacidad');
+                          stepHaptic();
+                        }}
+                      />
+                      <MenuRow
+                        label="Términos"
+                        icon={<FileText size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                        onPress={() => {
+                          void openLegalUrl(termsOfUseUrl(), 'Términos');
+                          stepHaptic();
+                        }}
+                        accessibilityLabel="Términos de uso"
+                      />
+                      {session.cloudSignedIn ? (
+                        <MenuRow
+                          label="Eliminar cuenta"
+                          destructive
+                          icon={<Trash2 size={20} color={SEM_ALERTA} strokeWidth={iconStroke} />}
+                          onPress={() => {
+                            confirmDeleteAccount();
+                            stepHaptic();
+                          }}
+                        />
+                      ) : null}
+                    </>
+                  )}
                 </View>
               </GlassSurface>
             </View>

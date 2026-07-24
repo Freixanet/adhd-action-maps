@@ -165,7 +165,8 @@ Paso {
 
 NucleoVisualSpecV2 {
   version: 2
-  tipo: enum { concepto, flujo, ciclo, jerarquia, comparacion, timeline, barras, linea }
+  tipo: enum { concepto, flujo, ciclo, jerarquia, comparacion, barras, linea }
+  // timeline retirado hasta especificar layout; cronología → list/comparison; secuencia → flow
   titulo: string
   resumenAccesible: string
   items: {
@@ -261,9 +262,9 @@ Como el diseño actual (correcto), con cambios:
 1. Página 1: label `IDEA CENTRAL` + chip tiempo total → titular display → subtítulo → card FUENTE DETECTADA (con límites, borde izq `sem-alerta` 3px) → CTA fijo `Explorar el Núcleo`.
 2. Corregir bug del CTA cortado (safe area, ver 3.3).
 3. Los límites dentro de FUENTE DETECTADA usan icono ⓘ y `text-secondary`; el label del bloque usa `sem-alerta`.
-4. Página 2 — `En 60 segundos`: un overview visual dominante y sin tarjeta que representa la relación principal mediante concepto, flujo, ciclo, jerarquía, comparación, timeline, barras o línea. Todas las etiquetas esenciales son directas; el tap selecciona un elemento y actualiza un único detalle compacto. Si existe `pasoId`, ofrece `Abrir paso`. Los Núcleos guardados sin visualización derivan un mapa conceptual honesto desde la idea central y `en60segundos`.
+4. Página 2 — `En 60 segundos`: un overview visual dominante y sin tarjeta que representa la relación principal mediante concepto, flujo, ciclo, jerarquía, comparación, barras o línea. Todas las etiquetas esenciales son directas; el tap selecciona un elemento y actualiza un único detalle compacto. Si existe `pasoId`, ofrece `Abrir paso`. Los Núcleos guardados sin visualización derivan un mapa conceptual honesto desde la idea central y `en60segundos`. Cronología no usa kind timeline (retirado): preferir bloques `list`/`comparison` o visual `flow`.
 5. Los pasos pueden incluir un visual opcional solo cuando mejora materialmente la comprensión. Barras y líneas exigen valores finitos y unidades reales de la fuente; si faltan, se usa un diagrama conceptual o no se genera visual.
-6. La lectura usa altura adaptativa: pantalla fija cuando el contenido cabe y scroll corto cuando existe overflow o texto ampliado. El header se oculta por scroll, nunca por tocar el contenido. Scroll vertical y swipe horizontal son gestos simultáneos; el vertical gana al cruzar primero su umbral y el cambio de paso requiere una trayectoria horizontal clara.
+6. La lectura usa altura adaptativa: pantalla fija cuando el contenido cabe y scroll corto cuando existe overflow o texto ampliado. En modo paso, un tap en el contenido alterna header y footer juntos; el scroll también puede ocultarlos. Scroll vertical y swipe horizontal son gestos simultáneos; el vertical gana al cruzar primero su umbral y el cambio de paso requiere una trayectoria horizontal clara.
 
 
 
@@ -473,7 +474,7 @@ Aceptación:
 
 ### FASE 7 — Monetización (6.5 + 5.8)
 
-Alcance: integrar RevenueCat, entitlement `pro`, contador 3/día con **reset a las 04:00 hora local** — **verificado en servidor**: `/api/transform` y `/api/maps/:id/chat` exigen JWT de Supabase; el contador vive en Postgres por userId (el cliente solo lo refleja); los 3 triggers del paywall (4º Núcleo / Profundo / Preguntar), pantalla paywall completa con productos reales (referencia 6,99 €/mes y 59,99 €/año; IDs en App Store Connect; importes leídos de RevenueCat) y restaurar compra, retirada de marca de agua del PDF con entitlement. **Control de coste:** cadena de modelos free = `gemini-3-flash-preview` → `gemini-3.1-flash-lite`; la cadena premium actual (3.5-flash / 3-pro-preview) pasa a ser exclusiva Pro; `maxOutputTokens` de profundo baja de 32768 a 16384; fair use Pro server-side: 30 Núcleos/día y 20 preguntas de chat/día; chat con `maxOutputTokens: 2048`; registrar tokens de entrada/salida reales por petición en tabla `usage`.
+Alcance: integrar RevenueCat, entitlement `pro`, contador 3/día con **reset a las 04:00 hora local** — **verificado en servidor**: `/api/transform` y `/api/maps/:id/chat` exigen JWT de Supabase; el contador vive en Postgres por userId (el cliente solo lo refleja); los 3 triggers del paywall (4º Núcleo / Profundo / Preguntar), pantalla paywall completa con productos reales (referencia 6,99 €/mes y 59,99 €/año; IDs en App Store Connect; importes leídos de RevenueCat) y restaurar compra, retirada de marca de agua del PDF con entitlement. **Control de coste:** cadena free = `gemini-3.6-flash` → `gemini-3.5-flash-lite`; `gemini-3.5-flash` / Pro exclusivos Pro; `maxOutputTokens` de profundo baja de 32768 a 16384; fair use Pro server-side: 30 Núcleos/día y 20 preguntas de chat/día; chat con `maxOutputTokens: 2048`; registrar tokens de entrada/salida reales por petición en tabla `usage`.
 Aceptación:
 (1) 4º Núcleo del día abre paywall en cuenta free y el contador se reinicia a las 04:00 local, no a medianoche;
 (2) compra sandbox desbloquea Profundo y Preguntar al instante y quita la marca del PDF;

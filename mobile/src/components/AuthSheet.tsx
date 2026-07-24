@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LogOut, X } from 'lucide-react-native';
+import { LogOut, X } from '../icons';
 import { signInWithPassword,
   signInWithProvider,
   signUpWithPassword,
@@ -135,6 +135,8 @@ export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProp
             className="flex-1"
             contentContainerClassName="px-5 py-6"
             keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
           >
             {isSignedIn ? (
               <View>

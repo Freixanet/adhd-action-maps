@@ -263,8 +263,15 @@ export function extractSelfCheck(step: unknown): string | null {
   return text || null;
 }
 
-export function resolveLlmTimeoutMs(depth?: MapDepth): number {
-  return depth === 'profundo' ? 120_000 : 60_000;
+export function resolveLlmTimeoutMs(
+  depth?: MapDepth,
+  generationMode?: string
+): number {
+  // Visualize-compiler and deep maps routinely exceed 60s on Gemini.
+  if (generationMode === 'visualize-html-test') {
+    return depth === 'profundo' ? 300_000 : 240_000;
+  }
+  return depth === 'profundo' ? 240_000 : 120_000;
 }
 
 export function unwrapSourceText(contents: string): string {

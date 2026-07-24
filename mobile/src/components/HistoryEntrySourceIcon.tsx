@@ -8,15 +8,15 @@ import {
   CirclePlay,
   Upload,
   Video,
-  type LucideIcon,
-} from 'lucide-react-native';
+  type AppIconComponent,
+} from '../icons';
 import { getEntrySourceLabel } from '@shared/categories';
 import type { SourceType } from '@shared/contracts';
 import type { HistoryEntry } from '../logic/history';
 
 type SourceVisual = SourceType | 'image' | 'video';
 
-const SOURCE_ICONS: Record<SourceVisual, LucideIcon> = {
+const SOURCE_ICONS: Record<SourceVisual, AppIconComponent> = {
   text: FileText,
   link: Link2,
   youtube: CirclePlay,
