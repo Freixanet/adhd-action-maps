@@ -3,6 +3,8 @@ import { detectUrlInput } from './urlInput';
 
 export type ComposerSubmitKind = 'source' | 'ask';
 
+const DEV = false;
+
 /**
  * Source: file, URL/YouTube, long-paste chip, or invalid URL attempt (transform shows the error).
  * Ask: short free-form text / question without a source attachment.
@@ -23,5 +25,5 @@ export function classifyComposerSubmit(params: {
   if (urlDetection.kind === 'youtube' || urlDetection.kind === 'link' || urlDetection.kind === 'invalid') {
     return 'source';
   }
-  return 'ask';
+  return DEV ? 'ask' : 'source';
 }

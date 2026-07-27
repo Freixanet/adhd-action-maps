@@ -119,6 +119,8 @@ export type PickFileAttachmentResult =
   | UploadedFile
   | { file: UploadedFile; textContent: string };
 
+const DEV = false;
+
 const FILE_PICKER_TYPES = [
   'application/pdf',
   'video/mp4',
@@ -126,7 +128,7 @@ const FILE_PICKER_TYPES = [
   'video/webm',
   'text/plain',
   'text/markdown',
-  'text/csv',
+  ...(DEV ? ['text/csv' as const] : []),
   'application/json',
   'text/html',
   'text/xml',

@@ -19,15 +19,17 @@ type AttachMenuProps = {
   darkSurface?: boolean;
 };
 
+const DEV = false;
+
 // Icon-less rows, exactly like DepthMenu — keeps both composer menus with the
 // identical native look and material.
 const ATTACH_ACTIONS: MenuAction[] = [
-  { id: 'camera', title: 'Cámara' },
   { id: 'gallery', title: 'Galería' },
   { id: 'file', title: 'Archivo' },
 ];
 
 const DEV_ATTACH_ACTIONS: MenuAction[] = [
+  { id: 'camera', title: 'Cámara' },
   { id: 'preview-generation', title: 'Preview generación' },
   { id: 'preview-loading', title: 'Preview colección' },
   { id: 'preview-nucleo', title: 'Preview Núcleo' },
@@ -51,7 +53,7 @@ export default function AttachMenu({
   const onComposer = darkSurface || isDark;
   const iconMuted = onComposer ? '#d4d4d4' : isDark ? '#a3a3a3' : '#737373';
 
-  const actions = __DEV__ ? [...ATTACH_ACTIONS, ...DEV_ATTACH_ACTIONS] : ATTACH_ACTIONS;
+  const actions = DEV ? [...ATTACH_ACTIONS, ...DEV_ATTACH_ACTIONS] : ATTACH_ACTIONS;
 
   const handlePress = ({ nativeEvent }: NativeActionEvent) => {
     switch (nativeEvent.event) {

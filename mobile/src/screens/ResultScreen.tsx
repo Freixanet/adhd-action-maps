@@ -476,6 +476,7 @@ export default function ResultScreen({
 
   if (!data) return null;
 
+  const DEV = false;
   const isIntroStep = !session.isComplete && !session.viewAll && session.currentStep === 0;
   const isStudyDocBeta = data.generationMode === 'study-doc-beta';
   const isVisualizeHtmlTest = data.generationMode === 'visualize-html-test';
@@ -526,7 +527,7 @@ export default function ResultScreen({
         <Text className="text-xs font-bold uppercase tracking-[0.16em] text-secondary text-body shrink">
           {data.title}
         </Text>
-        {isStudyDocBeta ? (
+        {DEV && isStudyDocBeta ? (
           <View className="rounded-full bg-accent/12 px-2 py-0.5">
             <Text className="text-[10px] font-bold uppercase tracking-[0.12em] text-accent">
               StudyDoc beta
@@ -671,9 +672,11 @@ export default function ResultScreen({
               onPress={() => session.setEssentialsReview(true)}
             />
           </View>
-          <View style={styles.completionActionSlot}>
-            <CompletionGlassButton label="Preguntar" onPress={openAsk} />
-          </View>
+          {DEV ? (
+            <View style={styles.completionActionSlot}>
+              <CompletionGlassButton label="Preguntar" onPress={openAsk} />
+            </View>
+          ) : null}
         </View>
         <View style={styles.completionActionFullWidthSlot}>
           <CompletionGlassButton

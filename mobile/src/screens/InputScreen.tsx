@@ -50,7 +50,8 @@ import {
 import { BG_BASE, BG_SURFACE } from '@shared/uiTokens';
 import { agentLog } from '../logic/agentDebugLog';
 
-const STATIC_PLACEHOLDER = 'Pregunta algo, o pega un texto, enlace o archivo';
+const DEV = false;
+const STATIC_PLACEHOLDER = 'Pega caos, recibe un Núcleo';
 const HERO_FADE_MS = 150;
 
 function dismissKeyboard() {
@@ -107,10 +108,11 @@ export default function InputScreen() {
     !session.uploadedFile &&
     !session.pastedText;
 
-  const inputPlaceholder =
-    session.uploadedFile || session.hasAnyNucleo || examplesFinished
+  const inputPlaceholder = DEV
+    ? session.uploadedFile || session.hasAnyNucleo || examplesFinished
       ? session.composerPlaceholder
-      : FIRST_USE_EXAMPLES[exampleIndex] ?? STATIC_PLACEHOLDER;
+      : FIRST_USE_EXAMPLES[exampleIndex] ?? STATIC_PLACEHOLDER
+    : STATIC_PLACEHOLDER;
 
   useEffect(() => {
     heroOpacity.value = withTiming(inlineActive ? 0 : 1, { duration: HERO_FADE_MS });
@@ -137,7 +139,7 @@ export default function InputScreen() {
   }, []);
 
   useEffect(() => {
-    if (!isFirstUse || examplesFinished || composerFocused || session.inputText.trim()) return;
+    if (!DEV || !isFirstUse || examplesFinished || composerFocused || session.inputText.trim()) return;
     const timer = setInterval(() => {
       setExampleIndex((current) => {
         if (current >= FIRST_USE_EXAMPLES.length - 1) {
@@ -520,12 +522,14 @@ export default function InputScreen() {
                           disabled={session.phase === 'loading' || composerDisabled}
                           darkSurface={isDark}
                         />
-                        <ModelChip
-                          value={session.depthPreference}
-                          onChange={session.setDepthPreference}
-                          onOpenPaywall={session.openPaywall}
-                          disabled={session.phase === 'loading' || composerDisabled}
-                        />
+                        {DEV ? (
+                          <ModelChip
+                            value={session.depthPreference}
+                            onChange={session.setDepthPreference}
+                            onOpenPaywall={session.openPaywall}
+                            disabled={session.phase === 'loading' || composerDisabled}
+                          />
+                        ) : null}
                       </View>
                       <ComposerSendButton
                         mode={isGenerating ? 'stop' : 'send'}

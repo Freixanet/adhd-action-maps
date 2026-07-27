@@ -1546,6 +1546,24 @@ function sanitizeUserDisplayName(input: unknown): string | undefined {
   return normalized.slice(0, 48);
 }
 
+function isCsvTransformRequest(body: TransformRequest | undefined): boolean {
+  const candidate = body as
+    | (TransformRequest & { type?: unknown; fileName?: unknown; filename?: unknown })
+    | undefined;
+  const mimeType =
+    typeof candidate?.mimeType === "string"
+      ? candidate.mimeType.split(";", 1)[0]?.trim().toLowerCase()
+      : "";
+  const labels = [candidate?.sourceLabel, candidate?.fileName, candidate?.filename];
+
+  return (
+    candidate?.type === "csv" ||
+    mimeType === "text/csv" ||
+    mimeType === "application/csv" ||
+    labels.some((label) => typeof label === "string" && /\.csv(?:$|[?#])/i.test(label.trim()))
+  );
+}
+
 async function buildTransformContext(
   body: TransformRequest,
   options?: { isPro?: boolean }
@@ -3520,9 +3538,12 @@ async function startServer() {
 
   app.post("/api/transform/analyze", async (req: AuthenticatedRequest, res) => {
     try {
+      const body = req.body as TransformRequest;
+      if (isCsvTransformRequest(body)) {
+        return res.status(410).json({ error: "CSV no soportado en beta" });
+      }
       if (!(await requireLlmAccess(req, res))) return;
       // Analyze is a preflight; it does not consume the daily transform quota.
-      const body = req.body as TransformRequest;
 
       console.log("[analyze] request", {
         type: body.type,
@@ -3602,6 +3623,10 @@ async function startServer() {
 
   app.post("/api/transform", async (req: AuthenticatedRequest, res) => {
     try {
+      const body = req.body as TransformRequest;
+      if (isCsvTransformRequest(body)) {
+        return res.status(410).json({ error: "CSV no soportado en beta" });
+      }
       const ip = req.ip || req.socket.remoteAddress || "unknown";
       const mapId = typeof (req.body as TransformRequest)?.mapId === "string"
         ? (req.body as TransformRequest).mapId
@@ -3610,7 +3635,6 @@ async function startServer() {
         return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
       }
       if (!(await requireLlmAccess(req, res))) return;
-      const body = req.body as TransformRequest;
       if (!enforceProEntitlements(req, res, body)) return;
       if (!enforceUsageQuota(req, res, "transform")) return;
 
@@ -3670,6 +3694,10 @@ async function startServer() {
 
   app.post("/api/transform/stream", async (req: AuthenticatedRequest, res) => {
     try {
+      const body = req.body as TransformRequest;
+      if (isCsvTransformRequest(body)) {
+        return res.status(410).json({ error: "CSV no soportado en beta" });
+      }
       const ip = req.ip || req.socket.remoteAddress || "unknown";
       const mapId = typeof (req.body as TransformRequest)?.mapId === "string"
         ? (req.body as TransformRequest).mapId
@@ -3678,7 +3706,6 @@ async function startServer() {
         return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
       }
       if (!(await requireLlmAccess(req, res))) return;
-      const body = req.body as TransformRequest;
       if (!enforceProEntitlements(req, res, body)) return;
       if (!enforceUsageQuota(req, res, "transform")) return;
 
