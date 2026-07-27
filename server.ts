@@ -67,6 +67,10 @@ import {
   type AuthenticatedRequest,
 } from "./server/llmAccess";
 import { fetchUrlContent } from "./server/remoteContent";
+import {
+  assertSecureFetchTarget,
+  SecureFetchError,
+} from "./server/src/lib/secureFetcher";
 import { PRIVACY_HTML, TERMS_HTML } from "./server/legalPages";
 
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES ?? 15 * 1024 * 1024);
@@ -1548,8 +1552,9 @@ function sanitizeUserDisplayName(input: unknown): string | undefined {
 
 function isCsvTransformRequest(body: TransformRequest | undefined): boolean {
   const candidate = body as
-    | (TransformRequest & { type?: unknown; fileName?: unknown; filename?: unknown })
+    | (TransformRequest & { fileName?: unknown; filename?: unknown })
     | undefined;
+  const rawType = (body as { type?: unknown } | undefined)?.type;
   const mimeType =
     typeof candidate?.mimeType === "string"
       ? candidate.mimeType.split(";", 1)[0]?.trim().toLowerCase()
@@ -1557,7 +1562,7 @@ function isCsvTransformRequest(body: TransformRequest | undefined): boolean {
   const labels = [candidate?.sourceLabel, candidate?.fileName, candidate?.filename];
 
   return (
-    candidate?.type === "csv" ||
+    rawType === "csv" ||
     mimeType === "text/csv" ||
     mimeType === "application/csv" ||
     labels.some((label) => typeof label === "string" && /\.csv(?:$|[?#])/i.test(label.trim()))
@@ -3266,6 +3271,36 @@ function describeGeminiError(err: any): { statusCode: number; errorMessage: stri
   };
 }
 
+function describeSecureFetchError(
+  err: unknown
+): { statusCode: number; errorMessage: string } | null {
+  if (!(err instanceof SecureFetchError)) return null;
+  return {
+    statusCode: err.httpStatus,
+    errorMessage: err.httpStatus === 403 ? "SSRF_BLOCKED" : "No se pudo extraer la URL pública.",
+  };
+}
+
+function describeBlockedTransformUrl(
+  body: TransformRequest
+): { statusCode: number; errorMessage: string } | null {
+  if (body.type !== "link") return null;
+  const rawUrl =
+    typeof body.text === "string"
+      ? body.text
+      : typeof (body as TransformRequest & { url?: unknown }).url === "string"
+        ? (body as TransformRequest & { url: string }).url
+        : null;
+  if (!rawUrl) return null;
+
+  try {
+    assertSecureFetchTarget(rawUrl);
+    return null;
+  } catch (error) {
+    return describeSecureFetchError(error);
+  }
+}
+
 function buildCheatsheetModel(map: ActionMapData) {
   return {
     title: map.title,
@@ -3542,6 +3577,10 @@ async function startServer() {
       if (isCsvTransformRequest(body)) {
         return res.status(410).json({ error: "CSV no soportado en beta" });
       }
+      const blockedUrl = describeBlockedTransformUrl(body);
+      if (blockedUrl) {
+        return res.status(blockedUrl.statusCode).json({ error: blockedUrl.errorMessage });
+      }
       if (!(await requireLlmAccess(req, res))) return;
       // Analyze is a preflight; it does not consume the daily transform quota.
 
@@ -3615,6 +3654,12 @@ async function startServer() {
       } satisfies SourceAnalysisResponse);
     } catch (err: any) {
       console.error("Analyze transform failed:", err);
+      const secureFetchError = describeSecureFetchError(err);
+      if (secureFetchError) {
+        return res
+          .status(secureFetchError.statusCode)
+          .json({ error: secureFetchError.errorMessage });
+      }
       return res.status(500).json({
         error: err?.message || "No se pudo analizar la fuente.",
       });
@@ -3626,6 +3671,10 @@ async function startServer() {
       const body = req.body as TransformRequest;
       if (isCsvTransformRequest(body)) {
         return res.status(410).json({ error: "CSV no soportado en beta" });
+      }
+      const blockedUrl = describeBlockedTransformUrl(body);
+      if (blockedUrl) {
+        return res.status(blockedUrl.statusCode).json({ error: blockedUrl.errorMessage });
       }
       const ip = req.ip || req.socket.remoteAddress || "unknown";
       const mapId = typeof (req.body as TransformRequest)?.mapId === "string"
@@ -3687,6 +3736,12 @@ async function startServer() {
     } catch (err: any) {
       console.error(err);
 
+      const secureFetchError = describeSecureFetchError(err);
+      if (secureFetchError) {
+        return res
+          .status(secureFetchError.statusCode)
+          .json({ error: secureFetchError.errorMessage });
+      }
       const { statusCode, errorMessage } = describeGeminiError(err);
       res.status(statusCode).json({ error: errorMessage });
     }
@@ -3697,6 +3752,10 @@ async function startServer() {
       const body = req.body as TransformRequest;
       if (isCsvTransformRequest(body)) {
         return res.status(410).json({ error: "CSV no soportado en beta" });
+      }
+      const blockedUrl = describeBlockedTransformUrl(body);
+      if (blockedUrl) {
+        return res.status(blockedUrl.statusCode).json({ error: blockedUrl.errorMessage });
       }
       const ip = req.ip || req.socket.remoteAddress || "unknown";
       const mapId = typeof (req.body as TransformRequest)?.mapId === "string"
@@ -3719,6 +3778,12 @@ async function startServer() {
       await handleTransformStream(contextResult, res, req);
     } catch (err: any) {
       console.error(err);
+      const secureFetchError = describeSecureFetchError(err);
+      if (secureFetchError && !res.headersSent) {
+        return res
+          .status(secureFetchError.statusCode)
+          .json({ error: secureFetchError.errorMessage });
+      }
       const { errorMessage } = describeGeminiError(err);
 
       if (res.headersSent) {
