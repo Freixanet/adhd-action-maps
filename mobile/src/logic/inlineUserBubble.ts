@@ -8,6 +8,8 @@ export type InlineAttachmentSnapshot = {
   isPdf?: boolean;
   isImage?: boolean;
   isVideo?: boolean;
+  isEpub?: boolean;
+  isDocx?: boolean;
   previewUri?: string;
 };
 
@@ -59,6 +61,8 @@ function toAttachmentSnapshot(file: UploadedFile): InlineAttachmentSnapshot {
     isPdf: file.isPdf,
     isImage: file.isImage,
     isVideo: file.isVideo,
+    isEpub: file.isEpub,
+    isDocx: file.isDocx,
     previewUri: file.previewUri,
   };
 }

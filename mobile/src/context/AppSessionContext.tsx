@@ -69,6 +69,7 @@ import {
   type DepthPreference,
 } from '../logic/depthPreference';
 import {
+  isBookAttachment,
   pickFileAttachment,
   pickImageFromCamera,
   pickImageFromLibrary,
@@ -98,10 +99,13 @@ import {
 } from '../logic/devHistoryBackup';
 import {
   fetchTransformWithProgress,
+  isBetaQuotaExceededError,
   resolveTransformFallbackTimeoutMs,
   TRANSFORM_IDLE_TIMEOUT_MESSAGE,
+  TransformHttpError,
 } from '../logic/transformStream';
 import { apiUrl } from '../logic/apiBase';
+import { buildLlmRequestHeaders } from '../logic/apiHeaders';
 import { isCloudSyncConfigured, supabase } from '../logic/supabase';
 import { fetchWithTimeout } from '../logic/network';
 import {
@@ -224,6 +228,9 @@ const MAX_SYNCED_ENTRIES = 30;
 const INTRO_TRANSITION_BAR_MS = 520;
 const OFFLINE_TRANSFORM_MESSAGE = 'Sin conexión. Comprueba tu red y vuelve a intentarlo.';
 const GENERIC_TRANSFORM_ERROR = 'No se pudo procesar la fuente.';
+const EXPANDED_INPUTS_DISABLED_MESSAGE =
+  'Libros y fotos llegan en 2 días, ahora PDF y links';
+const FILE_TOO_LARGE_MESSAGE = 'Máx 10MB para fotos, 20MB para libros';
 
 function isTransientNetworkError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err ?? '');
@@ -366,6 +373,8 @@ type AppSessionContextValue = {
   authOpen: boolean;
   setAuthOpen: (open: boolean) => void;
   openAuthSheet: () => void;
+  betaQuotaOpen: boolean;
+  setBetaQuotaOpen: (open: boolean) => void;
   paywallOpen: boolean;
   setPaywallOpen: (open: boolean) => void;
   openPaywall: () => void;
@@ -533,6 +542,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   );
   const [chatOpen, setChatOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [betaQuotaOpen, setBetaQuotaOpen] = useState(false);
   const [cloudUserEmail, setCloudUserEmail] = useState<string | null>(null);
   const [cloudUserDisplayName, setCloudUserDisplayName] = useState<string | null>(null);
   const [cloudUserAvatarUrl, setCloudUserAvatarUrl] = useState<string | null>(null);
@@ -574,6 +584,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     headers?: Record<string, string>;
     sourceKind: TransformSourceKind;
   } | null>(null);
+  /** Keep binary attachment so 501 can restore the composer chip. */
+  const lastSubmittedFileRef = useRef<UploadedFile | null>(null);
   const askRetryQuestionRef = useRef<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -759,7 +771,12 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const canSubmit =
     Boolean(composerBodyText || uploadedFile) &&
     (inlineGenerationStatus === 'idle' || askTurnOpen);
-  const hideTextInput = Boolean(uploadedFile?.isPdf || uploadedFile?.isVideo);
+  const hideTextInput = Boolean(
+    uploadedFile?.isPdf ||
+      uploadedFile?.isVideo ||
+      uploadedFile?.isEpub ||
+      uploadedFile?.isDocx
+  );
   const composerPlaceholder = uploadedFile?.isImage
     ? 'Añade una indicación (opcional)…'
     : uploadedFile?.isVideo
@@ -1099,6 +1116,22 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       clearInlineReadyTimeout();
       clearInlineAutoOpen();
 
+      const isBetaQuota =
+        /quota_exceeded/i.test(message) ||
+        /L[ií]mite beta alcanzado/i.test(message) ||
+        /5 N[uú]cleos gratis/i.test(message);
+
+      if (isBetaQuota) {
+        setError(null);
+        setTransformIncomplete(false);
+        clearInlineGeneration();
+        setInlineGenerationStatus('idle');
+        setPhase('input');
+        setBetaQuotaOpen(true);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        return;
+      }
+
       const isFreeLimit =
         /3 N[uú]cleos gratis/i.test(message) ||
         /free_limit/i.test(message) ||
@@ -1198,7 +1231,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setInputText(result.textContent);
       } else {
         setUploadedFile(result);
-        if (result.isPdf || result.isVideo) setInputText('');
+        if (isBookAttachment(result) || result.isVideo) setInputText('');
       }
 
       setError(null);
@@ -1210,8 +1243,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
   const removeUploadedFile = useCallback(() => {
     setUploadedFile(null);
-    if (uploadedFile?.isPdf || uploadedFile?.isVideo) setInputText('');
-  }, [uploadedFile?.isPdf, uploadedFile?.isVideo]);
+    if (isBookAttachment(uploadedFile) || uploadedFile?.isVideo) setInputText('');
+  }, [uploadedFile]);
 
   const handleAsk = useCallback(async () => {
     const isAskRetry =
@@ -1239,7 +1272,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     const accessToken = supabase
       ? (await supabase.auth.getSession()).data.session?.access_token
       : undefined;
-    const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+    const headers = await buildLlmRequestHeaders(accessToken);
 
     if (!isAskRetry) {
       clearInlineGeneration();
@@ -1371,7 +1404,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     const accessToken = supabase
       ? (await supabase.auth.getSession()).data.session?.access_token
       : undefined;
-    const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+    const headers = await buildLlmRequestHeaders(accessToken);
 
     let body: TransformRequest;
     let sourceKind: TransformSourceKind;
@@ -1396,6 +1429,28 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           type: 'pdf',
           fileData: uploadedFile.fileData,
           mimeType: uploadedFile.mimeType || 'application/pdf',
+          preferredModel: 'auto',
+          intent,
+          depth: depthPreference,
+          generationMode,
+          outputLanguage: 'es',
+          sourceLabel,
+          mapId,
+          userDisplayName: cloudUserDisplayName ?? undefined,
+        };
+      } else if (
+        (uploadedFile?.isEpub || uploadedFile?.isDocx) &&
+        uploadedFile.fileData
+      ) {
+        // Books ride the binary upload path; factory routes by mime/ext.
+        body = {
+          type: 'pdf',
+          fileData: uploadedFile.fileData,
+          mimeType:
+            uploadedFile.mimeType ||
+            (uploadedFile.isEpub
+              ? 'application/epub+zip'
+              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
           preferredModel: 'auto',
           intent,
           depth: depthPreference,
@@ -1491,6 +1546,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       );
       setInlineGenerationStatus('generating');
       inlineRetryPayloadRef.current = { body, headers, sourceKind };
+      lastSubmittedFileRef.current = uploadedFile;
 
       setInputText('');
       inputTextRef.current = '';
@@ -1600,7 +1656,16 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
               );
 
               if (!response.ok) {
-                const payload = (await response.json().catch(() => ({}))) as { error?: string };
+                const payload = (await response.json().catch(() => ({}))) as {
+                  error?: string;
+                  code?: string;
+                  action?: string;
+                };
+                if (response.status === 402 || payload.code === 'quota_exceeded') {
+                  const quotaError = new Error(payload.error || 'Límite beta alcanzado');
+                  (quotaError as Error & { code?: string }).code = 'quota_exceeded';
+                  throw quotaError;
+                }
                 throw new Error(payload.error || GENERIC_TRANSFORM_ERROR);
               }
 
@@ -1630,6 +1695,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
               partOk = true;
               break;
             } catch (partErr) {
+              if (isBetaQuotaExceededError(partErr)) {
+                throw partErr;
+              }
               if (partErr instanceof Error && partErr.name === 'AbortError' && transformCancelledRef.current) {
                 return;
               }
@@ -1706,6 +1774,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
       const markInlineReady = () => {
         if (inlineReadyTimeoutRef.current) return;
+        lastSubmittedFileRef.current = null;
         inlineReadyTimeoutRef.current = setTimeout(() => {
           inlineReadyTimeoutRef.current = null;
           if (inlineGenerationStatusRef.current !== 'generating') return;
@@ -1836,6 +1905,39 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         }
         failTransform(TRANSFORM_IDLE_TIMEOUT_MESSAGE, hasShownPartial, sourceKind);
         return;
+      }
+
+      if (isBetaQuotaExceededError(err)) {
+        failTransform(
+          err instanceof Error ? err.message : 'Límite beta alcanzado',
+          false,
+          sourceKind
+        );
+        return;
+      }
+
+      if (err instanceof TransformHttpError) {
+        if (err.status === 501 || err.code === 'FEATURE_DISABLED') {
+          if (lastSubmittedFileRef.current) {
+            setUploadedFile(lastSubmittedFileRef.current);
+          }
+          setError(EXPANDED_INPUTS_DISABLED_MESSAGE);
+          setTransformIncomplete(false);
+          setInlineGenerationStatus('error');
+          setPhase('input');
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
+        if (err.status === 413 || err.code === 'FILE_TOO_LARGE') {
+          lastSubmittedFileRef.current = null;
+          setUploadedFile(null);
+          setError(FILE_TOO_LARGE_MESSAGE);
+          setTransformIncomplete(false);
+          setInlineGenerationStatus('error');
+          setPhase('input');
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
       }
 
       const rawMessage =
@@ -2748,12 +2850,16 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     try {
       const session = supabase ? (await supabase.auth.getSession()).data.session : null;
       const token = session?.access_token;
+      const llmHeaders = await buildLlmRequestHeaders(token);
 
       const prepareResponse = await fetchWithTimeout(
         apiUrl(`/api/maps/${mapId}/cheatsheet.prepare`),
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...llmHeaders,
+          },
           body: JSON.stringify({ map: mapData }),
         },
         {
@@ -2768,10 +2874,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         throw new Error(err?.error || 'No se pudo preparar la ficha PDF.');
       }
 
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
+      const headers: Record<string, string> = { ...llmHeaders };
 
       const result = await downloadAsync(
         apiUrl(`/api/maps/${mapId}/cheatsheet.pdf`),
@@ -2859,6 +2962,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       authOpen,
       setAuthOpen,
       openAuthSheet,
+      betaQuotaOpen,
+      setBetaQuotaOpen,
       paywallOpen,
       setPaywallOpen,
       openPaywall,
@@ -2976,6 +3081,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       chatOpen,
       authOpen,
       openAuthSheet,
+      betaQuotaOpen,
+      setBetaQuotaOpen,
       paywallOpen,
       openPaywall,
       cloudUserEmail,

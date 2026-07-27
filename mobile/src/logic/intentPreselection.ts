@@ -17,7 +17,7 @@ export function suggestIntentFromSource(
   uploadedFile: UploadedFile | null,
   urlDetection: UrlInputDetection | null
 ): MapIntent {
-  if (uploadedFile?.isPdf) return 'apply';
+  if (uploadedFile?.isPdf || uploadedFile?.isEpub || uploadedFile?.isDocx) return 'apply';
 
   if (urlDetection?.kind === 'youtube') return 'understand';
 

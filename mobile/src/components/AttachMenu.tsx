@@ -25,11 +25,11 @@ const DEV = false;
 // identical native look and material.
 const ATTACH_ACTIONS: MenuAction[] = [
   { id: 'gallery', title: 'Galería' },
+  { id: 'camera', title: '📷 Cámara' },
   { id: 'file', title: 'Archivo' },
 ];
 
 const DEV_ATTACH_ACTIONS: MenuAction[] = [
-  { id: 'camera', title: 'Cámara' },
   { id: 'preview-generation', title: 'Preview generación' },
   { id: 'preview-loading', title: 'Preview colección' },
   { id: 'preview-nucleo', title: 'Preview Núcleo' },

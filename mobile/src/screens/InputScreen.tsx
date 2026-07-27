@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { File, X, MenuTwoLines } from '../icons';
+import { File, BookOpen, Image as ImageIcon, X, MenuTwoLines } from '../icons';
 import InlineGenerationThread from '../components/InlineGenerationThread';
 import AttachMenu from '../components/AttachMenu';
 import ComposerDismissScroll from '../components/ComposerDismissScroll';
@@ -47,6 +47,7 @@ import {
   COMPOSER_REST_INPUT_HEIGHT,
   formatPastedTextChipLabel,
 } from '../logic/composerText';
+import { formatInlineFileSize, truncateMiddleName } from '../logic/inlineUserBubble';
 import { BG_BASE, BG_SURFACE } from '@shared/uiTokens';
 import { agentLog } from '../logic/agentDebugLog';
 
@@ -425,6 +426,7 @@ export default function InputScreen() {
                             />
                             <Pressable
                               onPress={session.removeUploadedFile}
+                              accessibilityLabel="Quitar archivo"
                               className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-surface-2 items-center justify-center"
                             >
                               <X size={12} color="#fff" />
@@ -432,12 +434,22 @@ export default function InputScreen() {
                           </View>
                         ) : (
                           <View className="flex-row items-center gap-2 self-start max-w-full px-3 py-1.5 rounded-full bg-white/10">
-                            <File size={16} color={mutedIcon} />
+                            {session.uploadedFile.isEpub ? (
+                              <BookOpen size={16} color={mutedIcon} />
+                            ) : session.uploadedFile.isImage ? (
+                              <ImageIcon size={16} color={mutedIcon} />
+                            ) : (
+                              <File size={16} color={mutedIcon} />
+                            )}
                             <Text className="text-sm shrink text-primary" numberOfLines={1}>
-                              {session.uploadedFile.name}
+                              {truncateMiddleName(session.uploadedFile.name, 22)}
+                              {formatInlineFileSize(session.uploadedFile.size)
+                                ? ` · ${formatInlineFileSize(session.uploadedFile.size)}`
+                                : ''}
                             </Text>
                             <Pressable
                               onPress={session.removeUploadedFile}
+                              accessibilityLabel="Quitar archivo"
                               className="p-0.5 rounded-full"
                             >
                               <X size={14} color={mutedIcon} />
