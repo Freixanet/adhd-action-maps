@@ -1,9 +1,13 @@
 /** Daily quotas for LLM endpoints (UTC calendar day). */
 
-export const FREE_TRANSFORMS_PER_DAY = 3;
+/** Anon (`X-Install-Id`) private-beta cap. Logged-in users skip this meter. */
+export const ANON_TRANSFORMS_PER_DAY = 5;
+export const ANON_CHAT_PER_DAY = 5;
+/** @deprecated Use ANON_TRANSFORMS_PER_DAY — kept for older imports/tests. */
+export const FREE_TRANSFORMS_PER_DAY = ANON_TRANSFORMS_PER_DAY;
 export const PRO_TRANSFORMS_PER_DAY = 30;
 export const PRO_CHAT_PER_DAY = 20;
-export const FREE_CHAT_PER_DAY = 3;
+export const FREE_CHAT_PER_DAY = ANON_CHAT_PER_DAY;
 
 export type UsageKind = "transform" | "chat";
 
@@ -13,9 +17,9 @@ export function utcDayKey(now = new Date()): string {
 
 export function resolveDailyQuota(isPro: boolean, kind: UsageKind): number {
   if (kind === "chat") {
-    return isPro ? PRO_CHAT_PER_DAY : FREE_CHAT_PER_DAY;
+    return isPro ? PRO_CHAT_PER_DAY : ANON_CHAT_PER_DAY;
   }
-  return isPro ? PRO_TRANSFORMS_PER_DAY : FREE_TRANSFORMS_PER_DAY;
+  return isPro ? PRO_TRANSFORMS_PER_DAY : ANON_TRANSFORMS_PER_DAY;
 }
 
 export type UsageBucket = {

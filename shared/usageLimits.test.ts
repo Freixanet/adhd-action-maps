@@ -10,12 +10,12 @@ describe("usageLimits", () => {
     __resetUsageMeterForTests();
   });
 
-  it("allows free transforms up to the daily cap", () => {
+  it("allows anon transforms up to the daily cap", () => {
     for (let i = 0; i < FREE_TRANSFORMS_PER_DAY; i++) {
-      const result = assertAndConsumeUsage("user-a", false, "transform");
+      const result = assertAndConsumeUsage("install:test", false, "transform");
       expect(result.ok).toBe(true);
     }
-    const blocked = assertAndConsumeUsage("user-a", false, "transform");
+    const blocked = assertAndConsumeUsage("install:test", false, "transform");
     expect(blocked.ok).toBe(false);
     if (!blocked.ok) expect(blocked.code).toBe("free_limit");
   });

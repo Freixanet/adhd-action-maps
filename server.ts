@@ -68,6 +68,11 @@ import {
 } from "./server/llmAccess";
 import { fetchUrlContent } from "./server/remoteContent";
 import {
+  askResultShell,
+  prepareTransformIngest,
+} from "./server/src/routes/transformIngest";
+import { IngestError } from "./server/src/ingestors/factory";
+import {
   assertSecureFetchTarget,
   SecureFetchError,
 } from "./server/src/lib/secureFetcher";
@@ -3183,6 +3188,53 @@ Reglas:
 5. Tono sobrio. Nada de coach, celebración ni eslóganes.
 6. Devuelve solo JSON válido con "answer" (texto completo) y opcionalmente "title" (etiqueta corta de 3–6 palabras).`;
 
+async function generateAskAnswer(
+  question: string,
+  depth: TransformRequest["depth"] = "estandar",
+  userDisplayName?: string
+): Promise<string> {
+  const resolved =
+    depth === "rapido" || depth === "profundo" ? depth : "estandar";
+  const depthLine =
+    resolved === "rapido"
+      ? "Profundidad: rapido — respuesta breve, un mecanismo y listo."
+      : resolved === "profundo"
+        ? "Profundidad: profundo — más matices y un ejemplo concreto, sin hinchar."
+        : "Profundidad: estandar — cobertura clara en pocos párrafos.";
+  const name = userDisplayName?.trim().split(/\s+/)[0];
+  const prompt = [
+    depthLine,
+    name ? `Nombre del usuario (solo tono, no lo fuerces): ${name}` : "",
+    `Pregunta:\n${question}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const maxTokens =
+    resolved === "rapido"
+      ? 1024
+      : resolved === "profundo"
+        ? MAX_CHAT_OUTPUT_TOKENS * 2
+        : MAX_CHAT_OUTPUT_TOKENS;
+
+  const { response } = await generateWithFallback({
+    contents: prompt,
+    config: {
+      systemInstruction: ASK_SYSTEM_PROMPT,
+      responseMimeType: "application/json",
+      responseSchema: askResponseSchema as any,
+      temperature: 0.35,
+      topP: 0.9,
+      maxOutputTokens: maxTokens,
+    },
+  });
+  const parsed = JSON.parse(response.text || "{}") as AskResponse;
+  const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : "";
+  if (!answer) {
+    throw new Error("No se pudo generar una respuesta.");
+  }
+  return answer;
+}
+
 async function fetchYouTubeTranscript(url: string): Promise<string> {
   const videoId = extractYouTubeVideoId(url);
   if (!videoId) {
@@ -3668,7 +3720,7 @@ async function startServer() {
 
   app.post("/api/transform", async (req: AuthenticatedRequest, res) => {
     try {
-      const body = req.body as TransformRequest;
+      let body = req.body as TransformRequest;
       if (isCsvTransformRequest(body)) {
         return res.status(410).json({ error: "CSV no soportado en beta" });
       }
@@ -3686,6 +3738,32 @@ async function startServer() {
       if (!(await requireLlmAccess(req, res))) return;
       if (!enforceProEntitlements(req, res, body)) return;
       if (!enforceUsageQuota(req, res, "transform")) return;
+
+      const ingestOutcome = await prepareTransformIngest(body);
+      if (ingestOutcome.kind === "error") {
+        return res.status(ingestOutcome.status).json({
+          error: ingestOutcome.error,
+          code: ingestOutcome.code,
+        });
+      }
+      if (ingestOutcome.kind === "ask") {
+        const answer = await generateAskAnswer(
+          body.text || "",
+          body.depth,
+          body.userDisplayName
+        );
+        return res.json(askResultShell(answer));
+      }
+      if (ingestOutcome.kind === "source") {
+        body = ingestOutcome.body;
+        if (ingestOutcome.overviewOnly && ingestOutcome.ingest.chapters) {
+          res.setHeader("X-Nucleo-Overview", "1");
+          res.setHeader(
+            "X-Nucleo-Chapter-Count",
+            String(ingestOutcome.ingest.chapters.length)
+          );
+        }
+      }
 
       const contextResult = await buildTransformContext(body, { isPro: Boolean(req.isPro) });
       if ("error" in contextResult) {
@@ -3736,6 +3814,9 @@ async function startServer() {
     } catch (err: any) {
       console.error(err);
 
+      if (err instanceof IngestError) {
+        return res.status(err.httpStatus).json({ error: err.message, code: err.code });
+      }
       const secureFetchError = describeSecureFetchError(err);
       if (secureFetchError) {
         return res
@@ -3749,7 +3830,7 @@ async function startServer() {
 
   app.post("/api/transform/stream", async (req: AuthenticatedRequest, res) => {
     try {
-      const body = req.body as TransformRequest;
+      let body = req.body as TransformRequest;
       if (isCsvTransformRequest(body)) {
         return res.status(410).json({ error: "CSV no soportado en beta" });
       }
@@ -3768,6 +3849,32 @@ async function startServer() {
       if (!enforceProEntitlements(req, res, body)) return;
       if (!enforceUsageQuota(req, res, "transform")) return;
 
+      const ingestOutcome = await prepareTransformIngest(body);
+      if (ingestOutcome.kind === "error") {
+        return res.status(ingestOutcome.status).json({
+          error: ingestOutcome.error,
+          code: ingestOutcome.code,
+        });
+      }
+      if (ingestOutcome.kind === "ask") {
+        const answer = await generateAskAnswer(
+          body.text || "",
+          body.depth,
+          body.userDisplayName
+        );
+        return res.json(askResultShell(answer));
+      }
+      if (ingestOutcome.kind === "source") {
+        body = ingestOutcome.body;
+        if (ingestOutcome.overviewOnly && ingestOutcome.ingest.chapters) {
+          res.setHeader("X-Nucleo-Overview", "1");
+          res.setHeader(
+            "X-Nucleo-Chapter-Count",
+            String(ingestOutcome.ingest.chapters.length)
+          );
+        }
+      }
+
       const contextResult = await buildTransformContext(body, { isPro: Boolean(req.isPro) });
       if ("error" in contextResult) {
         return res.status(contextResult.status).json({ error: contextResult.error });
@@ -3778,6 +3885,9 @@ async function startServer() {
       await handleTransformStream(contextResult, res, req);
     } catch (err: any) {
       console.error(err);
+      if (err instanceof IngestError && !res.headersSent) {
+        return res.status(err.httpStatus).json({ error: err.message, code: err.code });
+      }
       const secureFetchError = describeSecureFetchError(err);
       if (secureFetchError && !res.headersSent) {
         return res

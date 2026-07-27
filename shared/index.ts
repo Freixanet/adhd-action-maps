@@ -1,6 +1,7 @@
 export * from './categories';
 export * from './features';
 export * from './contracts';
+export * from './types/chunk';
 export * from './stepContentBlocks';
 export * from './youtube';
 export * from './urlInput';

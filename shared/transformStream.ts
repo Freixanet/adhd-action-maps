@@ -35,9 +35,57 @@ export function isNonRetryableTransformError(message: string): boolean {
     /plan gratuito de Gemini/i.test(message) ||
     /Inicia sesi[oó]n/i.test(message) ||
     /3 N[uú]cleos gratis/i.test(message) ||
+    /5 N[uú]cleos gratis/i.test(message) ||
+    /L[ií]mite beta alcanzado/i.test(message) ||
     /l[ií]mite diario/i.test(message) ||
     /exclusiva? de Pro/i.test(message)
   );
+}
+
+export class TransformHttpError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly action?: string;
+
+  constructor(
+    message: string,
+    options: { status: number; code?: string; action?: string }
+  ) {
+    super(message);
+    this.name = 'TransformHttpError';
+    this.status = options.status;
+    this.code = options.code;
+    this.action = options.action;
+  }
+}
+
+export function isBetaQuotaExceededError(err: unknown): boolean {
+  if (err instanceof TransformHttpError) {
+    return err.status === 402 || err.code === 'quota_exceeded';
+  }
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code?: unknown }).code;
+    if (code === 'quota_exceeded') return true;
+  }
+  if (err instanceof Error) {
+    return (
+      /quota_exceeded/i.test(err.message) ||
+      /L[ií]mite beta alcanzado/i.test(err.message) ||
+      /5 N[uú]cleos gratis/i.test(err.message)
+    );
+  }
+  return false;
+}
+
+function throwTransformHttpError(
+  status: number,
+  payload: { error?: string; code?: string; action?: string }
+): never {
+  throw new TransformHttpError(payload.error || `Error del servidor (${status})`, {
+    status,
+    code: payload.code,
+    action: payload.action,
+  });
 }
 
 export type FetchWithTimeoutOptions = {
@@ -323,8 +371,12 @@ export async function fetchTransformWithProgress({
     );
 
     if (!response.ok) {
-      const errPayload = (await response.json().catch(() => ({}))) as { error?: string };
-      throw new Error(errPayload.error || `Error del servidor (${response.status})`);
+      const errPayload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        code?: string;
+        action?: string;
+      };
+      throwTransformHttpError(response.status, errPayload);
     }
 
     if (!response.body) {
@@ -370,9 +422,13 @@ export async function fetchTransformWithProgress({
       }
     );
 
-    const parsed = (await fallbackResponse.json()) as ActionMapData & { error?: string };
+    const parsed = (await fallbackResponse.json()) as ActionMapData & {
+      error?: string;
+      code?: string;
+      action?: string;
+    };
     if (!fallbackResponse.ok || parsed.error) {
-      throw new Error(parsed.error || `Error del servidor (${fallbackResponse.status})`);
+      throwTransformHttpError(fallbackResponse.status, parsed);
     }
 
     const normalized = normalizeMapData(parsed);
