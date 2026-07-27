@@ -2,9 +2,16 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Pressable } from 'react-native-gesture-handler';
+import { ACCENT } from '@shared/uiTokens';
 import GlassBarShell, { GLASS_BAR_BUTTON_RADIUS } from './GlassBarShell';
 import GlassSurface from './GlassSurface';
+import NativeGlassButton from './NativeGlassButton';
 import { usePressScale } from '../hooks/usePressScale';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import {
+  shouldUseNativeGlassButton,
+  shouldUseNativeGlassFilledCta,
+} from '../logic/nativeGlassButtons';
 import { SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
 import { useTheme } from '../context/ThemeContext';
 
@@ -171,10 +178,37 @@ function FloatingGlassButton({
   fullWidth = false,
 }: FloatingGlassButtonProps) {
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const { reduceTransparency } = useGlassAccessibility();
+  const isAccent = tone === 'accent';
+  const native = isAccent
+    ? shouldUseNativeGlassFilledCta(reduceTransparency)
+    : shouldUseNativeGlassButton(reduceTransparency);
   const hitSlop =
     shape === 'circle' && size < 44
       ? { top: 6, bottom: 6, left: 6, right: 6 }
       : undefined;
+
+  if (native) {
+    const isCircle = shape === 'circle';
+    const height = isCircle ? size : compact ? FLOATING_PILL_MIN_HEIGHT : FLOATING_BAR_HEIGHT;
+    return (
+      <NativeGlassButton
+        onPress={onPress}
+        accessibilityLabel={accessibilityLabel}
+        variant={isAccent ? 'prominentGlass' : 'glass'}
+        // Without a tint, prominentGlass falls back to the system blue.
+        tintColor={isAccent ? ACCENT : undefined}
+        style={[
+          { height },
+          isCircle ? { width: size } : null,
+          fullWidth ? styles.fullWidth : null,
+          !isCircle && !fullWidth ? styles.nativePillPadding : null,
+        ]}
+      >
+        {children}
+      </NativeGlassButton>
+    );
+  }
 
   return (
     <Pressable
@@ -248,6 +282,10 @@ const styles = StyleSheet.create({
   },
   fullWidth: {
     width: '100%',
+  },
+  /** Native pills size to content, so keep the JS horizontal breathing room. */
+  nativePillPadding: {
+    paddingHorizontal: 16,
   },
   accentBar: {
     height: FLOATING_BAR_HEIGHT,

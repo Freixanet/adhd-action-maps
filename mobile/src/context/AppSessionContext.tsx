@@ -831,9 +831,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     if (isComplete) return 'Núcleo completado';
     if (viewAll) return 'Vista completa';
     if (currentStep === 0) return 'Idea central';
-    if (currentStep === 1) return 'En 60 segundos';
     return formatReadingProgressLabel(
-      currentStep - 1,
+      currentStep,
       totalSteps,
       data?.readingSections ?? null
     );
@@ -842,8 +841,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const stepProgress = useMemo(() => {
     if (isComplete || viewAll || !data || totalSteps === 0) return 0;
     if (currentStep === 0) return 0;
-    const totalReadingPages = totalSteps + 1;
-    return Math.round((Math.min(currentStep, totalReadingPages) / totalReadingPages) * 100);
+    return Math.round((Math.min(currentStep, totalSteps) / totalSteps) * 100);
   }, [currentStep, data, isComplete, totalSteps, viewAll]);
 
   const setModelPreference = useCallback((value: ModelPreference) => {
@@ -1065,8 +1063,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   // Eliminado el useEffect de sincronización global masiva para favorecer sync selectivo
 
   const goToStep = useCallback((idx: number, fromViewAll = false) => {
-    const totalReadingPages = totalSteps + 1;
-    const safeIdx = Math.max(0, Math.min(idx, totalReadingPages));
+    const safeIdx = Math.max(0, Math.min(idx, totalSteps));
     setIsComplete(false);
     setCurrentStep(safeIdx);
     const nextViewAll = fromViewAll ? false : viewAll;
@@ -1076,7 +1073,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   }, [persistSessionState, totalSteps, viewAll]);
 
   const syncReadingStep = useCallback((step: number) => {
-    const pageStep = step <= 0 ? 0 : step + 1;
+    const pageStep = Math.max(0, step);
     setCurrentStep((prev) => {
       if (prev === pageStep) return prev;
       persistSessionState(pageStep, isComplete, viewAll);
@@ -1936,13 +1933,32 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const handleOpenDemoNucleo = useCallback(() => {
     flushPendingSessionPersist();
     const currentStore = historyStoreRef.current;
+    // Always refresh fixture so presentation/copy changes land on Preview / ejemplo.
+    const normalized = normalizeMapData(DEMO_NUCLEO_DATA) ?? DEMO_NUCLEO_DATA;
     const existing = currentStore.entries.find((entry) => entry.id === DEMO_NUCLEO_ID);
+    const demoSession = {
+      data: normalized,
+      currentStep: 0,
+      isComplete: false,
+      viewAll: false,
+    };
 
     if (existing) {
-      const normalized = normalizeMapData(existing.session.data);
-      if (!normalized) return;
-      const updatedStore = setActiveId(currentStore, DEMO_NUCLEO_ID);
-      commitHistoryStore(updatedStore);
+      const updatedEntries = currentStore.entries.map((entry) =>
+        entry.id === DEMO_NUCLEO_ID
+          ? {
+              ...entry,
+              title: normalized.title,
+              session: {
+                ...demoSession,
+                isComplete: existing.session.isComplete ?? false,
+                viewAll: existing.session.isComplete ?? false,
+              },
+              updatedAt: Date.now(),
+            }
+          : entry
+      );
+      commitHistoryStore(setActiveId({ ...currentStore, entries: updatedEntries }, DEMO_NUCLEO_ID));
       setData(normalized);
       setIntentState(normalized.intent ?? 'understand');
       const wasComplete = existing.session.isComplete ?? false;
@@ -1960,15 +1976,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       return;
     }
 
-    const demoSession = {
-      data: DEMO_NUCLEO_DATA,
-      currentStep: 0,
-      isComplete: false,
-      viewAll: false,
-    };
     const updatedStore = createEntry(currentStore, demoSession, 'text', DEMO_NUCLEO_ID);
     commitHistoryStore(updatedStore);
-    setData(DEMO_NUCLEO_DATA);
+    setData(normalized);
     setIntentState('understand');
     setCurrentStep(0);
     setIsComplete(false);

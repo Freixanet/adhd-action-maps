@@ -4,6 +4,7 @@ import { GlassView } from 'expo-glass-effect';
 import { useTheme } from '../context/ThemeContext';
 import { useDeferredGlassMount } from '../hooks/useDeferredGlassMount';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { COMPOSER_NATIVE_CORNERS } from '../logic/nativeGlassComposer';
 import { APP_DARK_BACKGROUND_RGB, COMPOSER_DARK_SURFACE } from '@shared/uiTokens';
 
 export type LiquidGlassVariant = 'regular' | 'clear' | 'composer';
@@ -24,6 +25,11 @@ export type LiquidGlassSurfaceProps = {
   glassMountKey?: number;
   /** When used standalone, bumps remount after shell layout settles. */
   layoutRefreshKey?: unknown;
+  /**
+   * Renders children inside the native effect view rather than over a sibling,
+   * so UIKit's interactive glass receives the touches. Forgoes deferred mount.
+   */
+  hostsContent?: boolean;
 };
 
 export { canUseNativeLiquidGlass } from '../logic/glassAvailability';
@@ -77,21 +83,40 @@ export default function LiquidGlassSurface({
   glassEnabled,
   glassMountKey,
   layoutRefreshKey,
+  hostsContent = false,
 }: LiquidGlassSurfaceProps) {
   const { isDark } = useTheme();
   const { reduceMotion, nativeGlass } = useGlassAccessibility();
   const isControlled = glassEnabled !== undefined;
   const internalGlass = useDeferredGlassMount(isControlled ? undefined : layoutRefreshKey);
 
+  // With native corners the glass view shapes its own edge, so clipping the
+  // shell would cut the lensing UIKit draws on the curve.
+  const nativeCorners = variant === 'composer' && COMPOSER_NATIVE_CORNERS;
+
   const shellStyle: ViewStyle = {
     borderRadius,
-    overflow: 'hidden',
+    overflow: nativeCorners ? 'visible' : 'hidden',
     ...(Platform.OS === 'ios' ? { borderCurve: 'continuous' as const } : null),
   };
 
   const fallback = fallbackColors(isDark, variant, tintColor);
   const active = isControlled ? glassEnabled : internalGlass.glassActive;
   const mountKey = isControlled ? (glassMountKey ?? 0) : internalGlass.glassMountKey;
+
+  if (nativeGlass && hostsContent) {
+    return (
+      <GlassView
+        style={[shellStyle, style]}
+        glassEffectStyle={resolveGlassEffectStyle(variant)}
+        isInteractive={interactive && !reduceMotion}
+        tintColor={tintColor}
+        colorScheme={isDark ? 'dark' : 'light'}
+      >
+        {children}
+      </GlassView>
+    );
+  }
 
   if (nativeGlass) {
     return (
@@ -105,7 +130,7 @@ export default function LiquidGlassSurface({
           <GlassView
             key={mountKey}
             pointerEvents="none"
-            style={StyleSheet.absoluteFill}
+            style={[StyleSheet.absoluteFill, nativeCorners ? { borderRadius } : null]}
             glassEffectStyle={resolveGlassEffectStyle(variant)}
             isInteractive={interactive && !reduceMotion}
             tintColor={tintColor}
@@ -114,7 +139,11 @@ export default function LiquidGlassSurface({
         ) : (
           <View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { backgroundColor: fallback.backgroundColor }]}
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: fallback.backgroundColor },
+              nativeCorners ? { borderRadius } : null,
+            ]}
           />
         )}
         <View pointerEvents="none" style={styles.content}>

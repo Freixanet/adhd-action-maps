@@ -2430,12 +2430,16 @@ const schema = {
     tldr: {
       type: Type.ARRAY,
       description:
-        "Contenido de la página 'En 60 segundos'. Debe ser compacto, útil y sin relleno. En modo clásico usa 3-4; en StudyDoc beta usa exactamente 5.",
+        "Contenido de la página 'En 60 segundos'. Compacto y sin relleno. En modo clásico usa 3-4; en StudyDoc beta usa exactamente 5. Cada 'desc' es una frase completa de máximo 65 caracteres: debe caber en 2 líneas de tarjeta sin recortes.",
       items: {
         type: Type.OBJECT,
         properties: {
-          title: { type: Type.STRING },
-          desc: { type: Type.STRING }
+          title: { type: Type.STRING, description: "Etiqueta corta (máx. ~6 palabras)." },
+          desc: {
+            type: Type.STRING,
+            description:
+              "Una sola idea como frase completa de máximo 65 caracteres. Sin relleno ni segunda idea.",
+          },
         },
         required: ["title", "desc"]
       }
@@ -2851,7 +2855,10 @@ function normalizeMapData(
       ? parsed.tldr
           .map((item: any) =>
             item?.title && item?.desc
-              ? { title: String(item.title), desc: String(item.desc) }
+              ? {
+                  title: String(item.title).trim(),
+                  desc: String(item.desc).trim().replace(/\s+/g, " "),
+                }
               : null
           )
           .filter(Boolean)
@@ -2987,10 +2994,10 @@ function buildTransformPrompt({
 
   const tldrRule =
     generationMode === "study-doc-beta"
-      ? "En 'tldr' entrega exactamente 5 puntos de estudio."
+      ? "En 'tldr' entrega exactamente 5 puntos. Cada 'desc' es una frase completa de máximo 65 caracteres; una idea por punto."
       : resolvedDepth === "rapido"
-      ? "En 'tldr' entrega exactamente 3 puntos breves."
-      : "En 'tldr' entrega de 3 a 4 puntos.";
+      ? "En 'tldr' entrega exactamente 3 puntos. Cada 'desc' es una frase completa de máximo 65 caracteres; una idea por punto."
+      : "En 'tldr' entrega de 3 a 4 puntos. Cada 'desc' es una frase completa de máximo 65 caracteres; una idea por punto.";
 
   const mobilePaginationRule = [
     "CONTRATO DE PAGINACIÓN MÓVIL ADAPTATIVA:",

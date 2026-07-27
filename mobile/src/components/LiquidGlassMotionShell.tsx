@@ -21,6 +21,11 @@ import GlassPerimeterHighlight from './GlassPerimeterRing';
 import GlassTouchGlow from './GlassTouchGlow';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useGlassTouchGlow } from '../hooks/useGlassTouchGlow';
+import {
+  COMPOSER_GLASS_HOSTS_CONTENT,
+  COMPOSER_NATIVE_CORNERS,
+  COMPOSER_NATIVE_INTERACTIVE_ONLY,
+} from '../logic/nativeGlassComposer';
 import { useTheme } from '../context/ThemeContext';
 import { COMPOSER_DARK_SURFACE, GLASS_TOUCH_GLOW_COMPOSER_CENTER_OPACITY_DARK, GLASS_TOUCH_GLOW_COMPOSER_CENTER_OPACITY_LIGHT, GLASS_TOUCH_GLOW_COMPOSER_PEAK_DWELL_MS, GLASS_TOUCH_GLOW_COMPOSER_RADIUS_SCALE, GLASS_TOUCH_GLOW_FADE_IN_MS_COMPOSER, liquidGlassShellClasses } from '@shared/uiTokens';
 
@@ -239,26 +244,15 @@ export default function LiquidGlassMotionShell({
 
   const sheenColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.22)';
 
-  return (
-    <Animated.View style={[shellMotionStyle, styles.motionShell]} onLayout={handleLayout}>
-      <View
-        className={liquidGlassShellClasses(className)}
-        style={[styles.shell, { borderRadius }, style]}
-        onStartShouldSetResponder={() => false}
-        onTouchStart={handleGlowTouch}
-        onTouchEnd={handleTouchRelease}
-        onTouchCancel={handleTouchRelease}
-      >
-          <LiquidGlassSurface
-            style={StyleSheet.absoluteFill}
-            borderRadius={borderRadius}
-            variant={variant}
-            tintColor={resolvedTint}
-            interactive={focused}
-          >
-          <View />
-        </LiquidGlassSurface>
+  // UIKit's interactive glass already answers the touch, so the JS ornaments
+  // (pulse, sheen, glow, perimeter ring) come off together.
+  const nativeOnly = COMPOSER_NATIVE_INTERACTIVE_ONLY;
+  const nativeCorners = variant === 'composer' && COMPOSER_NATIVE_CORNERS;
+  const glassHostsContent = COMPOSER_GLASS_HOSTS_CONTENT;
 
+  const ornaments = (
+    <>
+      {nativeOnly ? null : (
         <View
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, styles.sheenClip, { borderRadius }]}
@@ -271,30 +265,88 @@ export default function LiquidGlassMotionShell({
             ]}
           />
         </View>
+      )}
 
-        {shellSize.width > 0 && shellSize.height > 0 ? (
-          <GlassTouchGlow
-            width={shellSize.width}
-            height={shellSize.height}
-            borderRadius={borderRadius}
-            isDark={isDark}
-            edgeInset={0}
-            glowOpacity={touchGlow.glowOpacity}
-            touchX={touchGlow.touchX}
-            touchY={touchGlow.touchY}
-            centerOpacity={touchGlow.centerOpacity}
-            radiusScale={GLASS_TOUCH_GLOW_COMPOSER_RADIUS_SCALE}
-          />
-        ) : null}
+      {!nativeOnly && shellSize.width > 0 && shellSize.height > 0 ? (
+        <GlassTouchGlow
+          width={shellSize.width}
+          height={shellSize.height}
+          borderRadius={borderRadius}
+          isDark={isDark}
+          edgeInset={0}
+          glowOpacity={touchGlow.glowOpacity}
+          touchX={touchGlow.touchX}
+          touchY={touchGlow.touchY}
+          centerOpacity={touchGlow.centerOpacity}
+          radiusScale={GLASS_TOUCH_GLOW_COMPOSER_RADIUS_SCALE}
+        />
+      ) : null}
 
-        {liquidBorder === 'perimeter' ? (
-          <GlassPerimeterHighlight
-            width={shellSize.width}
-            height={shellSize.height}
+      {!nativeOnly && liquidBorder === 'perimeter' ? (
+        <GlassPerimeterHighlight
+          width={shellSize.width}
+          height={shellSize.height}
+          borderRadius={borderRadius}
+          isDark={isDark}
+        />
+      ) : null}
+    </>
+  );
+
+  // The effect view is the shell itself, so touches reach UIKit on their way to
+  // the field and the toolbar.
+  if (glassHostsContent) {
+    return (
+      <Animated.View
+        style={[nativeOnly ? null : shellMotionStyle, styles.motionShell]}
+        onLayout={handleLayout}
+      >
+        <LiquidGlassSurface
+          hostsContent
+          style={[styles.shell, styles.shellNativeCorners, style]}
+          borderRadius={borderRadius}
+          variant={variant}
+          tintColor={resolvedTint}
+          interactive
+        >
+          {ornaments}
+          <View style={styles.content} className={contentClassName}>
+            {children}
+          </View>
+        </LiquidGlassSurface>
+      </Animated.View>
+    );
+  }
+
+  return (
+    <Animated.View
+      style={[nativeOnly ? null : shellMotionStyle, styles.motionShell]}
+      onLayout={handleLayout}
+    >
+      <View
+        className={liquidGlassShellClasses(className)}
+        style={[
+          styles.shell,
+          { borderRadius },
+          nativeCorners ? styles.shellNativeCorners : null,
+          style,
+        ]}
+        onStartShouldSetResponder={() => false}
+        onTouchStart={nativeOnly ? undefined : handleGlowTouch}
+        onTouchEnd={nativeOnly ? undefined : handleTouchRelease}
+        onTouchCancel={nativeOnly ? undefined : handleTouchRelease}
+      >
+          <LiquidGlassSurface
+            style={StyleSheet.absoluteFill}
             borderRadius={borderRadius}
-            isDark={isDark}
-          />
-        ) : null}
+            variant={variant}
+            tintColor={resolvedTint}
+            interactive={nativeOnly || focused}
+          >
+          <View />
+        </LiquidGlassSurface>
+
+        {ornaments}
 
         <View style={styles.content} className={contentClassName}>
           {children}
@@ -311,6 +363,10 @@ const styles = StyleSheet.create({
   shell: {
     position: 'relative',
     overflow: 'hidden',
+  },
+  /** UIKit shapes the glass edge, so the shell must not clip it. */
+  shellNativeCorners: {
+    overflow: 'visible',
   },
   content: {
     position: 'relative',

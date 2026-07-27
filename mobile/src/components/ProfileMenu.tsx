@@ -3,7 +3,10 @@ import { Alert, Dimensions, Linking, Modal, Pressable, StyleSheet, Text, View } 
 import { ChevronRight, FileText, LogIn, LogOut, Settings, Trash2 } from '../icons';
 import ProfileAvatar from './ProfileAvatar';
 import GlassSurface from './GlassSurface';
+import NativeGlassButton from './NativeGlassButton';
 import { FloatingGlassShell, FLOATING_CIRCLE_SIZE } from './FloatingGlassButton';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
 import { useAppSession, stepHaptic } from '../context/AppSessionContext';
 import { privacyPolicyUrl, termsOfUseUrl } from '../logic/legalUrls';
 import { SEM_ALERTA, TEXT_BODY, TEXT_PRIMARY } from '@shared/uiTokens';
@@ -61,6 +64,8 @@ function MenuRow({
 export default function ProfileMenu({ placement = 'topRight', floating = false }: ProfileMenuProps) {
   const session = useAppSession();
   const { isDark } = useTheme();
+  const { reduceTransparency } = useGlassAccessibility();
+  const nativeGlass = shouldUseNativeGlassButton(reduceTransparency);
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<MenuPanel>('root');
@@ -151,34 +156,52 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
   const menuIconColor = isDark ? TEXT_PRIMARY : TEXT_BODY;
   const iconStroke = 2.25;
 
+  const toggleMenu = () => {
+    setOpen((current) => !current);
+    stepHaptic();
+  };
+
+  const anchorLabel = session.cloudSignedIn ? 'Tu cuenta' : 'Cuenta y ajustes';
+
   return (
     <>
       <View ref={anchorRef} collapsable={false} className="relative z-50">
-        <Pressable
-          onPress={() => {
-            setOpen((current) => !current);
-            stepHaptic();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={session.cloudSignedIn ? 'Tu cuenta' : 'Cuenta y ajustes'}
-          accessibilityState={{ expanded: open }}
-          className={floating ? 'active:opacity-80' : 'rounded-xl p-1 active:opacity-80'}
-        >
-          {floating ? (
-            <FloatingGlassShell shape="circle" size={FLOATING_CIRCLE_SIZE} prominent>
-              <ProfileAvatar
-                signedIn={session.cloudSignedIn}
-                avatarUrl={session.cloudUserAvatarUrl}
-                floating
-              />
-            </FloatingGlassShell>
-          ) : (
+        {floating && nativeGlass ? (
+          <NativeGlassButton
+            onPress={toggleMenu}
+            accessibilityLabel={anchorLabel}
+            style={styles.floatingAnchor}
+          >
             <ProfileAvatar
               signedIn={session.cloudSignedIn}
               avatarUrl={session.cloudUserAvatarUrl}
+              floating
             />
-          )}
-        </Pressable>
+          </NativeGlassButton>
+        ) : (
+          <Pressable
+            onPress={toggleMenu}
+            accessibilityRole="button"
+            accessibilityLabel={anchorLabel}
+            accessibilityState={{ expanded: open }}
+            className={floating ? 'active:opacity-80' : 'rounded-xl p-1 active:opacity-80'}
+          >
+            {floating ? (
+              <FloatingGlassShell shape="circle" size={FLOATING_CIRCLE_SIZE} prominent>
+                <ProfileAvatar
+                  signedIn={session.cloudSignedIn}
+                  avatarUrl={session.cloudUserAvatarUrl}
+                  floating
+                />
+              </FloatingGlassShell>
+            ) : (
+              <ProfileAvatar
+                signedIn={session.cloudSignedIn}
+                avatarUrl={session.cloudUserAvatarUrl}
+              />
+            )}
+          </Pressable>
+        )}
       </View>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={closeMenu}>
@@ -277,6 +300,10 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
 }
 
 const styles = StyleSheet.create({
+  floatingAnchor: {
+    width: FLOATING_CIRCLE_SIZE,
+    height: FLOATING_CIRCLE_SIZE,
+  },
   modalRoot: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.18)',

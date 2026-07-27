@@ -3,7 +3,9 @@ import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react-native';
 import {
   Add01Icon,
   AlertCircleIcon,
+  ArrowDataTransferHorizontalIcon,
   ArrowUp01Icon,
+  BatteryLowIcon,
   Bookmark02Icon,
   BookOpen01Icon,
   Briefcase01Icon,
@@ -19,6 +21,7 @@ import {
   File02Icon,
   Grid02Icon,
   HeartPulseIcon,
+  Home01Icon,
   Image01Icon,
   JusticeScale01Icon,
   Layers01Icon,
@@ -29,11 +32,13 @@ import {
   MenuTwoLineIcon,
   Message02Icon,
   MoreHorizontalIcon,
+  Notification03Icon,
   PlayCircleIcon,
   PlayIcon,
   Search01Icon,
   Setting06Icon,
   SparklesIcon,
+  Target01Icon,
   Tick02Icon,
   Upload01Icon,
   UserCircleIcon,
@@ -101,3 +106,8 @@ export const Briefcase = createIcon(Briefcase01Icon, 'Briefcase');
 export const BookOpen = createIcon(BookOpen01Icon, 'BookOpen');
 export const Wallet = createIcon(Wallet01Icon, 'Wallet');
 export const JusticeScale = createIcon(JusticeScale01Icon, 'JusticeScale');
+export const BatteryLow = createIcon(BatteryLowIcon, 'BatteryLow');
+export const ArrowTransfer = createIcon(ArrowDataTransferHorizontalIcon, 'ArrowTransfer');
+export const Home = createIcon(Home01Icon, 'Home');
+export const Notification = createIcon(Notification03Icon, 'Notification');
+export const Target = createIcon(Target01Icon, 'Target');

@@ -12,15 +12,15 @@ export const DEMO_NUCLEO_DATA: ActionMapData = {
   tldr: [
     {
       title: 'Foco finito',
-      desc: 'La atención sostenida consume energía cognitiva; no es infinita en una misma sesión.',
+      desc: 'La atención sostenida se agota antes de que acabe la sesión.',
     },
     {
       title: 'Coste del cambio',
-      desc: 'Saltar entre tareas deja un rastro que tarda minutos en disiparse.',
+      desc: 'Volver a una tarea interrumpida cuesta varios minutos de foco.',
     },
     {
       title: 'Diseño del entorno',
-      desc: 'Reducir interrupciones recupera más rendimiento que forzar la voluntad.',
+      desc: 'Quitar los avisos del entorno rinde más que forzar la voluntad.',
     },
   ],
   visualization: {
@@ -62,8 +62,9 @@ export const DEMO_NUCLEO_DATA: ActionMapData = {
     ],
   },
   sourceMetadata: {
-    kind: 'text',
+    kind: 'link',
     label: 'Artículo empaquetado',
+    url: 'https://ejemplo.com/articulo-sobre-foco',
     detected: ['Artículo breve sobre atención y hábitos de lectura.'],
     limitations: ['Contenido pedagógico empaquetado con la app; no sustituye la fuente original.'],
   },

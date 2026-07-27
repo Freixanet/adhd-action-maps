@@ -155,14 +155,9 @@ export default function ReadingProgressBar({
     };
   });
 
-  const navAnimatedStyle = useAnimatedStyle(() => {
-    if (!headerVisibleShared) {
-      return { opacity: 1 };
-    }
-    return {
-      opacity: withTiming(headerVisibleShared.value ? 1 : 0, { duration: 200 }),
-    };
-  });
+  // No opacity fade: the text should slide up and vanish at the clip edge, not
+  // dissolve before the row has travelled.
+  const navAnimatedStyle = useAnimatedStyle(() => ({ opacity: 1 }));
 
   const navAnimatedProps = useAnimatedProps(() => {
     if (!headerVisibleShared) {

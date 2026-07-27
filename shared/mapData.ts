@@ -107,7 +107,10 @@ export function normalizeMapData(
     tldr: raw.tldr
       .map((item) =>
         item?.title && item?.desc
-          ? { title: String(item.title), desc: String(item.desc) }
+          ? {
+              title: String(item.title).trim(),
+              desc: String(item.desc).trim().replace(/\s+/g, ' '),
+            }
           : null
       )
       .filter(Boolean) as ActionMapData['tldr'],

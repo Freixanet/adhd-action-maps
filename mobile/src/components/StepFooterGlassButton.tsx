@@ -3,11 +3,19 @@ import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-n
 import Animated from 'react-native-reanimated';
 import { CTA_FILL, RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
+import NativeGlassButton from './NativeGlassButton';
 import { usePressScale } from '../hooks/usePressScale';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import {
+  shouldUseNativeGlassButton,
+  shouldUseNativeGlassFilledCta,
+} from '../logic/nativeGlassButtons';
 import { useTheme } from '../context/ThemeContext';
 
 /** Fixed height — Atrás and Siguiente must match without flex growth. */
 export const STEP_FOOTER_BUTTON_HEIGHT = 52;
+/** Below the 26 that would read as a pill at this height, so corners match the cards. */
+const FOOTER_BUTTON_RADIUS = RADII.md;
 const STEP_FOOTER_PRIMARY_TEXT = '#FFFFFF';
 
 type StepFooterGlassButtonProps = {
@@ -34,6 +42,7 @@ export default function StepFooterGlassButton({
   const { isDark } = useTheme();
   const isPrimary = variant === 'primary';
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const { reduceTransparency } = useGlassAccessibility();
   const secondaryOverlay = isDark ? 'bg-white/[0.08]' : 'bg-white/55';
 
   const content = (
@@ -51,6 +60,26 @@ export default function StepFooterGlassButton({
       {iconPlacement === 'trailing' ? icon : null}
     </View>
   );
+
+  const native = isPrimary
+    ? shouldUseNativeGlassFilledCta(reduceTransparency)
+    : shouldUseNativeGlassButton(reduceTransparency);
+
+  if (native) {
+    return (
+      <NativeGlassButton
+        onPress={onPress}
+        accessibilityLabel={accessibilityLabel ?? label}
+        variant={isPrimary ? 'prominentGlass' : 'glass'}
+        cornerRadius={FOOTER_BUTTON_RADIUS}
+        tintColor={isPrimary ? CTA_FILL : undefined}
+        disabled={disabled}
+        style={[styles.shell, style]}
+      >
+        {content}
+      </NativeGlassButton>
+    );
+  }
 
   return (
     <Pressable
@@ -76,7 +105,7 @@ export default function StepFooterGlassButton({
             liquid
             liquidBorder="none"
             liquidMaterial="clear"
-            borderRadius={RADII.lg}
+            borderRadius={FOOTER_BUTTON_RADIUS}
             style={[styles.shell, styles.secondaryShell]}
             overlayClassName={secondaryOverlay}
             contentClassName="h-full w-full items-center justify-center"
@@ -102,7 +131,7 @@ const styles = StyleSheet.create({
   },
   primaryShell: {
     backgroundColor: CTA_FILL,
-    borderRadius: RADII.lg,
+    borderRadius: FOOTER_BUTTON_RADIUS,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -120,7 +149,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   secondaryShell: {
-    borderRadius: RADII.lg,
+    borderRadius: FOOTER_BUTTON_RADIUS,
     overflow: 'hidden',
   },
   pressedOpacity: {

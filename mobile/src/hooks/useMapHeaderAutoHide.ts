@@ -94,7 +94,11 @@ export function useMapHeaderAutoHide({
     onScroll: (event) => {
       const currentY = event.contentOffset.y;
       const maxScroll = Math.max(0, event.contentSize.height - event.layoutMeasurement.height);
-      const threshold = mapMetaAnchorHeight.value > 0 ? mapMetaAnchorHeight.value + 8 : 120;
+      // Without the map-meta anchor (Idea central has no title block), fall back to a
+      // short scroll so the header gets out of the way early instead of at 120px.
+      const threshold = mapMetaAnchorHeight.value > 0
+        ? mapMetaAnchorHeight.value + 8
+        : HIDE_AFTER_SCROLL_Y;
       const inBottomBounce =
         maxScroll > 0 && currentY >= maxScroll - BOTTOM_EDGE_THRESHOLD;
 

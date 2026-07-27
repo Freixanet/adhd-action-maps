@@ -24,9 +24,16 @@ import ComposerDock, { COMPOSER_DOCK_GAP, useComposerKeyboardLift } from '../com
 import ContinueCard from '../components/ContinueCard';
 import FloatingGlassButton from '../components/FloatingGlassButton';
 import GlassSurface from '../components/GlassSurface';
+import NativeGlassButton from '../components/NativeGlassButton';
 import ModelChip from '../components/ModelChip';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
 import SessionErrorBanner from '../components/SessionErrorBanner';
-import { MAIN_CONTENT_GUTTER, SIDEBAR_EDGE_INSET, SIDEBAR_HEADER_BUTTON_SIZE } from '../components/sidebarLayout';
+import {
+  MAIN_CONTENT_GUTTER,
+  SIDEBAR_EDGE_INSET,
+  SIDEBAR_TOGGLE_BUTTON_SIZE,
+} from '../components/sidebarLayout';
 import { ComposerKeyboardProvider } from '../context/ComposerKeyboardContext';
 import { useTheme } from '../context/ThemeContext';
 import { useAppSession } from '../context/AppSessionContext';
@@ -59,6 +66,8 @@ const FIRST_USE_EXAMPLES = [
 export default function InputScreen() {
   const session = useAppSession();
   const { isDark } = useTheme();
+  const { reduceTransparency } = useGlassAccessibility();
+  const nativeGlassButtons = shouldUseNativeGlassButton(reduceTransparency);
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const maxComposerInputHeight = Math.round(windowHeight * COMPOSER_MAX_VIEWPORT_RATIO);
@@ -269,16 +278,17 @@ export default function InputScreen() {
               className="flex-row items-center justify-between pt-2.5 pb-4"
               style={{
                 marginHorizontal: -MAIN_CONTENT_GUTTER,
-                paddingHorizontal: SIDEBAR_EDGE_INSET,
+                paddingLeft: MAIN_CONTENT_GUTTER,
+                paddingRight: SIDEBAR_EDGE_INSET,
               }}
             >
               <FloatingGlassButton
                 onPress={() => session.toggleHistoryDrawer()}
                 accessibilityLabel={session.historyOpen ? 'Cerrar navegacion' : 'Abrir navegacion'}
                 shape="circle"
-                size={SIDEBAR_HEADER_BUTTON_SIZE}
+                size={SIDEBAR_TOGGLE_BUTTON_SIZE}
               >
-                <MenuTwoLines size={17} color={navIconColor} />
+                <MenuTwoLines size={20} color={navIconColor} />
               </FloatingGlassButton>
             </View>
           )}
@@ -354,28 +364,41 @@ export default function InputScreen() {
                         Separa lo importante del ruido.
                       </Text>
                       {isFirstUse ? (
-                        <Pressable
-                          onPress={session.handleOpenDemoNucleo}
-                          accessibilityRole="button"
-                          accessibilityLabel="Ver un ejemplo"
-                          className="mt-6"
-                        >
-                          {({ pressed }) => (
-                            <GlassSurface
-                              liquid
-                              variant="composer"
-                              borderRadius={24}
-                              liquidBorder="perimeter"
-                              overlayClassName={pressed ? 'bg-accent/8' : undefined}
-                            >
-                              <View className="px-4 py-2.5">
-                                <Text className="text-[15px] font-normal text-body">
-                                  Ver un ejemplo
-                                </Text>
-                              </View>
-                            </GlassSurface>
-                          )}
-                        </Pressable>
+                        nativeGlassButtons ? (
+                          <NativeGlassButton
+                            onPress={session.handleOpenDemoNucleo}
+                            accessibilityLabel="Ver un ejemplo"
+                            cornerRadius={24}
+                            style={styles.demoCtaNative}
+                          >
+                            <Text className="text-[15px] font-normal text-body">
+                              Ver un ejemplo
+                            </Text>
+                          </NativeGlassButton>
+                        ) : (
+                          <Pressable
+                            onPress={session.handleOpenDemoNucleo}
+                            accessibilityRole="button"
+                            accessibilityLabel="Ver un ejemplo"
+                            className="mt-6"
+                          >
+                            {({ pressed }) => (
+                              <GlassSurface
+                                liquid
+                                variant="composer"
+                                borderRadius={24}
+                                liquidBorder="perimeter"
+                                overlayClassName={pressed ? 'bg-accent/8' : undefined}
+                              >
+                                <View className="px-4 py-2.5">
+                                  <Text className="text-[15px] font-normal text-body">
+                                    Ver un ejemplo
+                                  </Text>
+                                </View>
+                              </GlassSurface>
+                            )}
+                          </Pressable>
+                        )
                       ) : null}
                     </>
                   ) : null}
@@ -535,6 +558,12 @@ export default function InputScreen() {
 }
 
 const styles = StyleSheet.create({
+  /** Native button sizes to content; mirrors the JS px-4 py-2.5 pill. */
+  demoCtaNative: {
+    marginTop: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
   screenCenteredLogo: {
     position: 'absolute',
     top: 0,

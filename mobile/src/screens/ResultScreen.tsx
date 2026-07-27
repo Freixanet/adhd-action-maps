@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  type LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -27,15 +27,18 @@ import CompletionOverflowMenu from '../components/CompletionOverflowMenu';
 import IncompleteTransformBanner from '../components/IncompleteTransformBanner';
 import SessionErrorBanner from '../components/SessionErrorBanner';
 import MapChatSheet from '../components/MapChatSheet';
-import ReadingProgressBar, { mapContentTopPadding } from '../components/ReadingProgressBar';
+import ReadingProgressBar, {
+  mapContentTopPadding,
+  READING_PROGRESS_LINE_HEIGHT,
+} from '../components/ReadingProgressBar';
 import { useMapHeaderAutoHide } from '../hooks/useMapHeaderAutoHide';
-import SourceMetadataGlassCard from '../components/SourceMetadataGlassCard';
 import StepContentBlocks from '../components/StepContentBlocks';
 import StepFooterNav from '../components/StepFooterNav';
 import StepSlideTransition from '../components/StepSlideTransition';
 import SourceCoverageCard from '../components/SourceCoverageCard';
 import TakeawaysGlassCard from '../components/TakeawaysGlassCard';
 import KnowledgeSectionsList from '../components/KnowledgeSectionsList';
+import TldrBentoGrid from '../components/TldrBentoGrid';
 // F3: re-spec pending — NucleoVisualOverview disconnected from ResultScreen.
 // import NucleoVisualOverview from '../components/NucleoVisualOverview';
 import NucleoVisualizeWebView from '../components/NucleoVisualizeWebView';
@@ -52,6 +55,101 @@ import { debugTransitionLog } from '../logic/debugTransitionLog';
 import { BG_BASE } from '@shared/uiTokens';
 
 const PREVIEW_TOP_INSET = initialWindowMetrics?.insets.top ?? 0;
+/** Ignore 1px float noise when comparing content vs viewport. */
+const SCROLL_OVERFLOW_EPSILON = 1;
+/** Chrome toggle must be a still tap — anything draggier belongs to the page swipe. */
+const CHROME_TAP_MAX_DISTANCE = 8;
+const CHROME_TAP_MAX_DURATION_MS = 300;
+
+function useScrollOnlyWhenNeeded(scrollableOverhead = 0) {
+  const [viewportH, setViewportH] = useState(0);
+  const [contentH, setContentH] = useState(0);
+  // Top/bottom padding that only exists to align the resting layout must not
+  // count as overflow — otherwise Idea central always enables scroll.
+  const needsScroll =
+    viewportH > 0 && contentH - scrollableOverhead > viewportH + SCROLL_OVERFLOW_EPSILON;
+
+  const onViewportLayout = useCallback((event: LayoutChangeEvent) => {
+    setViewportH(event.nativeEvent.layout.height);
+  }, []);
+
+  const onContentSizeChange = useCallback((_width: number, height: number) => {
+    setContentH(height);
+  }, []);
+
+  return { needsScroll, onViewportLayout, onContentSizeChange };
+}
+
+type AdaptiveStepScrollProps = {
+  scrollRef?: React.Ref<Animated.ScrollView>;
+  historyOpen: boolean;
+  onOuterLayout?: (event: LayoutChangeEvent) => void;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onPressChrome: () => void;
+  children: React.ReactNode;
+  /** Gap that scrolls with the content, so the cut-off stays at the header edge. */
+  contentTopInset?: number;
+};
+
+/** Step-mode page scroll: disabled (no bounce) when the page fits the viewport. */
+function AdaptiveStepScroll({
+  scrollRef,
+  historyOpen,
+  onOuterLayout,
+  onScroll,
+  onPressChrome,
+  children,
+  contentTopInset = 0,
+}: AdaptiveStepScrollProps) {
+  // Resting alignment padding (top inset + content bottom pad) is not overflow.
+  const scrollableOverhead = contentTopInset + 16;
+  const { needsScroll, onViewportLayout, onContentSizeChange } =
+    useScrollOnlyWhenNeeded(scrollableOverhead);
+
+  // A deliberate tap, not the tail of a page swipe: Pressable fires even after
+  // drags that never reach the swipe threshold.
+  const chromeTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDistance(CHROME_TAP_MAX_DISTANCE)
+        .maxDuration(CHROME_TAP_MAX_DURATION_MS)
+        .onEnd((_event, success) => {
+          'worklet';
+          if (success) runOnJS(onPressChrome)();
+        }),
+    [onPressChrome]
+  );
+
+  return (
+    <Animated.ScrollView
+      ref={scrollRef}
+      style={styles.adaptiveScroll}
+      contentContainerStyle={[
+        styles.adaptiveScrollContent,
+        contentTopInset ? { paddingTop: contentTopInset } : null,
+      ]}
+      keyboardShouldPersistTaps="handled"
+      nestedScrollEnabled
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      scrollEnabled={!historyOpen && needsScroll}
+      bounces={needsScroll}
+      alwaysBounceVertical={needsScroll}
+      overScrollMode={needsScroll ? 'auto' : 'never'}
+      onLayout={(event) => {
+        onViewportLayout(event);
+        onOuterLayout?.(event);
+      }}
+      onContentSizeChange={onContentSizeChange}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+    >
+      <GestureDetector gesture={chromeTapGesture}>
+        <View style={[styles.readingColumn, styles.tapChromeTarget]}>{children}</View>
+      </GestureDetector>
+    </Animated.ScrollView>
+  );
+}
 
 function ReferencesChips({ references }: { references?: SourceReference[] }) {
   if (!references?.length) return null;
@@ -121,6 +219,11 @@ export default function ResultScreen({
   }, [onHandoffLayout, previewMode]);
 
   const scrollProgress = useSharedValue(0);
+  const {
+    needsScroll: viewAllNeedsScroll,
+    onViewportLayout: onViewAllViewportLayout,
+    onContentSizeChange: onViewAllContentSizeChange,
+  } = useScrollOnlyWhenNeeded();
 
   const hideProgressLine =
     (!session.viewAll && !session.isComplete && session.currentStep === 0) ||
@@ -175,7 +278,7 @@ export default function ResultScreen({
   const openVisualStep = useCallback(
     (stepId: string) => {
       const stepIndex = data?.steps.findIndex((step) => step.id === stepId) ?? -1;
-      if (stepIndex >= 0) session.goToStep(stepIndex + 2, true);
+      if (stepIndex >= 0) session.goToStep(stepIndex + 1, true);
     },
     [data?.steps, session]
   );
@@ -232,7 +335,7 @@ export default function ResultScreen({
 
   useEffect(() => {
     canPrev.value = swipeEnabled && session.currentStep > 0;
-    canNext.value = swipeEnabled && session.currentStep < session.totalSteps + 1;
+    canNext.value = swipeEnabled && session.currentStep < session.totalSteps;
   }, [canNext, canPrev, session.currentStep, session.totalSteps, swipeEnabled]);
 
   const commitStep = useCallback(
@@ -357,7 +460,12 @@ export default function ResultScreen({
     stepHaptic();
   }, [headerVisible, isStepMode]);
 
-  const stepHeaderVisibleTopPadding = mapContentTopPadding(hideProgressLine);
+  // Intro has no progress line, so its content must start right at the header edge:
+  // otherwise the extra gap pushes the cut-off well below where the bar sits elsewhere.
+  const stepHeaderVisibleTopPadding = mapContentTopPadding(
+    hideProgressLine,
+    hideProgressLine ? 0 : 24
+  );
   const stepHeaderHiddenTopPadding = 20;
   const stepPageChromeStyle = useAnimatedStyle(() => ({
     paddingTop: withTiming(
@@ -402,13 +510,8 @@ export default function ResultScreen({
     const items = data.tldr ?? [];
     if (!items.length) return null;
     return (
-      <View className="mt-6 gap-5">
-        {items.map((item, index) => (
-          <View key={`${item.title}-${index}`}>
-            <Text className="text-base font-semibold text-primary">{item.title}</Text>
-            <Text className="mt-1 text-[17px] leading-[26px] text-body">{item.desc}</Text>
-          </View>
-        ))}
+      <View className="mt-6">
+        <TldrBentoGrid items={items} />
       </View>
     );
   };
@@ -448,11 +551,11 @@ export default function ResultScreen({
     const includeTldr = options.includeTldr ?? true;
 
     return (
-    <View className={interactive ? VIEW_ALL_SECTION_DIVIDER : 'mb-8'}>
+    <View className={interactive ? VIEW_ALL_SECTION_DIVIDER : undefined}>
       {interactive ? renderMapMeta() : null}
       <View className="flex-row items-center gap-2 mb-4">
         <AppIcon size={20} />
-        <Text className="text-sm font-bold tracking-widest uppercase text-primary">
+        <Text className="text-[15px] font-bold tracking-widest uppercase text-primary">
           Idea central
         </Text>
       </View>
@@ -461,23 +564,10 @@ export default function ResultScreen({
         <Text className="mt-4 text-lg leading-7 text-body text-secondary">{data.coreSupport}</Text>
       ) : null}
 
-      {data.sourceMetadata ? (
-        <View className="mt-8">
-          <SourceMetadataGlassCard
-            sourceMetadata={data.sourceMetadata}
-            sourceUrl={
-              data.sourceMetadata.url ||
-              session.inlineUserTurn?.sourceUrl ||
-              null
-            }
-          />
-        </View>
-      ) : null}
-
       {includeTldr && (visualizeRun || visualizeArtifact || (data.tldr?.length ?? 0) > 0) ? (
-        <View className="mt-8 pt-8 border-t border-neutral-200 border-white/10">
+        <View className="mt-10">
           {!isVisualizeHtmlTest ? (
-            <Text className="text-xs font-bold uppercase tracking-widest text-secondary mb-6">
+            <Text className="text-[15px] font-bold uppercase tracking-widest text-primary">
               En 60 segundos
             </Text>
           ) : null}
@@ -487,28 +577,6 @@ export default function ResultScreen({
     </View>
     );
   };
-
-  const renderTldrPage = () => (
-    <View style={styles.stepPage}>
-      {isVisualizeHtmlTest ? (
-        visualizeRun || visualizeArtifact ? (
-          renderVisualOverview({ showTitle: false })
-        ) : null
-      ) : (
-        <>
-          <View>
-            <Text className="text-sm font-bold uppercase tracking-widest text-accent">
-              En 60 segundos
-            </Text>
-            <Text className="mt-3 text-2xl font-bold text-primary leading-9">
-              El Núcleo antes de entrar en los pasos
-            </Text>
-          </View>
-          {renderTldrList()}
-        </>
-      )}
-    </View>
-  );
 
   const renderStep = (stepIndex: number, interactive = false, isLastStep = false) => {
     const step = data.steps[stepIndex - 1];
@@ -725,33 +793,21 @@ export default function ResultScreen({
   );
 
   const renderStepModeReading = (step: number) => {
-    if (step === 0) return renderResumen(false, { includeTldr: false });
-    if (step === 1) return renderTldrPage();
-    return renderStep(step - 1, false);
+    if (step === 0) return renderResumen(false, { includeTldr: true });
+    return renderStep(step, false);
   };
 
   const renderAdaptiveStepPage = (step: number) => (
-    <Animated.ScrollView
-      ref={step === session.currentStep ? scrollRef : undefined}
-      style={styles.adaptiveScroll}
-      contentContainerStyle={styles.adaptiveScrollContent}
-      keyboardShouldPersistTaps="handled"
-      nestedScrollEnabled
-      showsVerticalScrollIndicator={false}
-      showsHorizontalScrollIndicator={false}
-      scrollEnabled={!session.historyOpen}
-      onLayout={step === session.currentStep ? handleScrollViewLayout : undefined}
+    <AdaptiveStepScroll
+      scrollRef={step === session.currentStep ? scrollRef : undefined}
+      historyOpen={session.historyOpen}
+      onOuterLayout={step === session.currentStep ? handleScrollViewLayout : undefined}
       onScroll={step === session.currentStep ? scrollHandler : undefined}
-      scrollEventThrottle={16}
+      onPressChrome={toggleStepHeader}
+      contentTopInset={hideProgressLine ? READING_PROGRESS_LINE_HEIGHT + 24 : 0}
     >
-      <Pressable
-        onPress={toggleStepHeader}
-        style={[styles.readingColumn, styles.tapChromeTarget]}
-      >
-        {step === 0 ? renderMapMeta() : null}
-        {renderStepModeReading(step)}
-      </Pressable>
-    </Animated.ScrollView>
+      {renderStepModeReading(step)}
+    </AdaptiveStepScroll>
   );
 
   const renderModeBody = () => {
@@ -844,8 +900,15 @@ export default function ResultScreen({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             showsHorizontalScrollIndicator={false}
-            scrollEnabled={!session.historyOpen}
-            onLayout={handleScrollViewLayout}
+            scrollEnabled={!session.historyOpen && viewAllNeedsScroll}
+            bounces={viewAllNeedsScroll}
+            alwaysBounceVertical={viewAllNeedsScroll}
+            overScrollMode={viewAllNeedsScroll ? 'auto' : 'never'}
+            onLayout={(event) => {
+              onViewAllViewportLayout(event);
+              handleScrollViewLayout(event);
+            }}
+            onContentSizeChange={onViewAllContentSizeChange}
             onScroll={scrollHandler}
             scrollEventThrottle={16}
           >

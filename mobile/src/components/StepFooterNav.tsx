@@ -30,7 +30,7 @@ export default function StepFooterNav({
   const session = useAppSession();
   const insets = useSafeAreaInsets();
   const showStepFooter = !session.viewAll && !session.isComplete;
-  const totalReadingPages = session.totalSteps + 1;
+  const totalReadingPages = session.totalSteps;
   const hideDistance = FOOTER_CHROME_BASE + insets.bottom;
 
   const footerStyle = useAnimatedStyle(() => {

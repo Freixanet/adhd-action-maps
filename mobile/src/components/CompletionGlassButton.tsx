@@ -3,7 +3,13 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import Animated from 'react-native-reanimated';
 import { CTA_FILL, RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
+import NativeGlassButton from './NativeGlassButton';
 import { usePressScale } from '../hooks/usePressScale';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import {
+  shouldUseNativeGlassButton,
+  shouldUseNativeGlassFilledCta,
+} from '../logic/nativeGlassButtons';
 import { useTheme } from '../context/ThemeContext';
 
 type CompletionGlassButtonProps = {
@@ -29,6 +35,7 @@ export default function CompletionGlassButton({
 }: CompletionGlassButtonProps) {
   const { isDark } = useTheme();
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const { reduceTransparency } = useGlassAccessibility();
   const isAccent = variant === 'accent';
 
   const neutralOverlay = isDark ? 'bg-white/[0.05]' : 'bg-white/45';
@@ -61,6 +68,27 @@ export default function CompletionGlassButton({
     </View>
   );
 
+  const resolvedLabel = accessibilityLabel ?? (showLoading ? (loadingLabel ?? label) : label);
+  const native = isAccent
+    ? shouldUseNativeGlassFilledCta(reduceTransparency)
+    : shouldUseNativeGlassButton(reduceTransparency);
+
+  if (native) {
+    return (
+      <NativeGlassButton
+        onPress={onPress}
+        accessibilityLabel={resolvedLabel}
+        variant={isAccent ? 'prominentGlass' : 'glass'}
+        cornerRadius={RADII.lg}
+        tintColor={isAccent ? CTA_FILL : undefined}
+        disabled={isButtonDisabled}
+        style={styles.nativeShell}
+      >
+        {content}
+      </NativeGlassButton>
+    );
+  }
+
   return (
     <Pressable
       onPress={onPress}
@@ -68,7 +96,7 @@ export default function CompletionGlassButton({
       onPressOut={onPressOut}
       disabled={isButtonDisabled}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? (showLoading ? (loadingLabel ?? label) : label)}
+      accessibilityLabel={resolvedLabel}
       style={({ pressed }) => [
         styles.pressable,
         pressed && !isButtonDisabled ? styles.pressedOpacity : null,
@@ -108,6 +136,12 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: RADII.lg,
     overflow: 'hidden',
+  },
+  /** Native button sizes itself, so mirror the JS content minHeight. */
+  nativeShell: {
+    width: '100%',
+    alignSelf: 'stretch',
+    minHeight: 52,
   },
   accentShell: {
     width: '100%',

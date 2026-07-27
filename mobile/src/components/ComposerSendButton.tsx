@@ -2,9 +2,13 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Pressable } from 'react-native-gesture-handler';
+import { ACCENT } from '@shared/uiTokens';
 import { ArrowUp } from '../icons';
 import GlassSurface from './GlassSurface';
+import NativeGlassButton from './NativeGlassButton';
 import { usePressScale } from '../hooks/usePressScale';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { shouldUseNativeGlassFilledCta } from '../logic/nativeGlassButtons';
 import { useTheme } from '../context/ThemeContext';
 import { agentLog } from '../logic/agentDebugLog';
 
@@ -28,6 +32,7 @@ export default function ComposerSendButton({
 }: ComposerSendButtonProps) {
   const { isDark } = useTheme();
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const { reduceTransparency } = useGlassAccessibility();
   const isStop = mode === 'stop';
   const effectivelyDisabled = isStop ? false : disabled;
   const label = accessibilityLabel ?? (isStop ? 'Detener generación' : 'Enviar');
@@ -45,6 +50,21 @@ export default function ComposerSendButton({
   ) : (
     <ArrowUp size={ICON_SIZE} color={iconColor} strokeWidth={2.25} />
   );
+
+  // Enabled send is an accent CTA, so it follows the filled-CTA switch.
+  if (!effectivelyDisabled && shouldUseNativeGlassFilledCta(reduceTransparency)) {
+    return (
+      <NativeGlassButton
+        onPress={onPress}
+        accessibilityLabel={label}
+        variant="prominentGlass"
+        tintColor={ACCENT}
+        style={styles.shell}
+      >
+        {glyph}
+      </NativeGlassButton>
+    );
+  }
 
   return (
     <Pressable

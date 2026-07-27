@@ -16,6 +16,9 @@ export const MAIN_CONTENT_GUTTER = 12;
 /** Circle glass buttons in the sidebar header (lupa, etc.). */
 export const SIDEBAR_HEADER_BUTTON_SIZE = 36;
 
+/** Sidebar toggle on the main input screen only. */
+export const SIDEBAR_TOGGLE_BUTTON_SIZE = 44;
+
 /** Horizontal padding (inset×2) + gap (8) + trailing button (36). */
 export const SIDEBAR_SEARCH_SLOT_INSET = SIDEBAR_EDGE_INSET * 2 + 8 + SIDEBAR_HEADER_BUTTON_SIZE;
 
