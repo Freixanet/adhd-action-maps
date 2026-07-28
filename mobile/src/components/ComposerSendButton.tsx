@@ -10,7 +10,6 @@ import { usePressScale } from '../hooks/usePressScale';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { shouldUseNativeGlassFilledCta } from '../logic/nativeGlassButtons';
 import { useTheme } from '../context/ThemeContext';
-import { agentLog } from '../logic/agentDebugLog';
 
 const SIZE = 38;
 const ICON_SIZE = 17;
@@ -68,25 +67,8 @@ export default function ComposerSendButton({
 
   return (
     <Pressable
-      onPress={() => {
-        // #region agent log
-        agentLog('E', 'ComposerSendButton.tsx:onPress', 'Send Pressable onPress', {
-          effectivelyDisabled,
-          mode,
-          disabled,
-        });
-        // #endregion
-        onPress();
-      }}
-      onPressIn={() => {
-        // #region agent log
-        agentLog('E', 'ComposerSendButton.tsx:onPressIn', 'Send Pressable onPressIn', {
-          effectivelyDisabled,
-          mode,
-        });
-        // #endregion
-        onPressIn();
-      }}
+      onPress={onPress}
+      onPressIn={onPressIn}
       onPressOut={onPressOut}
       disabled={effectivelyDisabled}
       accessibilityRole="button"

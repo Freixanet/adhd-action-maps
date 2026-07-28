@@ -2,7 +2,6 @@ import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import type { MenuAction, NativeActionEvent } from '@react-native-menu/menu';
 import { NucleoUIMenuAnchor } from '../../modules/nucleo-ui-menu/src';
-import { agentLog } from '../logic/agentDebugLog';
 import {
   markComposerNativeMenuEnded,
   markComposerNativeMenuPresented,
@@ -49,21 +48,8 @@ export default function ComposerMenuTrigger({
       title={title}
       themeVariant={themeVariant}
       actions={menuActions}
-      onPresent={(event) => {
+      onPresent={() => {
         markComposerNativeMenuPresented();
-        // #region agent log
-        agentLog(
-          'T',
-          'ComposerMenuTrigger.tsx:present',
-          'NucleoUIMenuAnchor onPresent',
-          {
-            title,
-            delayed: event?.nativeEvent?.delayed,
-            keyboardHeight: event?.nativeEvent?.keyboardHeight,
-          },
-          'post-fix'
-        );
-        // #endregion
       }}
       onDismiss={() => {
         markComposerNativeMenuEnded();
@@ -71,29 +57,12 @@ export default function ComposerMenuTrigger({
       onSelect={(event) => {
         const id = event?.nativeEvent?.id;
         markComposerNativeMenuEnded();
-        // #region agent log
-        agentLog(
-          'S',
-          'ComposerMenuTrigger.tsx:action',
-          'NucleoUIMenuAnchor onSelect',
-          { title, id },
-          'post-fix'
-        );
-        // #endregion
         if (!id) return;
         onPressAction({ nativeEvent: { event: id } } as NativeActionEvent);
       }}
       style={styles.host}
     >
-      <View
-        pointerEvents="none"
-        collapsable={false}
-        onLayout={() => {
-          // #region agent log
-          agentLog('S', 'ComposerMenuTrigger.tsx:layout', 'anchor children laid out', { title }, 'post-fix');
-          // #endregion
-        }}
-      >
+      <View pointerEvents="none" collapsable={false}>
         {children}
       </View>
     </NucleoUIMenuAnchor>

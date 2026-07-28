@@ -49,8 +49,6 @@ import {
 } from '../logic/composerText';
 import { formatInlineFileSize, truncateMiddleName } from '../logic/inlineUserBubble';
 import { BG_BASE, BG_SURFACE } from '@shared/uiTokens';
-import { agentLog } from '../logic/agentDebugLog';
-
 const DEV = false;
 const STATIC_PLACEHOLDER = 'Pega caos, recibe un Núcleo';
 const HERO_FADE_MS = 150;
@@ -248,17 +246,6 @@ export default function InputScreen() {
 
   const menusBlockScroll = session.historyOpen;
 
-  // #region agent log
-  agentLog('A', 'InputScreen.tsx:render', 'InputScreen render', {
-    composerDisabled,
-    canSend,
-    phase: session.phase,
-    inlineStatus: session.inlineGenerationStatus,
-    showScreenCenteredLogo:
-      !inlineActive && !keyboardVisible && (Boolean(session.continueEntry) && !composerDisabled && !isFirstUse || showHero),
-  });
-  // #endregion
-
   return (
     <ComposerKeyboardProvider>
       {/*
@@ -345,19 +332,7 @@ export default function InputScreen() {
           </Animated.View>
 
           {showScreenCenteredLogo ? (
-            <View
-              pointerEvents="none"
-              style={screenCenteredLogoStyle}
-              onLayout={() => {
-                // #region agent log
-                agentLog('B', 'InputScreen.tsx:logoOverlay', 'logo overlay laid out', {
-                  composerHeight,
-                  composerDockBottom,
-                  showScreenCenteredLogo: true,
-                });
-                // #endregion
-              }}
-            >
+            <View pointerEvents="none" style={screenCenteredLogoStyle}>
               <Animated.View style={heroFadeStyle} className="items-center px-2">
                 <View pointerEvents="auto" className="items-center">
                   {brandMark}
@@ -506,16 +481,6 @@ export default function InputScreen() {
                     <View
                       pointerEvents={composerDisabled ? 'none' : 'auto'}
                       style={styles.composerToolbar}
-                      onTouchStart={() => {
-                        // #region agent log
-                        agentLog('B', 'InputScreen.tsx:toolbar', 'toolbar onTouchStart', {
-                          composerDisabled,
-                          canSend,
-                          phase: session.phase,
-                          inlineStatus: session.inlineGenerationStatus,
-                        });
-                        // #endregion
-                      }}
                     >
                       <View className="flex-row items-center gap-2 shrink">
                         <AttachMenu
@@ -546,12 +511,6 @@ export default function InputScreen() {
                       <ComposerSendButton
                         mode={isGenerating ? 'stop' : 'send'}
                         onPress={() => {
-                          // #region agent log
-                          agentLog('E', 'InputScreen.tsx:send', 'send onPress fired', {
-                            canSend,
-                            isGenerating,
-                          });
-                          // #endregion
                           Keyboard.dismiss();
                           if (isGenerating) {
                             session.handleCancelLoading();

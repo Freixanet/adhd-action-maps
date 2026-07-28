@@ -53,8 +53,11 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "eas-cli": "^20.4.0",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "patch-package": "^8.0.1",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.65.0"
   },
   "scripts": {
     "start": "expo start",
@@ -67,6 +70,7 @@
     "ios:signing": "./scripts/configure-ios-local-signing.sh",
     "web": "expo start --web",
     "lint": "tsc --noEmit",
+    "lint:hooks": "eslint",
     "postinstall": "patch-package",
     "build:orb": "npm install --prefix orb-web && npm run build --prefix orb-web",
     "release:setup": "../scripts/setup-mobile-release.sh all",
