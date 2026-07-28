@@ -109,7 +109,16 @@ class NucleoUIMenuAnchorView: ExpoView {
       } else if stateRaw == "mixed" {
         state = .mixed
       }
-      return UIAction(title: title, identifier: UIAction.Identifier(id), state: state) { [weak self] _ in
+      var image: UIImage?
+      if let symbolName = action["image"] as? String, !symbolName.isEmpty {
+        image = UIImage(systemName: symbolName)
+      }
+      return UIAction(
+        title: title,
+        image: image,
+        identifier: UIAction.Identifier(id),
+        state: state
+      ) { [weak self] _ in
         guard let self else { return }
         self.onSelect(["id": id])
         self.restoreInputIfNeeded()

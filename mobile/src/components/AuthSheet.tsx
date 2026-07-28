@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BG_BASE } from '@shared/uiTokens';
 import { LogOut, X } from '../icons';
 import { signInWithPassword,
   signInWithProvider,
@@ -18,7 +19,6 @@ import { signInWithPassword,
 } from '../logic/cloudHistory';
 import GlassSurface from './GlassSurface';
 import { useAppSession } from '../context/AppSessionContext';
-import { useTheme } from '../context/ThemeContext';
 
 type AuthSheetProps = {
   visible: boolean;
@@ -38,7 +38,6 @@ function authErrorMessage(err: unknown): string {
 
 export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProps) {
   const session = useAppSession();
-  const { isDark } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -111,7 +110,16 @@ export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProp
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView className="flex-1 bg-base">
+      {/*
+        Uniwind does not patch SafeAreaView from react-native-safe-area-context,
+        so className flex-1 / bg-base are no-ops. Without style flex:1 the sheet
+        collapses to the header and the login form never appears.
+      */}
+      <SafeAreaView
+        edges={['top', 'left', 'right', 'bottom']}
+        style={{ flex: 1, backgroundColor: BG_BASE }}
+        className="flex-1 bg-base"
+      >
         <GlassSurface liquid borderRadius={0} liquidBorder="bottom">
           <View className="flex-row items-center justify-between px-5 py-4">
             <Text className="text-lg font-bold text-primary">
@@ -128,12 +136,14 @@ export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProp
         </GlassSurface>
 
         <KeyboardAvoidingView
+          style={{ flex: 1 }}
           className="flex-1"
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView
+            style={{ flex: 1 }}
             className="flex-1"
-            contentContainerClassName="px-5 py-6"
+            contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 24 }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             showsHorizontalScrollIndicator={false}

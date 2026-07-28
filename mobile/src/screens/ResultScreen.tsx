@@ -33,6 +33,9 @@ import ReadingProgressBar, {
 } from '../components/ReadingProgressBar';
 import { useMapHeaderAutoHide } from '../hooks/useMapHeaderAutoHide';
 import StepContentBlocks from '../components/StepContentBlocks';
+import BlockReferences from '../components/BlockReferences';
+import SourceViewerSheet from '../components/SourceViewerSheet';
+import { SourceViewerProvider } from '../context/SourceViewerContext';
 import StepFooterNav from '../components/StepFooterNav';
 import StepSlideTransition from '../components/StepSlideTransition';
 import SourceCoverageCard from '../components/SourceCoverageCard';
@@ -152,26 +155,7 @@ function AdaptiveStepScroll({
 }
 
 function ReferencesChips({ references }: { references?: SourceReference[] }) {
-  if (!references?.length) return null;
-
-  return (
-    <View className="mt-4 flex-row flex-wrap gap-2">
-      {references.slice(0, 3).map((reference, idx) => (
-        <View
-          key={`${reference.label}-${reference.locator}-${idx}`}
-          className="max-w-full flex-row items-center gap-1.5 rounded-full bg-white/6 px-3 py-1.5"
-          style={{ flexShrink: 1 }}
-        >
-          <Text className="text-xs text-secondary shrink" numberOfLines={1}>
-            {reference.label}
-          </Text>
-          <Text className="text-xs text-body shrink" numberOfLines={1}>
-            {reference.locator}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
+  return <BlockReferences references={references} />;
 }
 
 const VIEW_ALL_SECTION_DIVIDER = 'pb-8 mb-8 border-b border-neutral-200 border-white/10';
@@ -953,24 +937,36 @@ export default function ResultScreen({
   );
 
   return previewMode ? (
-    <View
-      className="flex-1 bg-base"
-      style={{ paddingTop: PREVIEW_TOP_INSET }}
-      onLayout={handleRootLayout}
-      pointerEvents="none"
+    <SourceViewerProvider
+      citedChunks={data?.citedChunks}
+      sourceTitle={data?.sourceMetadata?.title || data?.sourceMetadata?.label || data?.title}
     >
-      {resultShell}
-    </View>
+      <View
+        className="flex-1 bg-base"
+        style={{ paddingTop: PREVIEW_TOP_INSET }}
+        onLayout={handleRootLayout}
+        pointerEvents="none"
+      >
+        {resultShell}
+      </View>
+      <SourceViewerSheet />
+    </SourceViewerProvider>
   ) : (
-    <SafeAreaView
-      className="flex-1 bg-base"
-      style={{ flex: 1, backgroundColor: BG_BASE }}
-      edges={['top', 'left', 'right']}
-      onLayout={handleRootLayout}
-      pointerEvents="auto"
+    <SourceViewerProvider
+      citedChunks={data?.citedChunks}
+      sourceTitle={data?.sourceMetadata?.title || data?.sourceMetadata?.label || data?.title}
     >
-      {resultShell}
-    </SafeAreaView>
+      <SafeAreaView
+        className="flex-1 bg-base"
+        style={{ flex: 1, backgroundColor: BG_BASE }}
+        edges={['top', 'left', 'right']}
+        onLayout={handleRootLayout}
+        pointerEvents="auto"
+      >
+        {resultShell}
+      </SafeAreaView>
+      <SourceViewerSheet />
+    </SourceViewerProvider>
   );
 }
 

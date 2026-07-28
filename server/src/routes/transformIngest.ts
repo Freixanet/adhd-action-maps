@@ -8,7 +8,7 @@ import {
   type IngestResult,
 } from "../../../shared/types/chunk";
 import { isAskLaneInput } from "../ingestors/askLane";
-import { joinChunkTexts, overviewSeedText } from "../ingestors/chunkUtils";
+import { labelledChunkText, labelledOverviewSeedText } from "../ingestors/chunkUtils";
 import { getIngestor, IngestError } from "../ingestors/factory";
 import { validateIngestChunks } from "../ingestors/validateChunks";
 import type { IngestorInput } from "../ingestors/types";
@@ -110,8 +110,8 @@ export async function prepareTransformIngest(
       ingest.chapters && ingest.chapters.length > OVERVIEW_CHAPTER_THRESHOLD
     );
     const sourceText = overviewOnly
-      ? overviewSeedText(ingest.chunks, ingest.chapters!)
-      : joinChunkTexts(ingest.chunks);
+      ? labelledOverviewSeedText(ingest.chunks, ingest.chapters!)
+      : labelledChunkText(ingest.chunks);
 
     const preface = overviewOnly
       ? [
@@ -119,9 +119,14 @@ export async function prepareTransformIngest(
           `Hay ${ingest.chapters!.length} capítulos. Usa solo estas semillas (primer trozo de cada capítulo).`,
           "Genera un Núcleo overview de 3–6 pasos. No inventes citas fuera de este texto.",
           "Los capítulos completos quedan para una futura acción «Profundizar».",
+          "Los marcadores [[chunk_…]] son ids de cita: úsalos en references.chunkId. Nunca los escribas en la prosa.",
           "",
         ].join("\n")
-      : "";
+      : [
+          "Los marcadores [[chunk_…]] en la fuente son ids de cita. Solo puedes poner en references.chunkId un id que aparezca entre [[…]].",
+          "Si un hecho no tiene fuente en esos chunks, no cites. Nunca escribas los marcadores en la prosa del Núcleo.",
+          "",
+        ].join("\n");
 
     const nextBody: TransformRequest = {
       ...body,

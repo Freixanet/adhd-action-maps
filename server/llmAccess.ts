@@ -1,12 +1,17 @@
 import type { Request, Response } from "express";
 import { isProUser } from "../shared/proEntitlement";
-import { assertAndConsumeUsage, type UsageKind } from "../shared/usageLimits";
+import {
+  assertAndConsumeUsage,
+  type UsageKind,
+} from "../shared/usageLimits";
 import type { TransformRequest } from "../shared/contracts";
 
 export type AuthenticatedRequest = Request & {
   userId?: string;
   userEmail?: string;
   isPro?: boolean;
+  /** Stable anon device key from `X-Install-Id` (no login). */
+  installId?: string;
 };
 
 const PREMIUM_MODEL_IDS = new Set([
@@ -18,6 +23,9 @@ const PREMIUM_MODEL_IDS = new Set([
     .map((m) => m.trim())
     .filter(Boolean),
 ]);
+
+const INSTALL_ID_MAX_LEN = 128;
+const INSTALL_ID_RE = /^[A-Za-z0-9._:-]+$/;
 
 export function isPlaceholderSupabaseUrl(url: string | undefined): boolean {
   if (!url?.trim()) return true;
@@ -38,6 +46,14 @@ export function requireAuthEnabled(): boolean {
   if (process.env.REQUIRE_AUTH === "false") return false;
   if (process.env.REQUIRE_AUTH === "true") return true;
   return isSupabaseAuthConfigured();
+}
+
+function normalizeInstallId(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  if (value.length > INSTALL_ID_MAX_LEN) return null;
+  if (!INSTALL_ID_RE.test(value)) return null;
+  return value;
 }
 
 export async function authenticateOptional(req: AuthenticatedRequest) {
@@ -62,22 +78,26 @@ export async function authenticateOptional(req: AuthenticatedRequest) {
   }
 }
 
-function usageSubject(req: AuthenticatedRequest): string {
-  if (req.userId) return req.userId;
-  return `anon:${req.ip || req.socket.remoteAddress || "unknown"}`;
-}
-
+/**
+ * Optional auth for LLM routes.
+ * - Bearer JWT → authenticated user (beta: unlimited quota)
+ * - else `X-Install-Id` → anon with daily cap
+ * - else → auth_required (old clients without the header)
+ */
 export async function requireLlmAccess(
   req: AuthenticatedRequest,
   res: Response
 ): Promise<boolean> {
   await authenticateOptional(req);
   if (req.userId) return true;
-  if (!requireAuthEnabled()) {
-    req.userId = usageSubject(req);
+
+  const installId = normalizeInstallId(req.header("x-install-id") ?? undefined);
+  if (installId) {
+    req.installId = installId;
     req.isPro = false;
     return true;
   }
+
   res.status(401).json({
     error: "Inicia sesión para generar Núcleos.",
     code: "auth_required",
@@ -90,15 +110,28 @@ export function enforceUsageQuota(
   res: Response,
   kind: UsageKind
 ): boolean {
-  const result = assertAndConsumeUsage(usageSubject(req), Boolean(req.isPro), kind);
+  // Logged-in users: unlimited during private beta.
+  if (req.userId) {
+    res.setHeader("X-Usage-Used", "0");
+    res.setHeader("X-Usage-Limit", "unlimited");
+    return true;
+  }
+
+  const installId = req.installId;
+  if (!installId) {
+    res.status(401).json({
+      error: "Inicia sesión para generar Núcleos.",
+      code: "auth_required",
+    });
+    return false;
+  }
+
+  const result = assertAndConsumeUsage(`install:${installId}`, false, kind);
   if (result.ok === false) {
-    const error =
-      result.code === "free_limit"
-        ? "Has usado tus 3 Núcleos gratis de hoy. Vuelve mañana o pasa a Pro."
-        : "Has alcanzado el límite diario de uso. Vuelve mañana.";
     res.status(402).json({
-      error,
-      code: result.code,
+      error: "Límite beta alcanzado",
+      code: "quota_exceeded",
+      action: "login",
       used: result.used,
       limit: result.limit,
     });

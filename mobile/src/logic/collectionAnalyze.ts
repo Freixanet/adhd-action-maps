@@ -84,6 +84,7 @@ export function buildCollectionPartBody(
       outputLanguage: base.outputLanguage,
       sourceLabel: part.title,
       segmentTitle: part.title,
+      sourceContentKind: base.sourceContentKind,
       mapId,
     };
   }

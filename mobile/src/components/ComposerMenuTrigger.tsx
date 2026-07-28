@@ -41,6 +41,7 @@ export default function ComposerMenuTrigger({
       id: action.id,
       title: action.title,
       state: action.state,
+      image: action.image,
     }));
 
   return (

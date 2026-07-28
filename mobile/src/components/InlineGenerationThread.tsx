@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
+  Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -28,7 +29,7 @@ import {
   pickReadyAssistantMessage,
   resolveGenerationPhaseIndex,
 } from '../logic/generationPhaseTrail';
-
+import { restoreComposerInputFocus } from '../logic/composerNativeMenuSession';
 const ACK_DELAY_MS = 180;
 const PHASES_AFTER_ACK_MS = 320;
 const READY_CARD_DELAY_MS = 280;
@@ -307,9 +308,37 @@ export default function InlineGenerationThread() {
 
         {(status === 'ready' || status === 'generating') && askAnswerFull ? (
           <AssistantTextRow entering={reduceMotion ? undefined : FadeIn.duration(220)}>
-            <Text className="text-[17px] leading-6 text-primary" maxFontSizeMultiplier={1.35}>
-              {askDisplayed}
-            </Text>
+            <View className="w-full">
+              <View className="self-start rounded-full bg-white/8 px-2.5 py-1 mb-2">
+                <Text className="text-[11px] font-semibold uppercase tracking-widest text-secondary">
+                  Conocimiento general
+                </Text>
+              </View>
+              <Text className="text-[17px] leading-6 text-primary" maxFontSizeMultiplier={1.35}>
+                {askDisplayed}
+              </Text>
+              {status === 'ready' && session.inlineAskDisclaimer ? (
+                <Text className="mt-3 text-[14px] leading-5 text-secondary" maxFontSizeMultiplier={1.3}>
+                  {session.inlineAskDisclaimer}
+                </Text>
+              ) : null}
+              {status === 'ready' && session.inlineAskCtaLabel ? (
+                <Pressable
+                  onPress={() => {
+                    stepHaptic();
+                    restoreComposerInputFocus();
+                    session.setAttachMenuOpen(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={session.inlineAskCtaLabel}
+                  className="mt-3 self-start rounded-full border border-white/12 bg-white/6 px-3 py-2 active:opacity-80"
+                >
+                  <Text className="text-[14px] font-medium text-body">
+                    {session.inlineAskCtaLabel}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
           </AssistantTextRow>
         ) : null}
 

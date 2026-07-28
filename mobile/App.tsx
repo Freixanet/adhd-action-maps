@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { HeroUINativeProvider } from 'heroui-native';
 import { Uniwind } from 'uniwind';
 import AuthSheet from './src/components/AuthSheet';
+import BetaQuotaSheet from './src/components/BetaQuotaSheet';
 import PaywallSheet from './src/components/PaywallSheet';
 import OAuthRedirectListener from './src/components/OAuthRedirectListener';
 import { AppSessionProvider, useAppSession } from './src/context/AppSessionContext';
@@ -31,6 +32,20 @@ function AuthHost() {
   );
 }
 
+function BetaQuotaHost() {
+  const session = useAppSession();
+  return (
+    <BetaQuotaSheet
+      visible={session.betaQuotaOpen}
+      onClose={() => session.setBetaQuotaOpen(false)}
+      onLogin={() => {
+        session.setBetaQuotaOpen(false);
+        session.openAuthSheet();
+      }}
+    />
+  );
+}
+
 function PaywallHost() {
   const session = useAppSession();
   return (
@@ -49,6 +64,7 @@ function AppShell() {
         <View style={{ flex: 1 }}>
           <ComprensionApp />
           <AuthHost />
+          <BetaQuotaHost />
           <PaywallHost />
           <OAuthRedirectListener />
         </View>

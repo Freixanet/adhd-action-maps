@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
-import type { SourceReference, StepContentBlock } from '../logic/contracts';
+import type { StepContentBlock } from '../logic/contracts';
+import BlockReferences from './BlockReferences';
 import StatBlock from './blocks/StatBlock';
 import ComparisonBlock from './blocks/ComparisonBlock';
 import AccordionBlock from './blocks/AccordionBlock';
@@ -10,26 +11,6 @@ import CalloutBlock from './blocks/CalloutBlock';
 type StepContentBlocksProps = {
   blocks: StepContentBlock[];
 };
-
-function BlockReferences({ references }: { references?: SourceReference[] }) {
-  if (!references?.length) return null;
-
-  return (
-    <View className="mt-3 flex-row flex-wrap gap-2">
-      {references.slice(0, 3).map((reference, idx) => (
-        <View
-          key={`${reference.label}-${reference.locator}-${idx}`}
-          className="rounded-full border border-white/12 px-2.5 py-1"
-        >
-          <Text className="text-[11px] font-medium text-body">
-            <Text className="text-secondary">{reference.label} </Text>
-            {reference.locator}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
 
 function renderBlock(block: StepContentBlock, idx: number) {
   switch (block.type) {

@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { MessageSquareText, X, ArrowUp } from '../icons';
 import { apiUrl } from '../logic/apiBase';
+import { buildLlmRequestHeaders } from '../logic/apiHeaders';
 import type { ActionMapData, ChatTurn, MapChatResponse } from '../logic/contracts';
 import { supabase } from '../logic/supabase';
 import GlassSurface from './GlassSurface';
@@ -187,6 +188,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
         const accessToken = supabase
           ? (await supabase.auth.getSession()).data.session?.access_token
           : undefined;
+        const authHeaders = await buildLlmRequestHeaders(accessToken);
 
         const response = await fetchWithTimeout(
           apiUrl(`/api/maps/${mapId}/chat`),
@@ -194,7 +196,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+              ...authHeaders,
             },
             body: JSON.stringify({
               map: mapData,

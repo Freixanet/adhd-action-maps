@@ -21,6 +21,30 @@ const legacyMap = {
 };
 
 describe('normalizeMapData visual integration', () => {
+  it('preserva la clasificación semántica y descarta valores desconocidos', () => {
+    const book = normalizeMapData({
+      ...legacyMap,
+      sourceMetadata: {
+        kind: 'pdf',
+        contentKind: 'book',
+        label: 'Fuente',
+        detected: [],
+      },
+    });
+    const unknown = normalizeMapData({
+      ...legacyMap,
+      sourceMetadata: {
+        kind: 'pdf',
+        contentKind: 'invoice',
+        label: 'Fuente',
+        detected: [],
+      },
+    });
+
+    expect(book?.sourceMetadata?.contentKind).toBe('book');
+    expect(unknown?.sourceMetadata?.contentKind).toBeUndefined();
+  });
+
   it('ignora visualization presente y normaliza el mapa sin overview (F3 off)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const normalized = normalizeMapData({

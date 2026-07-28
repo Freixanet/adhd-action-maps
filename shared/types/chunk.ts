@@ -19,11 +19,27 @@ export type SourceChunk = {
   hash: string;
 };
 
+/**
+ * Verifiable citation attached to a Núcleo after generation.
+ * `loc` and `label` are always derived from the original SourceChunk on the
+ * server — never from the model — so they cannot be hallucinated.
+ */
+export type Citation = {
+  id: string;
+  chunkId: string;
+  loc: SourceChunkLoc;
+  /** Short chip label: `p.23`, `Cap. 2`, `Foto`, or `Fuente`. */
+  label: string;
+};
+
 export type ChapterMeta = {
   title: string;
   index: number;
   chunkIds: string[];
 };
+
+/** Max cited chunks persisted with a Núcleo (keeps sync payloads small). */
+export const MAX_CITED_CHUNKS = 40;
 
 export type IngestResult = {
   chunks: SourceChunk[];

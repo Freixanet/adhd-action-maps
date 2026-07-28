@@ -72,6 +72,20 @@ export function joinChunkTexts(chunks: SourceChunk[]): string {
   return chunks.map((c) => c.text).join("\n\n");
 }
 
+/**
+ * Wrap each chunk so Gemini can cite real ids. Markers are metadata only —
+ * the model must never echo them in Núcleo prose.
+ *
+ * Format:
+ *   [[chunk_a1b2]]
+ *   <full chunk text>
+ */
+export function labelledChunkText(chunks: SourceChunk[]): string {
+  return chunks
+    .map((c) => `[[${c.id}]]\n${c.text}`)
+    .join("\n\n");
+}
+
 /** Overview context: first chunk of each chapter (ADHD + cost). */
 export function overviewSeedText(
   chunks: SourceChunk[],
@@ -84,6 +98,22 @@ export function overviewSeedText(
     const chunk = firstId ? byId.get(firstId) : undefined;
     if (!chunk) continue;
     parts.push(`## ${chapter.title}\n${chunk.text}`);
+  }
+  return parts.join("\n\n");
+}
+
+/** Overview with citeable chunk markers on each seed. */
+export function labelledOverviewSeedText(
+  chunks: SourceChunk[],
+  chapters: ChapterMeta[]
+): string {
+  const byId = new Map(chunks.map((c) => [c.id, c]));
+  const parts: string[] = [];
+  for (const chapter of chapters) {
+    const firstId = chapter.chunkIds[0];
+    const chunk = firstId ? byId.get(firstId) : undefined;
+    if (!chunk) continue;
+    parts.push(`## ${chapter.title}\n[[${chunk.id}]]\n${chunk.text}`);
   }
   return parts.join("\n\n");
 }

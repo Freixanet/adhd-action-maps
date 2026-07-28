@@ -40,7 +40,7 @@ import { useAppSession } from '../context/AppSessionContext';
 import AppIcon from '../components/AppIcon';
 import { KeyboardDismissBackdrop } from '../logic/keyboardDismiss';
 import { registerComposerInputFocus } from '../logic/composerNativeMenuSession';
-import { CONTINUE_CHIP_FADE_MS, buildContinueChipLabel } from '../logic/continueTransition';
+import { CONTINUE_CARD_RADIUS, CONTINUE_CHIP_FADE_MS, buildContinueChipLabel } from '../logic/continueTransition';
 import {
   COMPOSER_LINE_HEIGHT,
   COMPOSER_MAX_VIEWPORT_RATIO,
@@ -177,7 +177,7 @@ export default function InputScreen() {
     continueChipRef.current?.measureInWindow((x, y, width, height) => {
       session.beginContinueTransition(
         entry.id,
-        { x, y, width, height, borderRadius: 24 },
+        { x, y, width, height, borderRadius: CONTINUE_CARD_RADIUS },
         buildContinueChipLabel(entry.title)
       );
     });
@@ -186,8 +186,8 @@ export default function InputScreen() {
   const showContinueCard = Boolean(session.continueEntry) && !composerDisabled && !isFirstUse;
   /**
    * Keyboard closed: center in the band from screen top (header included) down to
-   * the composer top — not the full window, or the midpoint lands inside the dock.
-   * Keyboard open + continue: center in the flex gap under the card.
+   * the dock top (continue card + composer) — not the full window.
+   * Keyboard open + continue: center in the flex gap above the lifted dock.
    */
   const showScreenCenteredLogo =
     !inlineActive && !keyboardVisible && (showContinueCard || showHero);
@@ -268,7 +268,7 @@ export default function InputScreen() {
               className="flex-row items-center justify-between pt-2.5 pb-4"
               style={{
                 marginHorizontal: -MAIN_CONTENT_GUTTER,
-                paddingLeft: MAIN_CONTENT_GUTTER,
+                paddingLeft: SIDEBAR_EDGE_INSET,
                 paddingRight: SIDEBAR_EDGE_INSET,
               }}
             >
@@ -307,26 +307,12 @@ export default function InputScreen() {
                 <View className="w-full flex-1">
                   <InlineGenerationThread />
                 </View>
-              ) : showContinueCard && session.continueEntry ? (
-              <View className="w-full flex-1 pt-8 pb-2 px-1">
-                <Animated.View style={continueChipFadeStyle} className="w-full mb-2">
-                  <ContinueCard
-                    ref={continueChipRef}
-                    entry={session.continueEntry}
-                    onPress={handleContinuePress}
-                    onDismiss={session.dismissContinueChip}
-                  />
-                </Animated.View>
-                {showGapCenteredLogo ? (
-                  <KeyboardDismissBackdrop className="flex-1 w-full items-center justify-center">
-                    {brandMark}
-                  </KeyboardDismissBackdrop>
-                ) : (
-                  <KeyboardDismissBackdrop className="flex-1 w-full" />
-                )}
-              </View>
+              ) : showGapCenteredLogo ? (
+                <KeyboardDismissBackdrop className="flex-1 w-full items-center justify-center">
+                  {brandMark}
+                </KeyboardDismissBackdrop>
               ) : (
-              <KeyboardDismissBackdrop className="w-full flex-1" />
+                <KeyboardDismissBackdrop className="w-full flex-1" />
               )}
             </ScrollView>
           </Animated.View>
@@ -386,6 +372,15 @@ export default function InputScreen() {
           ) : null}
 
           <ComposerDock onHeightChange={setComposerHeight}>
+            {showContinueCard && session.continueEntry ? (
+              <Animated.View style={[continueChipFadeStyle, styles.continueAboveComposer]}>
+                <ContinueCard
+                  ref={continueChipRef}
+                  entry={session.continueEntry}
+                  onPress={handleContinuePress}
+                />
+              </Animated.View>
+            ) : null}
             <ComposerDismissScroll>
               <Animated.View style={composerDisabledStyle}>
                 <ComposerSurface focused={composerFocused && !composerDisabled} inputRef={composerInputRef}>
@@ -557,5 +552,9 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     gap: 8,
     zIndex: 30,
+  },
+  continueAboveComposer: {
+    width: '100%',
+    marginBottom: 10,
   },
 });

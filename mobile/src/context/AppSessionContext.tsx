@@ -284,6 +284,51 @@ function toSourceType(requestType: TransformRequest['type']): SourceType {
   return requestType;
 }
 
+/** Upload format for icons/labels — distinct from Gemini's rewritten body.type. */
+function detectUploadFormat(
+  request: TransformRequest
+): 'pdf' | 'epub' | 'docx' | 'image' | 'video' | null {
+  const mime = (request.mimeType ?? '').toLowerCase();
+  const label = (request.sourceLabel ?? '').toLowerCase();
+  if (request.type === 'image' || mime.startsWith('image/')) return 'image';
+  if (request.type === 'video' || mime.startsWith('video/')) return 'video';
+  if (mime.includes('epub') || label.endsWith('.epub')) return 'epub';
+  if (mime.includes('wordprocessingml') || label.endsWith('.docx')) return 'docx';
+  if (request.type === 'pdf' || mime === 'application/pdf' || label.endsWith('.pdf')) {
+    return 'pdf';
+  }
+  return null;
+}
+
+function historySourceTypeForRequest(request: TransformRequest): SourceType {
+  const format = detectUploadFormat(request);
+  if (format === 'image' || format === 'video' || format === 'epub' || format === 'docx') {
+    return 'file';
+  }
+  if (format === 'pdf') return 'pdf';
+  return toSourceType(request.type);
+}
+
+/**
+ * Stamp the real upload format onto sourceMetadata so icons stay accurate after
+ * the server rewrites the body to extracted text (and collection parts lose the
+ * original filename in sourceLabel).
+ */
+function withPersistedSourceFormat(
+  map: ActionMapData,
+  request: TransformRequest
+): ActionMapData {
+  const format = detectUploadFormat(request);
+  if (!format || !map.sourceMetadata) return map;
+  return {
+    ...map,
+    sourceMetadata: {
+      ...map.sourceMetadata,
+      kind: format,
+    },
+  };
+}
+
 function asHttpUrl(value: string | null | undefined): string | null {
   const trimmed = value?.trim() ?? '';
   if (!/^https?:\/\//i.test(trimmed)) return null;
@@ -466,6 +511,10 @@ type AppSessionContextValue = {
   inlineUserTurn: InlineUserTurnSnapshot | null;
   /** Full ask answer once the /api/ask response arrives (typed out in the thread). */
   inlineAskAnswer: string | null;
+  /** Unverified-knowledge disclaimer shown under the ask answer. */
+  inlineAskDisclaimer: string | null;
+  /** CTA label under the ask answer (e.g. Añadir fuente para verificar). */
+  inlineAskCtaLabel: string | null;
   cancelInlineAutoOpen: () => void;
   registerInlineAutoOpenCancel: (handler: (() => void) | null) => void;
   openInlineResult: (chipRect: ContinueChipRect) => void;
@@ -570,6 +619,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [inlineGenerationStatus, setInlineGenerationStatus] = useState<InlineGenerationStatus>('idle');
   const [inlineUserTurn, setInlineUserTurn] = useState<InlineUserTurnSnapshot | null>(null);
   const [inlineAskAnswer, setInlineAskAnswer] = useState<string | null>(null);
+  const [inlineAskDisclaimer, setInlineAskDisclaimer] = useState<string | null>(null);
+  const [inlineAskCtaLabel, setInlineAskCtaLabel] = useState<string | null>(null);
   const [devPreviewGenerationActive, setDevPreviewGenerationActive] = useState(false);
 
   const streamProgressCapRef = useRef(0);
@@ -654,6 +705,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setInlineGenerationStatus('idle');
     setInlineUserTurn(null);
     setInlineAskAnswer(null);
+    setInlineAskDisclaimer(null);
+    setInlineAskCtaLabel(null);
     inlineResultEntryIdRef.current = null;
     inlineRetryPayloadRef.current = null;
     askRetryQuestionRef.current = null;
@@ -1023,9 +1076,18 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   }, [persistComposerDraft]);
 
   const openAuthSheet = useCallback(() => {
-    pendingAuthRef.current = true;
-    setHistoryOpen(false);
-  }, []);
+    // Close history first when it is open so the page-sheet Modal is not
+    // buried under the drawer. If history is already closed (e.g. from the
+    // beta-quota sheet), open auth immediately — setHistoryOpen(false) is a
+    // no-op and would never re-trigger the pending-auth effect.
+    if (historyOpenRef.current) {
+      pendingAuthRef.current = true;
+      setHistoryOpen(false);
+      return;
+    }
+    pendingAuthRef.current = false;
+    setAuthOpen(true);
+  }, [setHistoryOpen]);
 
   const revealPendingAuth = useCallback(() => {
     if (!pendingAuthRef.current) return;
@@ -1279,6 +1341,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       clearInlineAutoOpen();
       clearInlineReadyTimeout();
       setInlineAskAnswer(null);
+      setInlineAskDisclaimer(null);
+      setInlineAskCtaLabel(null);
       setInlineUserTurn(
         buildInlineUserTurnSnapshot({
           inputText: question,
@@ -1294,6 +1358,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setUploadedFile(null);
     } else {
       setInlineAskAnswer(null);
+      setInlineAskDisclaimer(null);
+      setInlineAskCtaLabel(null);
     }
 
     askRetryQuestionRef.current = question;
@@ -1341,6 +1407,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
       if (inlineGenerationStatusRef.current !== 'generating') return;
       setInlineAskAnswer(answer);
+      setInlineAskDisclaimer(
+        parsed.disclaimer?.trim() || 'Conocimiento general, sin fuente verificada'
+      );
+      setInlineAskCtaLabel(parsed.cta?.label?.trim() || 'Añadir fuente para verificarlo');
       setInlineGenerationStatus('ready');
       setPhase('input');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1567,6 +1637,14 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     if (!isInlineRetry) {
       try {
         const analysis = await analyzeTransformSource(body, headers);
+        if (analysis.contentKind) {
+          body = { ...body, sourceContentKind: analysis.contentKind };
+          inlineRetryPayloadRef.current = {
+            body,
+            headers,
+            sourceKind,
+          };
+        }
         if (analysis.shouldProposeSplit && analysis.partCount >= 2) {
           const choice = await promptCollectionSplit(analysis.partCount);
           if (choice === 'split') {
@@ -1681,10 +1759,13 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
               if (!normalized) {
                 throw new Error(GENERIC_TRANSFORM_ERROR);
               }
+              // Keep the original upload format (pdf/epub/docx). Part bodies are
+              // typed as text after chapter extract.
+              const partMap = withPersistedSourceFormat(normalized, body);
               store = createEntry(
                 store,
-                { data: normalized, currentStep: 0, isComplete: false, viewAll: false },
-                toSourceType(partBody.type),
+                { data: partMap, currentStep: 0, isComplete: false, viewAll: false },
+                historySourceTypeForRequest(body),
                 partMapId,
                 collectionId
               );
@@ -1706,14 +1787,15 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
                 return;
               }
               lastPartError = partErr;
-              console.error(
-                `[collection] part ${index + 1}/${collectionPlan.parts.length} attempt ${attempt}/${COLLECTION_PART_RETRIES} failed`,
-                partErr
-              );
-              if (attempt < COLLECTION_PART_RETRIES && isTransientNetworkError(partErr)) {
+              const willRetry =
+                attempt < COLLECTION_PART_RETRIES && isTransientNetworkError(partErr);
+              const partLabel = `[collection] part ${index + 1}/${collectionPlan.parts.length} attempt ${attempt}/${COLLECTION_PART_RETRIES} failed`;
+              if (willRetry) {
+                console.warn(`${partLabel}; retrying`, partErr);
                 await sleepMs(1500 * attempt);
                 continue;
               }
+              console.error(partLabel, partErr);
               break;
             }
           }
@@ -1793,6 +1875,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
             : body.generationMode === 'visualize-html-test'
               ? { ...normalized, generationMode: 'visualize-html-test' as const }
               : normalized;
+        finalMap = withPersistedSourceFormat(finalMap, body);
         finalMap = withPersistedSourceUrl(finalMap, body);
         if (body.generationMode === 'visualize-html-test') {
           finalMap = {
@@ -1815,7 +1898,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         const updatedStore = createEntry(
           currentStore,
           session,
-          toSourceType(body.type),
+          historySourceTypeForRequest(body),
           activeMapId
         );
         commitHistoryStore(updatedStore);
@@ -1896,6 +1979,30 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
             streamProgressShared.value = STREAM_PROGRESS_MILESTONES[4];
             saveCompletedMap(finalMap);
             markInlineReady();
+          },
+          onAsk: (askResult) => {
+            setIsStreamGenerating(false);
+            setIsAnalyzingSource(false);
+            setCollectionGenerationProgress(null);
+            setInlineUserTurn(
+              buildInlineUserTurnSnapshot({
+                inputText: bodyText || body.text || '',
+                pastedText: null,
+                uploadedFile: null,
+                conversationalMessage: '',
+                kind: 'ask',
+              })
+            );
+            setInlineAskAnswer(askResult.answer.trim());
+            setInlineAskDisclaimer(
+              askResult.disclaimer?.trim() || 'Conocimiento general, sin fuente verificada'
+            );
+            setInlineAskCtaLabel(
+              askResult.cta?.label?.trim() || 'Añadir fuente para verificarlo'
+            );
+            setInlineGenerationStatus('ready');
+            setPhase('input');
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           },
           onError: (message) => {
             throw new Error(message);
@@ -3060,6 +3167,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       inlineGenerationStatus,
       inlineUserTurn,
       inlineAskAnswer,
+      inlineAskDisclaimer,
+      inlineAskCtaLabel,
       cancelInlineAutoOpen,
       registerInlineAutoOpenCancel,
       openInlineResult,
@@ -3170,6 +3279,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       inlineGenerationStatus,
       inlineUserTurn,
       inlineAskAnswer,
+      inlineAskDisclaimer,
+      inlineAskCtaLabel,
       cancelInlineAutoOpen,
       registerInlineAutoOpenCancel,
       openInlineResult,

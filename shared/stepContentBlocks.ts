@@ -34,12 +34,17 @@ function normalizeReferences(input: unknown): SourceReference[] {
     .map((ref) => {
       const value = ref as SourceReference;
       if (!value?.label || !value?.locator) return null;
+      const chunkId =
+        typeof value.chunkId === 'string' && value.chunkId.trim()
+          ? value.chunkId.trim()
+          : undefined;
       return {
         label: String(value.label),
         locator: String(value.locator),
         locatorKind: value.locatorKind,
         excerpt: value.excerpt ? String(value.excerpt) : undefined,
         note: value.note ? String(value.note) : undefined,
+        chunkId,
       } satisfies SourceReference;
     })
     .filter(Boolean) as SourceReference[];

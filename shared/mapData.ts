@@ -6,6 +6,7 @@ import type {
   MapStep,
   SourceReference,
 } from './contracts';
+import type { Citation, SourceChunk, SourceChunkLoc } from './types/chunk';
 import { resolveNucleoGenerationMode } from './contracts';
 import { FALLBACK_MAP_CATEGORY, normalizeTags, resolveMapCategory } from './categories';
 import {
@@ -26,15 +27,82 @@ function normalizeReferences(input: unknown): SourceReference[] {
     .map((ref) => {
       const value = ref as SourceReference;
       if (!value?.label || !value?.locator) return null;
+      const chunkId =
+        typeof value.chunkId === 'string' && value.chunkId.trim()
+          ? value.chunkId.trim()
+          : undefined;
       return {
         label: String(value.label),
         locator: String(value.locator),
         locatorKind: value.locatorKind,
         excerpt: value.excerpt ? String(value.excerpt) : undefined,
         note: value.note ? String(value.note) : undefined,
+        chunkId,
       } satisfies SourceReference;
     })
     .filter(Boolean) as SourceReference[];
+}
+
+function normalizeSourceChunkLoc(input: unknown): SourceChunkLoc | null {
+  if (!input || typeof input !== 'object') return null;
+  const loc = input as SourceChunkLoc;
+  const start = Number(loc.start);
+  const end = Number(loc.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return {
+    start,
+    end,
+    chapterTitle: loc.chapterTitle ? String(loc.chapterTitle) : undefined,
+    chapterIndex:
+      typeof loc.chapterIndex === 'number' && Number.isFinite(loc.chapterIndex)
+        ? loc.chapterIndex
+        : undefined,
+    page: typeof loc.page === 'number' && Number.isFinite(loc.page) ? loc.page : undefined,
+    timestamp:
+      typeof loc.timestamp === 'number' && Number.isFinite(loc.timestamp)
+        ? loc.timestamp
+        : undefined,
+    imageId: loc.imageId ? String(loc.imageId) : undefined,
+    bbox: loc.bbox,
+  };
+}
+
+function normalizeCitedChunks(input: unknown): SourceChunk[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const chunks = input
+    .map((item) => {
+      const raw = item as SourceChunk;
+      if (!raw?.id || !raw?.text || !raw?.hash) return null;
+      const loc = normalizeSourceChunkLoc(raw.loc);
+      if (!loc) return null;
+      return {
+        id: String(raw.id),
+        text: String(raw.text),
+        hash: String(raw.hash),
+        loc,
+      } satisfies SourceChunk;
+    })
+    .filter(Boolean) as SourceChunk[];
+  return chunks.length ? chunks : undefined;
+}
+
+function normalizeCitations(input: unknown): Citation[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const citations = input
+    .map((item) => {
+      const raw = item as Citation;
+      if (!raw?.id || !raw?.chunkId || !raw?.label) return null;
+      const loc = normalizeSourceChunkLoc(raw.loc);
+      if (!loc) return null;
+      return {
+        id: String(raw.id),
+        chunkId: String(raw.chunkId),
+        label: String(raw.label),
+        loc,
+      } satisfies Citation;
+    })
+    .filter(Boolean) as Citation[];
+  return citations.length ? citations : undefined;
 }
 
 export function normalizeMapData(
@@ -45,6 +113,18 @@ export function normalizeMapData(
   if (!raw?.title || !Array.isArray(raw?.steps) || !Array.isArray(raw?.tldr)) return null;
 
   const cappedSteps = capStepsForDepth(raw.steps, options?.depth);
+  const contentKind =
+    raw.sourceMetadata?.contentKind === 'book' ||
+    raw.sourceMetadata?.contentKind === 'article' ||
+    raw.sourceMetadata?.contentKind === 'report' ||
+    raw.sourceMetadata?.contentKind === 'paper' ||
+    raw.sourceMetadata?.contentKind === 'manual' ||
+    raw.sourceMetadata?.contentKind === 'notes' ||
+    raw.sourceMetadata?.contentKind === 'slides' ||
+    raw.sourceMetadata?.contentKind === 'transcript' ||
+    raw.sourceMetadata?.contentKind === 'other'
+      ? raw.sourceMetadata.contentKind
+      : undefined;
   const normalizedSteps: MapStep[] = cappedSteps.map((step, index) => ({
     id: String(step?.id || `step-${index + 1}`),
     shortNav: String(step?.shortNav || step?.title || `Paso ${index + 1}`),
@@ -72,6 +152,7 @@ export function normalizeMapData(
     generationMode: resolveNucleoGenerationMode(raw.generationMode),
     sourceMetadata: {
       kind: raw.sourceMetadata?.kind || 'text',
+      contentKind,
       label: raw.sourceMetadata?.label || 'Fuente analizada',
       url: raw.sourceMetadata?.url ? String(raw.sourceMetadata.url) : undefined,
       title: raw.sourceMetadata?.title ? String(raw.sourceMetadata.title) : undefined,
@@ -130,6 +211,8 @@ export function normalizeMapData(
     readingSections: normalizeReadingSections(normalizedSteps.length, raw.readingSections),
     steps: normalizedSteps,
     references: normalizeReferences(raw.references),
+    citations: normalizeCitations(raw.citations),
+    citedChunks: normalizeCitedChunks(raw.citedChunks),
     completionCard: {
       title: raw.completionCard?.title ? String(raw.completionCard.title) : 'Mapa completado',
       summary: raw.completionCard?.summary

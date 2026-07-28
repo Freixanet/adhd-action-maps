@@ -26,8 +26,13 @@ export function clampContinueProgress(progress: number): number {
   'worklet';
   return Math.min(1, Math.max(0, progress));
 }
-export const CONTINUE_MASK_BORDER_RADIUS = 24;
-/** borderRadius 24→0 only in the final 15% of expand/collapse progress. */
+/**
+ * Composer shell is radius 26. Pure height scaling (26 × 58/148 ≈ 10) reads too
+ * square on a wide card; 26 itself looks pill-like at this height. Land between.
+ */
+export const CONTINUE_CARD_RADIUS = 18;
+export const CONTINUE_MASK_BORDER_RADIUS = CONTINUE_CARD_RADIUS;
+/** borderRadius → 0 only in the final 15% of expand/collapse progress. */
 export const CONTINUE_MASK_RADIUS_ZERO_START = 0.85;
 export const CONTINUE_CHIP_FADE_MS = 100;
 export const CONTINUE_REDUCED_MOTION_MS = 150;

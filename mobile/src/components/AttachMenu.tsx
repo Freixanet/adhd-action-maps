@@ -1,6 +1,6 @@
 import React from 'react';
+import { Platform, View } from 'react-native';
 import { Plus } from '../icons';
-import { View } from 'react-native';
 import { type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
 import ComposerMenuTrigger from './ComposerMenuTrigger';
 import { useTheme } from '../context/ThemeContext';
@@ -21,18 +21,40 @@ type AttachMenuProps = {
 
 const DEV = false;
 
-// Icon-less rows, exactly like DepthMenu — keeps both composer menus with the
-// identical native look and material.
 const ATTACH_ACTIONS: MenuAction[] = [
-  { id: 'gallery', title: 'Galería' },
-  { id: 'camera', title: '📷 Cámara' },
-  { id: 'file', title: 'Archivo' },
+  {
+    id: 'camera',
+    title: 'Cámara',
+    image: Platform.select({ ios: 'camera', android: 'ic_menu_camera' }),
+  },
+  {
+    id: 'gallery',
+    title: 'Galería',
+    image: Platform.select({ ios: 'photo.on.rectangle', android: 'ic_menu_gallery' }),
+  },
+  {
+    id: 'file',
+    title: 'Archivos',
+    image: Platform.select({ ios: 'doc', android: 'ic_menu_agenda' }),
+  },
 ];
 
 const DEV_ATTACH_ACTIONS: MenuAction[] = [
-  { id: 'preview-generation', title: 'Preview generación' },
-  { id: 'preview-loading', title: 'Preview colección' },
-  { id: 'preview-nucleo', title: 'Preview Núcleo' },
+  {
+    id: 'preview-generation',
+    title: 'Preview generación',
+    image: Platform.select({ ios: 'play.rectangle', android: 'ic_media_play' }),
+  },
+  {
+    id: 'preview-loading',
+    title: 'Preview colección',
+    image: Platform.select({ ios: 'square.stack.3d.up', android: 'ic_menu_sort_by_size' }),
+  },
+  {
+    id: 'preview-nucleo',
+    title: 'Preview Núcleo',
+    image: Platform.select({ ios: 'sparkles', android: 'ic_menu_view' }),
+  },
 ];
 
 /**
@@ -95,7 +117,7 @@ export default function AttachMenu({
 
   return (
     <ComposerMenuTrigger
-      title="Adjuntar"
+      title=""
       actions={actions}
       onPressAction={handlePress}
       accessibilityLabel="Adjuntar"

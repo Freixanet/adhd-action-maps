@@ -71,6 +71,8 @@ import {
   askResultShell,
   prepareTransformIngest,
 } from "./server/src/routes/transformIngest";
+import { attachCitations } from "./server/src/citations";
+import type { IngestResult } from "./shared/types/chunk";
 import { IngestError } from "./server/src/ingestors/factory";
 import {
   assertSecureFetchTarget,
@@ -1539,6 +1541,7 @@ type TransformContext = {
   sourceTruncated?: boolean;
   singleNucleoMode?: boolean;
   segmentTitle?: string;
+  sourceContentKind?: TransformRequest["sourceContentKind"];
   generationMode: NonNullable<TransformRequest["generationMode"]>;
 };
 
@@ -1593,6 +1596,7 @@ async function buildTransformContext(
     generationMode,
     singleNucleoMode,
     segmentTitle,
+    sourceContentKind,
   } = body;
   const isPro = Boolean(options?.isPro);
 
@@ -1726,6 +1730,7 @@ async function buildTransformContext(
     ...(typeof segmentTitle === "string" && segmentTitle.trim()
       ? { segmentTitle: segmentTitle.trim() }
       : {}),
+    ...(sourceContentKind ? { sourceContentKind } : {}),
   };
 }
 
@@ -1766,6 +1771,9 @@ function parseAndNormalizeMapJson(
     sourceTruncated: context.sourceTruncated,
     singleNucleoMode: context.singleNucleoMode,
   });
+  if (context.sourceContentKind && normalized.sourceMetadata) {
+    normalized.sourceMetadata.contentKind = context.sourceContentKind;
+  }
   normalized.modelUsed = usedModel;
   if (context.generationMode === "study-doc-beta") {
     applyStudyDocBetaShape(normalized);
@@ -2014,7 +2022,8 @@ async function finalizeMapJson(
 async function handleTransformStream(
   context: TransformContext,
   res: express.Response,
-  req?: express.Request
+  req?: express.Request,
+  ingest?: IngestResult | null
 ): Promise<void> {
   // F1: map gen is non-streaming (full generateContent). NDJSON protocol kept for
   // clients: one optional early shell + final `done`. Constrained anyOf schema +
@@ -2060,7 +2069,10 @@ async function handleTransformStream(
 
   console.log(`Mapa generado (non-stream via /stream) con el modelo "${usedModel}".`);
 
-  const normalized = await finalizeMapJson(fullText, context, usedModel, { req, res });
+  const normalized = attachCitations(
+    await finalizeMapJson(fullText, context, usedModel, { req, res }),
+    ingest
+  );
   writeStreamEvent(res, { type: "done", map: normalized, model: usedModel });
   res.end();
 }
@@ -2073,6 +2085,11 @@ const sourceReferenceSchema = {
     locatorKind: { type: Type.STRING },
     excerpt: { type: Type.STRING },
     note: { type: Type.STRING },
+    chunkId: {
+      type: Type.STRING,
+      description:
+        "Id exacto de un chunk de la fuente (aparece entre [[…]] en el texto). Solo ids reales; si no hay fuente, omite el campo.",
+    },
   },
   required: ["label", "locator"],
 };
@@ -2420,7 +2437,12 @@ const schema = {
     sourceMetadata: {
       type: Type.OBJECT,
       properties: {
-        kind: { type: Type.STRING, description: "Opciones: 'text', 'link', 'youtube', 'pdf', 'image', 'video', 'file'" },
+        kind: { type: Type.STRING, description: "Opciones: 'text', 'link', 'youtube', 'pdf', 'epub', 'docx', 'image', 'video', 'file'" },
+        contentKind: {
+          type: Type.STRING,
+          description:
+            "Tipo semántico según el contenido, no según la extensión. Exactamente uno de: 'book', 'article', 'report', 'paper', 'manual', 'notes', 'slides', 'transcript', 'other'.",
+        },
         label: { type: Type.STRING },
         title: { type: Type.STRING },
         author: { type: Type.STRING },
@@ -2434,7 +2456,7 @@ const schema = {
           items: { type: Type.STRING },
         },
       },
-      required: ["kind", "label", "detected"],
+      required: ["kind", "contentKind", "label", "detected"],
     },
     coverage: {
       type: Type.OBJECT,
@@ -2576,7 +2598,7 @@ Reglas obligatorias:
 3. No infantilices. Escribe con claridad adulta, no con tono de coach ni celebración exagerada.
 4. No inventes. Toda inferencia debe estar apoyada por la fuente proporcionada.
 5. Cada bloque debe contener contenido útil y específico. En prose/callout/list el campo "text" es obligatorio; en stat/comparison/accordion/quiz usa los campos propios del tipo (no inventes propiedades de estilo).
-6. Usa referencias siempre que puedas. Si la fuente no ofrece una ubicación exacta, usa el mejor localizador honesto disponible.
+6. Usa referencias siempre que puedas. Si la fuente trae marcadores [[chunk_…]], pon ese id en references.chunkId. Solo puedes citar ids que aparezcan entre [[…]] en la fuente; si no hay fuente para un hecho, no cites. Nunca escribas los marcadores [[…]] en la prosa del Núcleo. Si la fuente no ofrece una ubicación exacta, usa el mejor localizador honesto disponible.
 7. La capa "tldr" orienta; no sustituye la lectura completa.
 8. Si falta parte del contenido, señálalo en "coverage" o "sourceMetadata.limitations" con honestidad.
 9. Los bloques callout deben usar labels editoriales sobrios acordes al intent activo: 'Idea clave', 'Matiz', 'Ejemplo', 'Precaución' o 'Para aplicarlo'.
@@ -2590,6 +2612,7 @@ Reglas obligatorias:
 17. ORDEN DE EMISIÓN JSON: escribe los campos en este orden exacto — primero title, coreIdea y coreSupport; después todo lo demás (sourceMetadata, coverage, tldr, knowledgeSections, steps, references, completionCard, suggestedCategory, suggestedTags, etc.).
 18. CERO HTML, CSS, markdown de presentación o propiedades visuales en el JSON. Solo contenido, rol semántico y emphasis.
 19. Aplica el CONTRATO DE REDACCIÓN a title, coreIdea, coreSupport, tldr, knowledgeSections, shortNav, titles, prose, callouts, quiz, completionCard y cualquier texto visible.
+20. Clasifica sourceMetadata.contentKind por el contenido y la estructura, nunca por la extensión: book solo para una obra con estructura de libro; article para artículo; report para informe; paper para publicación académica; manual para guía técnica; notes para apuntes; slides para presentación; transcript para transcripción; other si no hay evidencia suficiente.
 
 CATÁLOGO DE BLOQUES (únicos tipos permitidos en step.content — la UI vive en el cliente):
 - Allowlist EXACTA de type: prose | callout | list | stat | comparison | accordion | quiz.
@@ -2719,12 +2742,17 @@ function normalizeReferences(input: unknown): SourceReference[] {
     .map((item) => {
       const ref = item as SourceReference;
       if (!ref?.label || !ref?.locator) return null;
+      const chunkId =
+        typeof ref.chunkId === "string" && ref.chunkId.trim()
+          ? ref.chunkId.trim()
+          : undefined;
       return {
         label: String(ref.label).trim(),
         locator: String(ref.locator).trim(),
         locatorKind: ref.locatorKind as SourceReference["locatorKind"],
         excerpt: ref.excerpt ? String(ref.excerpt).trim() : undefined,
         note: ref.note ? String(ref.note).trim() : undefined,
+        chunkId,
       } satisfies SourceReference;
     })
     .filter(Boolean) as SourceReference[];
@@ -3538,6 +3566,11 @@ async function startServer() {
       shouldProposeSplit: { type: Type.BOOLEAN },
       collectionTitle: { type: Type.STRING },
       totalWordsEstimate: { type: Type.INTEGER },
+      contentKind: {
+        type: Type.STRING,
+        description:
+          "Tipo semántico por contenido: book, article, report, paper, manual, notes, slides, transcript u other.",
+      },
       parts: {
         type: Type.ARRAY,
         items: {
@@ -3549,7 +3582,7 @@ async function startServer() {
         },
       },
     },
-    required: ["shouldProposeSplit", "parts"],
+    required: ["shouldProposeSplit", "contentKind", "parts"],
   };
 
   async function analyzePdfForCollection(
@@ -3562,7 +3595,8 @@ async function startServer() {
     }
 
     const prompt = [
-      "Analiza este PDF y detecta si tiene capítulos o secciones claramente separadas aptas para dividir en unidades de lectura independientes.",
+      "Analiza el contenido de esta fuente. Clasifica contentKind por su naturaleza semántica, nunca por ser PDF: book solo si es una obra con estructura de libro; article, report, paper, manual, notes, slides, transcript u other según corresponda.",
+      "Detecta si tiene capítulos o secciones claramente separadas aptas para dividir en unidades de lectura independientes.",
       `Si el documento tiene 2 o más capítulos/secciones distintas Y (estima más de 15000 palabras O estructura clara de capítulos), establece shouldProposeSplit en true y lista como máximo ${MAX_COLLECTION_PARTS} partes con un título breve (prioriza los capítulos principales; no listes subapartados menores).`,
       "Si el documento es corto, unificado o no conviene dividirlo, establece shouldProposeSplit en false con parts vacío.",
       "Responde solo en JSON.",
@@ -3592,6 +3626,7 @@ async function startServer() {
       shouldProposeSplit?: boolean;
       collectionTitle?: string;
       totalWordsEstimate?: number;
+      contentKind?: SourceAnalysisResponse["contentKind"];
       parts?: Array<{ title?: string }>;
     };
 
@@ -3605,6 +3640,21 @@ async function startServer() {
     const totalWords = Number.isFinite(parsed.totalWordsEstimate)
       ? Number(parsed.totalWordsEstimate)
       : 0;
+    const contentKind =
+      parsed.contentKind &&
+      [
+        "book",
+        "article",
+        "report",
+        "paper",
+        "manual",
+        "notes",
+        "slides",
+        "transcript",
+        "other",
+      ].includes(parsed.contentKind)
+        ? parsed.contentKind
+        : "other";
     const hasChapters = parts.length >= 2;
     let shouldProposeSplit =
       Boolean(parsed.shouldProposeSplit) &&
@@ -3620,6 +3670,7 @@ async function startServer() {
       parts,
       totalWords,
       collectionTitle: String(parsed.collectionTitle || sourceLabel || "Colección").trim(),
+      contentKind,
     };
   }
 
@@ -3739,6 +3790,7 @@ async function startServer() {
       if (!enforceProEntitlements(req, res, body)) return;
       if (!enforceUsageQuota(req, res, "transform")) return;
 
+      let transformIngest: IngestResult | null = null;
       const ingestOutcome = await prepareTransformIngest(body);
       if (ingestOutcome.kind === "error") {
         return res.status(ingestOutcome.status).json({
@@ -3756,6 +3808,7 @@ async function startServer() {
       }
       if (ingestOutcome.kind === "source") {
         body = ingestOutcome.body;
+        transformIngest = ingestOutcome.ingest;
         if (ingestOutcome.overviewOnly && ingestOutcome.ingest.chapters) {
           res.setHeader("X-Nucleo-Overview", "1");
           res.setHeader(
@@ -3806,10 +3859,13 @@ async function startServer() {
       res.setHeader("X-Gemini-Model-Used", usedModel);
       console.log(`Mapa generado con el modelo "${usedModel}".`);
 
-      const normalized = await finalizeMapJson(rawText, contextResult, usedModel, {
-        req,
-        res,
-      });
+      const normalized = attachCitations(
+        await finalizeMapJson(rawText, contextResult, usedModel, {
+          req,
+          res,
+        }),
+        transformIngest
+      );
       res.json(normalized);
     } catch (err: any) {
       console.error(err);
@@ -3849,6 +3905,7 @@ async function startServer() {
       if (!enforceProEntitlements(req, res, body)) return;
       if (!enforceUsageQuota(req, res, "transform")) return;
 
+      let transformIngest: IngestResult | null = null;
       const ingestOutcome = await prepareTransformIngest(body);
       if (ingestOutcome.kind === "error") {
         return res.status(ingestOutcome.status).json({
@@ -3866,6 +3923,7 @@ async function startServer() {
       }
       if (ingestOutcome.kind === "source") {
         body = ingestOutcome.body;
+        transformIngest = ingestOutcome.ingest;
         if (ingestOutcome.overviewOnly && ingestOutcome.ingest.chapters) {
           res.setHeader("X-Nucleo-Overview", "1");
           res.setHeader(
@@ -3882,7 +3940,7 @@ async function startServer() {
 
       logTransformEntryDebug(body, contextResult, "/api/transform/stream");
 
-      await handleTransformStream(contextResult, res, req);
+      await handleTransformStream(contextResult, res, req, transformIngest);
     } catch (err: any) {
       console.error(err);
       if (err instanceof IngestError && !res.headersSent) {
@@ -4024,13 +4082,14 @@ async function startServer() {
         return res.status(502).json({ error: "No se pudo generar una respuesta." });
       }
 
-      res.json({
-        answer,
+      const askPayload: AskResponse = {
+        ...askResultShell(answer),
         title:
           typeof parsed.title === "string" && parsed.title.trim()
             ? parsed.title.trim().slice(0, 80)
             : undefined,
-      } satisfies AskResponse);
+      };
+      res.json(askPayload);
     } catch (err: any) {
       console.error(err);
       const { statusCode, errorMessage } = describeGeminiError(err);
@@ -4142,13 +4201,20 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const httpServer = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
     const schemaProps = Object.keys((schema as { properties?: Record<string, unknown> }).properties ?? {});
     console.log(
       `[boot-schema-props] hasVisualizationKey=${schemaProps.includes("visualization")} props=${schemaProps.join(",")}`
     );
   });
+
+  // iOS URLSession pools idle sockets across the analyze -> split prompt -> part 1
+  // gap, which is far longer than Node's 5s default. Reusing a socket the server
+  // already closed surfaces on the client as NSURLErrorNetworkConnectionLost.
+  // headersTimeout must stay above keepAliveTimeout.
+  httpServer.keepAliveTimeout = 65_000;
+  httpServer.headersTimeout = 70_000;
 }
 
 startServer();

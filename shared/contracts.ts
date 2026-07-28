@@ -1,4 +1,5 @@
 import type { PersistedVisualizationRun } from './visualize';
+import type { Citation, SourceChunk } from './types/chunk';
 
 export type SourceType = 'text' | 'link' | 'youtube' | 'file' | 'pdf';
 
@@ -91,9 +92,23 @@ export type SourceKind =
   | 'link'
   | 'youtube'
   | 'pdf'
+  | 'epub'
+  | 'docx'
   | 'image'
   | 'video'
   | 'file';
+
+/** Semantic identity of the material, independent from its file/container format. */
+export type SourceContentKind =
+  | 'book'
+  | 'article'
+  | 'report'
+  | 'paper'
+  | 'manual'
+  | 'notes'
+  | 'slides'
+  | 'transcript'
+  | 'other';
 
 export type ReferenceLocatorKind =
   | 'page'
@@ -111,10 +126,16 @@ export type SourceReference = {
   locatorKind?: ReferenceLocatorKind;
   excerpt?: string;
   note?: string;
+  /**
+   * When set and present in `ActionMapData.citedChunks`, the reference is a
+   * verifiable citation. Hallucinated ids are stripped server-side.
+   */
+  chunkId?: string;
 };
 
 export type SourceMetadata = {
   kind: SourceKind;
+  contentKind?: SourceContentKind;
   label: string;
   /** Canonical source URL when the input was a link / YouTube video. */
   url?: string;
@@ -323,6 +344,16 @@ export type ActionMapData = {
   readingSections?: ReadingSection[] | null;
   steps: MapStep[];
   references?: SourceReference[];
+  /**
+   * Verifiable citations in appearance order. Built server-side from
+   * `references[].chunkId` after filtering hallucinated ids.
+   */
+  citations?: Citation[];
+  /**
+   * Exact original SourceChunk text for each cited id. Persisted with the map
+   * so the source viewer works after restart.
+   */
+  citedChunks?: SourceChunk[];
   completionCard?: CompletionCard;
   modelUsed?: string;
 };
@@ -365,6 +396,8 @@ export type TransformRequest = {
   singleNucleoMode?: boolean;
   /** Parte concreta de una fuente larga (colección). */
   segmentTitle?: string;
+  /** Semantic source classification determined from content, never from extension alone. */
+  sourceContentKind?: SourceContentKind;
 };
 
 export type SourceAnalysisResponse = {
@@ -373,6 +406,7 @@ export type SourceAnalysisResponse = {
   parts: Array<{ title: string; text?: string }>;
   totalWords: number;
   collectionTitle: string;
+  contentKind?: SourceContentKind;
 };
 
 export type ChatTurn = {
@@ -404,6 +438,10 @@ export type AskRequest = {
 export type AskResponse = {
   answer: string;
   title?: string;
+  /** Present when the server used the ask lane (unverified knowledge). */
+  isAsk?: true;
+  disclaimer?: string;
+  cta?: { label: string; action: string };
 };
 
 export type TransformStreamEvent = {

@@ -1,10 +1,16 @@
-import type { ActionMapData, MapDepth, TransformStreamEvent } from './contracts';
+import type { ActionMapData, AskResponse, MapDepth, TransformStreamEvent } from './contracts';
 import { normalizeMapData } from './mapData';
 
 /** Default idle window when depth is unknown (estándar). */
 export const TRANSFORM_IDLE_TIMEOUT_MS = 150_000;
 export const TRANSFORM_IDLE_TIMEOUT_MESSAGE =
   'La generación se ha detenido. Comprueba tu conexión e inténtalo de nuevo.';
+
+export function isAskLanePayload(value: unknown): value is AskResponse & { isAsk: true; answer: string } {
+  if (!value || typeof value !== 'object') return false;
+  const raw = value as AskResponse;
+  return raw.isAsk === true && typeof raw.answer === 'string' && raw.answer.trim().length > 0;
+}
 
 export function resolveTransformIdleTimeoutMs(depth?: MapDepth): number {
   if (depth === 'rapido') return 120_000;
@@ -162,6 +168,8 @@ export type TransformStreamHandlers = {
   onPartial?: (map: ActionMapData) => void;
   onFirstStreamByte?: () => void;
   onDone: (map: ActionMapData, model?: string) => void;
+  /** Server routed the request to the unverified ask lane. */
+  onAsk?: (result: AskResponse & { isAsk: true; answer: string }) => void;
   onError: (message: string) => void;
 };
 
@@ -324,7 +332,7 @@ export async function fetchTransformWithProgress({
   idleTimeoutMs,
   fallbackTimeoutMs,
   handlers,
-}: FetchTransformOptions): Promise<'stream' | 'fallback'> {
+}: FetchTransformOptions): Promise<'stream' | 'fallback' | 'ask'> {
   let receivedRenderablePartial = false;
   let streamEstablished = false;
 
@@ -345,6 +353,7 @@ export async function fetchTransformWithProgress({
     },
     onFirstStreamByte: handlers.onFirstStreamByte,
     onDone: handlers.onDone,
+    onAsk: handlers.onAsk,
     onError: handlers.onError,
   };
 
@@ -377,6 +386,21 @@ export async function fetchTransformWithProgress({
         action?: string;
       };
       throwTransformHttpError(response.status, errPayload);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json') && !contentType.includes('ndjson')) {
+      const parsed = (await response.json()) as unknown;
+      if (isAskLanePayload(parsed)) {
+        wrappedHandlers.onAsk?.(parsed);
+        return 'ask';
+      }
+      const normalized = normalizeMapData(parsed);
+      if (!normalized) {
+        throw new Error('No se pudo interpretar el mapa generado.');
+      }
+      wrappedHandlers.onDone(normalized, (parsed as ActionMapData).modelUsed);
+      return 'fallback';
     }
 
     if (!response.body) {
@@ -426,9 +450,16 @@ export async function fetchTransformWithProgress({
       error?: string;
       code?: string;
       action?: string;
+      isAsk?: boolean;
+      answer?: string;
     };
     if (!fallbackResponse.ok || parsed.error) {
       throwTransformHttpError(fallbackResponse.status, parsed);
+    }
+
+    if (isAskLanePayload(parsed)) {
+      wrappedHandlers.onAsk?.(parsed);
+      return 'ask';
     }
 
     const normalized = normalizeMapData(parsed);

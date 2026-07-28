@@ -6,6 +6,8 @@ export type NucleoUIMenuAction = {
   id: string;
   title: string;
   state?: 'on' | 'off' | 'mixed';
+  /** SF Symbol name rendered leading the row. */
+  image?: string;
 };
 
 type NucleoUIMenuAnchorProps = {

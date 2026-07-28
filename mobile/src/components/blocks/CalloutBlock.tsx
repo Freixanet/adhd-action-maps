@@ -12,6 +12,7 @@ import {
 import type { SourceReference } from '@shared/contracts';
 import GlassSurface from '../GlassSurface';
 import { useTheme } from '../../context/ThemeContext';
+import BlockReferences from '../BlockReferences';
 import BlockEnter from './BlockEnter';
 
 export type CalloutTone = 'clave' | 'matiz' | 'ejemplo' | 'alerta';
@@ -65,22 +66,6 @@ export function resolveCalloutTone(kind?: string, label?: string): CalloutTone {
   }
   if (l.includes('clave') || l.includes('idea')) return 'clave';
   return 'clave';
-}
-
-function CalloutReferences({ references }: { references?: SourceReference[] }) {
-  if (!references?.length) return null;
-  return (
-    <View style={styles.refs}>
-      {references.slice(0, 3).map((reference, idx) => (
-        <View key={`${reference.label}-${reference.locator}-${idx}`} style={styles.refChip}>
-          <Text style={styles.refText} maxFontSizeMultiplier={1.3}>
-            <Text style={styles.refLabel}>{reference.label} </Text>
-            {reference.locator}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
 }
 
 type CalloutBlockProps = {
@@ -139,7 +124,7 @@ export default function CalloutBlock({
               {text}
             </Text>
           ) : null}
-          <CalloutReferences references={references} />
+          <BlockReferences references={references} />
         </GlassSurface>
       </View>
     </BlockEnter>
@@ -173,26 +158,5 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: TEXT_BODY,
     opacity: 0.78,
-  },
-  refs: {
-    marginTop: 12,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  refChip: {
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  refText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: TEXT_BODY,
-  },
-  refLabel: {
-    color: 'rgba(156,160,171,1)',
   },
 });
