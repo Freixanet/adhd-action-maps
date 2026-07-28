@@ -135,7 +135,11 @@ describe("imageIngestor hybrid OCR", () => {
     }));
 
     const { imageIngestor } = await import("./imageIngestor");
-    const buffer = Buffer.from("fake-image-bytes");
+    // JPEG magic bytes: the ingestor only runs OCR on formats Leptonica decodes.
+    const buffer = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+      Buffer.from("fake-image-bytes"),
+    ]);
     const result = await imageIngestor.ingest({
       buffer,
       mime: "image/jpeg",

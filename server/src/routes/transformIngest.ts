@@ -97,6 +97,13 @@ export async function prepareTransformIngest(
 
     const ingestor = getIngestor(input);
     const ingest = await ingestor.ingest(input);
+
+    // No citable text recovered (e.g. a photo with no readable words). Send the
+    // original bytes to the multimodal path instead of a placeholder chunk.
+    if (ingest.needsVisionFallback && input.buffer?.length) {
+      return { kind: "passthrough" };
+    }
+
     validateIngestChunks(ingest);
 
     const overviewOnly = Boolean(

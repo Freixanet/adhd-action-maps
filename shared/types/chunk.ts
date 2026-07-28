@@ -34,6 +34,11 @@ export type IngestResult = {
     cover?: string;
   };
   rawHash: string;
+  /**
+   * No citable text was recovered, so the chunks carry no source content.
+   * Callers should route the original bytes to the multimodal path instead.
+   */
+  needsVisionFallback?: boolean;
 };
 
 /** Free-question lane (no chunks, no citation validator). */

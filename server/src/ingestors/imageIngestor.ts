@@ -3,6 +3,27 @@ import { chunkText, md5Short, rawHashOf } from "./chunkUtils";
 import type { Ingestor, IngestorInput } from "./types";
 
 /**
+ * Formats Leptonica can decode. Anything else (notably HEIC from iOS) makes the
+ * tesseract worker fail with "pixReadStream: Unknown format", so we skip OCR.
+ */
+function isOcrDecodable(buffer: Buffer): boolean {
+  if (buffer.length < 12) return false;
+  const startsWith = (...bytes: number[]) =>
+    bytes.every((byte, index) => buffer[index] === byte);
+
+  if (startsWith(0xff, 0xd8, 0xff)) return true; // JPEG
+  if (startsWith(0x89, 0x50, 0x4e, 0x47)) return true; // PNG
+  if (startsWith(0x47, 0x49, 0x46, 0x38)) return true; // GIF
+  if (startsWith(0x42, 0x4d)) return true; // BMP
+  if (startsWith(0x49, 0x49, 0x2a, 0x00)) return true; // TIFF LE
+  if (startsWith(0x4d, 0x4d, 0x00, 0x2a)) return true; // TIFF BE
+  if (buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Hybrid image ingest:
  * Layer A — OCR verbatim (citable).
  * Layer B — vision caption placeholder (not citable; empty until Gemini vision wired).
@@ -31,16 +52,25 @@ export const imageIngestor: Ingestor = {
     }
 
     let ocrText = "";
-    try {
-      const result = await recognize(input.buffer, "spa+eng", {
-        logger: () => undefined,
-      });
-      ocrText = (result.data?.text || "").trim();
-    } catch (err) {
-      console.warn(
-        "[imageIngestor] OCR failed:",
-        err instanceof Error ? err.message : err
-      );
+    if (!isOcrDecodable(input.buffer)) {
+      console.warn("[imageIngestor] OCR skipped: format not decodable by Leptonica.");
+    } else {
+      try {
+        const result = await recognize(input.buffer, "spa+eng", {
+          logger: () => undefined,
+          // Without an errorHandler tesseract rethrows worker failures outside the
+          // promise chain (createWorker.js:217), which kills the whole process.
+          errorHandler: (err: unknown) => {
+            console.warn("[imageIngestor] OCR worker error:", err);
+          },
+        });
+        ocrText = (result.data?.text || "").trim();
+      } catch (err) {
+        console.warn(
+          "[imageIngestor] OCR failed:",
+          err instanceof Error ? err.message : err
+        );
+      }
     }
 
     // Layer B placeholder — Gemini vision caption later (not citable).
@@ -61,6 +91,7 @@ export const imageIngestor: Ingestor = {
         ],
         metadata: { type: "image", title: input.fileName },
         rawHash: rawHashOf(input.buffer),
+        needsVisionFallback: true,
       };
     }
 
