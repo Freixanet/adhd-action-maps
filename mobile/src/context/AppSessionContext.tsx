@@ -1516,6 +1516,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           mapId,
           userDisplayName: cloudUserDisplayName ?? undefined,
         };
+      } else if (uploadedFile && !uploadedFile.fileData) {
+        setError('No se pudo leer el archivo adjunto.');
+        setPhase('input');
+        return;
       } else {
         body = {
           text: bodyText,
@@ -1971,6 +1975,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     pastedText,
     resetStreamGenerationUi,
     syncCloudEntry,
+    uploadedFile,
   ]);
 
   const handleComposerSubmit = useCallback(async () => {

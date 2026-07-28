@@ -1,7 +1,12 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import {
+  getInfoAsync,
+  readAsStringAsync,
+  EncodingType,
+} from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+// NOTE: do NOT use expo-image-manipulator here. Its native renderAsync
+// throws "Image context has been lost" on large iOS photos (HEIC/8MB+).
 
 export type UploadedFile = {
   name: string;
@@ -31,9 +36,15 @@ export const UNSUPPORTED_IMAGE_MESSAGE = 'El archivo seleccionado no es una imag
 export const UNSUPPORTED_FILE_MESSAGE =
   'Formato no soportado. Usa PDF, EPUB, DOCX, TXT o Markdown.';
 
-const IMAGE_MAX_DIMENSION = 1024;
-const CAMERA_COMPRESS = 0.7;
-const LIBRARY_COMPRESS = 0.82;
+/** Picker compresses on iOS when quality < 1 — no ImageManipulator (renderAsync OOM). */
+const IMAGE_COMPRESS = 0.7;
+
+const IMAGE_PICKER_OPTIONS: ImagePicker.ImagePickerOptions = {
+  mediaTypes: ['images'],
+  quality: IMAGE_COMPRESS,
+  allowsEditing: false,
+  exif: false,
+};
 
 function assertImageSize(size: number | undefined | null): void {
   if (size != null && size > MAX_IMAGE_BYTES) {
@@ -47,48 +58,61 @@ function assertBookSize(size: number | undefined | null): void {
   }
 }
 
+async function resolveLocalFileSize(
+  uri: string,
+  fallback?: number | null
+): Promise<number | null> {
+  try {
+    const info = await getInfoAsync(uri);
+    if (info.exists && typeof info.size === 'number') return info.size;
+  } catch {
+    // fall through
+  }
+  return fallback ?? null;
+}
+
+/**
+ * Safe image path (no expo-image-manipulator):
+ * Picker quality 0.7 re-encodes on device; we only size-check + read base64 for upload.
+ * Preview uses the local file URI — never a manipulator renderAsync context.
+ */
 async function processImageAsset(
-  asset: ImagePicker.ImagePickerAsset,
-  compress: number
+  asset: ImagePicker.ImagePickerAsset
 ): Promise<UploadedFile> {
-  assertImageSize(asset.fileSize);
+  const size = await resolveLocalFileSize(asset.uri, asset.fileSize);
+  assertImageSize(size);
 
-  const width = asset.width ?? IMAGE_MAX_DIMENSION;
-  const height = asset.height ?? IMAGE_MAX_DIMENSION;
-  const maxDim = Math.max(width, height);
-  const actions =
-    maxDim > IMAGE_MAX_DIMENSION
-      ? [
-          {
-            resize: {
-              width: Math.round(width * (IMAGE_MAX_DIMENSION / maxDim)),
-              height: Math.round(height * (IMAGE_MAX_DIMENSION / maxDim)),
-            },
-          },
-        ]
-      : [];
+  if (!asset.uri) {
+    throw new Error('No se pudo procesar la imagen.');
+  }
 
-  const processed = await manipulateAsync(asset.uri, actions, {
-    compress,
-    format: SaveFormat.JPEG,
-    base64: true,
-  });
-
-  const base64 = processed.base64;
+  let base64: string;
+  try {
+    base64 = await readAsStringAsync(asset.uri, {
+      encoding: EncodingType.Base64,
+    });
+  } catch {
+    throw new Error(LOCAL_FILE_READ_ERROR_MESSAGE);
+  }
   if (!base64) {
     throw new Error('No se pudo procesar la imagen.');
   }
 
-  const size = asset.fileSize ?? Math.round(base64.length * 0.75);
-  assertImageSize(size);
+  const uploadBytes = Math.round(base64.length * 0.75);
+  assertImageSize(uploadBytes);
+
+  const mime =
+    asset.mimeType && asset.mimeType.startsWith('image/') && asset.mimeType !== 'image/heic'
+      ? asset.mimeType
+      : 'image/jpeg';
 
   return {
     name: asset.fileName || 'Imagen.jpg',
-    size,
+    size: size ?? uploadBytes,
     isImage: true,
     fileData: base64,
-    mimeType: 'image/jpeg',
-    previewUri: processed.uri,
+    mimeType: mime,
+    previewUri: asset.uri,
   };
 }
 
@@ -101,7 +125,8 @@ async function readBinaryAttachment(params: {
   previewUri?: string;
   maxBytes?: number;
 }): Promise<UploadedFile> {
-  const { uri, name, size, mimeType, flags, previewUri, maxBytes = MAX_BOOK_BYTES } = params;
+  const { uri, name, size, mimeType, flags, previewUri, maxBytes = MAX_BOOK_BYTES } =
+    params;
   if (size != null && size > maxBytes) {
     throw new Error(MAX_UPLOAD_SIZE_MESSAGE);
   }
@@ -292,11 +317,7 @@ export async function pickImageFromLibrary(): Promise<UploadedFile | null> {
     throw new Error('Necesitamos acceso a la galería para adjuntar imágenes.');
   }
 
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],
-    quality: 1,
-    allowsEditing: false,
-  });
+  const result = await ImagePicker.launchImageLibraryAsync(IMAGE_PICKER_OPTIONS);
 
   if (result.canceled || !result.assets?.[0]) return null;
 
@@ -305,7 +326,7 @@ export async function pickImageFromLibrary(): Promise<UploadedFile | null> {
     throw new Error(UNSUPPORTED_IMAGE_MESSAGE);
   }
 
-  return processImageAsset(asset, LIBRARY_COMPRESS);
+  return processImageAsset(asset);
 }
 
 export async function pickImageFromCamera(): Promise<UploadedFile | null> {
@@ -314,14 +335,11 @@ export async function pickImageFromCamera(): Promise<UploadedFile | null> {
     throw new Error('Necesitamos acceso a la cámara para tomar una foto.');
   }
 
-  const result = await ImagePicker.launchCameraAsync({
-    quality: CAMERA_COMPRESS,
-    allowsEditing: false,
-  });
+  const result = await ImagePicker.launchCameraAsync(IMAGE_PICKER_OPTIONS);
 
   if (result.canceled || !result.assets?.[0]) return null;
 
-  return processImageAsset(result.assets[0], CAMERA_COMPRESS);
+  return processImageAsset(result.assets[0]);
 }
 
 export async function pickVideoFromLibrary(): Promise<UploadedFile | null> {
