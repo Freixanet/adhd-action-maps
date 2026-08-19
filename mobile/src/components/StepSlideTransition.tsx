@@ -122,12 +122,12 @@ export default function StepSlideTransition({
 
   const panelAStyle = useAnimatedStyle(() => ({
     opacity: opacityA.value,
-    transform: [{ translateX: translateA.value }],
+    transform: [{ translateY: translateA.value }],
   }));
 
   const panelBStyle = useAnimatedStyle(() => ({
     opacity: opacityB.value,
-    transform: [{ translateX: translateB.value }],
+    transform: [{ translateY: translateB.value }],
   }));
 
   if (disabled) {
@@ -146,7 +146,7 @@ export default function StepSlideTransition({
         style={[styles.panel, panelBStyle, frontIsA ? styles.absolutePanel : null]}
         pointerEvents={frontIsA ? 'none' : 'auto'}
       >
-        {children(stepB)}
+        {stepB === stepA ? null : children(stepB)}
       </Animated.View>
     </View>
   );

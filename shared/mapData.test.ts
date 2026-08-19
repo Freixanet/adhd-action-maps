@@ -165,4 +165,20 @@ describe('normalizeMapData visual integration', () => {
     expect(normalized?.visualizeRun?.renderSpec.type).toBe('guided-reading');
     expect(normalized?.visualizeRun?.usedEvidence[0]?.id).toBe('seg-1');
   });
+
+  it('caps tldr at four items without rejecting the map', () => {
+    const normalized = normalizeMapData({
+      ...legacyMap,
+      tldr: [
+        { title: 'Uno', desc: 'Primera idea esencial del mapa.' },
+        { title: 'Dos', desc: 'Segunda idea esencial del mapa.' },
+        { title: 'Tres', desc: 'Tercera idea esencial del mapa.' },
+        { title: 'Cuatro', desc: 'Cuarta idea solo si hace falta.' },
+        { title: 'Cinco', desc: 'Esta quinta no debe persistir nunca.' },
+      ],
+    });
+    expect(normalized).not.toBeNull();
+    expect(normalized!.tldr).toHaveLength(4);
+    expect(normalized!.tldr.map((t) => t.title)).toEqual(['Uno', 'Dos', 'Tres', 'Cuatro']);
+  });
 });

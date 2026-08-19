@@ -1,25 +1,29 @@
-import { isNativeGlassButtonAvailable } from '../../modules/nucleo-glass-button/src';
+import {
+  getGlassButtonImplementationMode,
+  isNativeGlassButtonAvailable,
+} from '../../modules/nucleo-glass-button/src';
 
 /**
- * Master switch for routing app buttons through the native UIKit glass
- * `UIButton`. Flip to `false` to put every button back on the JS `GlassSurface`
- * chrome without touching call sites.
+ * Product path on iOS 26+: UIKit `UIButton.Configuration.glass()` / `.prominentGlass()`.
+ * Availability alone decides — no permanent off switch.
+ * Reduce Transparency must not force RN imitation; iOS flattens the system control.
  */
+export function shouldUseNativeGlassButton(_reduceTransparency = false): boolean {
+  return isNativeGlassButtonAvailable();
+}
+
+/** Prominent CTAs use the same availability gate. */
+export function shouldUseNativeGlassFilledCta(reduceTransparency = false): boolean {
+  return shouldUseNativeGlassButton(reduceTransparency);
+}
+
+export function resolveGlassButtonImplementation(
+  _reduceTransparency = false
+): 'native_system_glass' | 'fallback_solid' {
+  return getGlassButtonImplementationMode();
+}
+
+/** @deprecated Use availability; kept so call sites / tests don't reintroduce kill-switches. */
 export const USE_NATIVE_GLASS_BUTTONS = true;
-
-/**
- * Accent CTAs (Siguiente, Abrir Núcleo, Nuevo Núcleo, enviar) ship as solid
- * `CTA_FILL`. When this is `true` they render as `prominentGlass()` instead.
- * Flip to `false` to revert only the filled CTAs, keeping the rest native.
- */
+/** @deprecated Use availability; kept so call sites / tests don't reintroduce kill-switches. */
 export const USE_NATIVE_GLASS_FILLED_CTAS = true;
-
-/** Native glass for neutral buttons: available, enabled, and not reduce-transparency. */
-export function shouldUseNativeGlassButton(reduceTransparency: boolean): boolean {
-  return USE_NATIVE_GLASS_BUTTONS && !reduceTransparency && isNativeGlassButtonAvailable();
-}
-
-/** Native glass for accent/filled CTAs — gated by both switches. */
-export function shouldUseNativeGlassFilledCta(reduceTransparency: boolean): boolean {
-  return USE_NATIVE_GLASS_FILLED_CTAS && shouldUseNativeGlassButton(reduceTransparency);
-}

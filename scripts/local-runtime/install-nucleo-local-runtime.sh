@@ -13,10 +13,12 @@ for arg in "$@"; do
       cat <<'EOF'
 Usage: install-nucleo-local-runtime.sh [--fix-env]
 
-Installs LaunchAgents for Núcleo backend (3000, canonical repo) and Metro (8081, preview tree with ios/).
+Installs LaunchAgents for Núcleo backend (3000) and Metro (8081) from the
+canonical repo (`Projects/adhd-action-maps`). Metro always serves `mobile/` here —
+never the Antigravity preview tree (that caused stale JS after reboot).
 
   --fix-env   Update mobile/.env EXPO_PUBLIC_API_BASE_URL to current Mac IP :3000
-               (canonical + preview)
+               (canonical; also mirrors to preview if present)
 EOF
       exit 0
       ;;
@@ -40,22 +42,30 @@ CURRENT_URL="$(read_env_api_url "${ENV_FILE}" || true)"
 PREVIEW_URL="$(read_env_api_url "${PREVIEW_ENV_FILE}" || true)"
 
 echo "Canonical ROOT: ${ROOT}"
-echo "Preview ROOT:   ${PREVIEW_ROOT}"
+echo "Metro serves:   ${METRO_MOBILE_ROOT}"
+echo "Preview mirror: ${PREVIEW_ROOT} (optional)"
 echo "Detected Mac IP: ${MAC_IP}"
 echo "Expected API URL: ${EXPECTED_URL}"
 echo "Canonical mobile/.env API URL: ${CURRENT_URL:-<missing>}"
 echo "Preview mobile/.env API URL:   ${PREVIEW_URL:-<missing>}"
 
-if [[ "${CURRENT_URL}" != "${EXPECTED_URL}" || "${PREVIEW_URL}" != "${EXPECTED_URL}" ]]; then
+if [[ "${CURRENT_URL}" != "${EXPECTED_URL}" ]]; then
   if [[ "${FIX_ENV}" -eq 1 ]]; then
     upsert_env_api_url "${ENV_FILE}" "${EXPECTED_URL}"
-    upsert_env_api_url "${PREVIEW_ENV_FILE}" "${EXPECTED_URL}"
     echo "Updated ${ENV_FILE}"
-    echo "Updated ${PREVIEW_ENV_FILE}"
   else
     echo "ERROR: mobile/.env API URL does not match current IP :3000." >&2
     echo "Re-run with --fix-env to update EXPO_PUBLIC_API_BASE_URL." >&2
     exit 1
+  fi
+fi
+
+if [[ -d "${PREVIEW_ROOT}/mobile" && "${PREVIEW_URL}" != "${EXPECTED_URL}" ]]; then
+  if [[ "${FIX_ENV}" -eq 1 ]]; then
+    upsert_env_api_url "${PREVIEW_ENV_FILE}" "${EXPECTED_URL}"
+    echo "Updated ${PREVIEW_ENV_FILE}"
+  else
+    echo "WARN: preview mobile/.env API URL differs (optional mirror)."
   fi
 fi
 
@@ -69,6 +79,24 @@ chmod +x \
   "${SCRIPT_DIR}/status-nucleo-local-runtime.sh"
 
 sync_canonical_to_preview
+
+# Resolve Node for LaunchAgent PATH (nvm preferred).
+NODE_PATH_ENTRIES="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+if [[ -d "${HOME}/.nvm/versions/node" ]]; then
+  # Prefer repo .nvmrc version if installed.
+  NVM_WANTED=""
+  if [[ -f "${ROOT}/.nvmrc" ]]; then
+    NVM_WANTED="$(tr -d '[:space:]' < "${ROOT}/.nvmrc")"
+  fi
+  if [[ -n "${NVM_WANTED}" && -d "${HOME}/.nvm/versions/node/v${NVM_WANTED}/bin" ]]; then
+    NODE_PATH_ENTRIES="${HOME}/.nvm/versions/node/v${NVM_WANTED}/bin:${NODE_PATH_ENTRIES}"
+  else
+    LATEST_NVM_BIN="$(ls -1d "${HOME}/.nvm/versions/node"/v*/bin 2>/dev/null | sort -V | tail -n1 || true)"
+    if [[ -n "${LATEST_NVM_BIN}" ]]; then
+      NODE_PATH_ENTRIES="${LATEST_NVM_BIN}:${NODE_PATH_ENTRIES}"
+    fi
+  fi
+fi
 
 cat > "${BACKEND_PLIST}" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -95,7 +123,7 @@ cat > "${BACKEND_PLIST}" <<EOF
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>${NODE_PATH_ENTRIES}</string>
     <key>HOME</key>
     <string>${HOME}</string>
     <key>TRANSFORM_DEBUG</key>
@@ -120,7 +148,7 @@ cat > "${METRO_PLIST}" <<EOF
     <string>${SCRIPT_DIR}/nucleo-metro-service.sh</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>${PREVIEW_ROOT}/mobile</string>
+  <string>${METRO_MOBILE_ROOT}</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -132,9 +160,13 @@ cat > "${METRO_PLIST}" <<EOF
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>${NODE_PATH_ENTRIES}</string>
     <key>HOME</key>
     <string>${HOME}</string>
+    <key>EXPO_NO_TELEMETRY</key>
+    <string>1</string>
+    <key>NUCLEO_METRO_MODE</key>
+    <string>lan</string>
   </dict>
 </dict>
 </plist>
@@ -165,6 +197,8 @@ curl_backend_health "http://localhost:3000" || echo "WARN: backend /health on lo
 echo
 curl_metro_status "http://localhost:8081" || echo "WARN: metro /status on localhost:8081 failed"
 echo
+assert_metro_canonical_cwd || echo "WARN: Metro cwd check failed"
+echo
 echo "=== LAN checks (${MAC_IP}) ==="
 curl_backend_health "http://${MAC_IP}:3000" || echo "WARN: backend /health on ${MAC_IP}:3000 failed"
 echo
@@ -175,7 +209,8 @@ cat <<EOF
 Núcleo local runtime installed.
 
 Canonical ROOT: ${ROOT}
-Preview (Metro/ios): ${PREVIEW_ROOT}
+Metro serves:   ${METRO_MOBILE_ROOT}
+Preview mirror: ${PREVIEW_ROOT} (optional; not used by Metro)
 
 LaunchAgents:
   ${BACKEND_PLIST}

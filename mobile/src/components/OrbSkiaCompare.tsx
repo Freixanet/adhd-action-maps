@@ -35,8 +35,8 @@ export default function OrbSkiaCompare({ visible, onClose }: OrbSkiaCompareProps
           style={{ top: insets.top + 12 }}
           pointerEvents="box-none"
         >
-          <Text className="text-center text-[15px] font-semibold text-primary">Orb preview</Text>
-          <Text className="mt-1 text-center text-[12px] text-secondary">
+          <Text className="text-center text-lg font-semibold text-primary">Orb preview</Text>
+          <Text className="mt-1 text-center text-xs text-secondary">
             Actual · thinking-orbs (elige uno)
           </Text>
         </View>
@@ -53,26 +53,26 @@ export default function OrbSkiaCompare({ visible, onClose }: OrbSkiaCompareProps
           showsHorizontalScrollIndicator={false}
         >
           <View className="gap-4">
-            <Text className="text-[11px] font-bold uppercase tracking-widest text-secondary">
+            <Text className="text-xs font-bold uppercase tracking-widest text-secondary">
               Actual
             </Text>
             <View className="flex-row items-center justify-around">
               <View className="items-center">
                 <NucleoGlyphOrb size={COMPARE_SIZE} reduceMotion={reduceMotion} />
-                <Text className="mt-3 text-[12px] text-secondary">Glifo · carga</Text>
+                <Text className="mt-3 text-xs text-secondary">Glifo · carga</Text>
               </View>
               <View className="items-center">
                 <NucleoOrb size={COMPARE_SIZE} state="thinking" reduceMotion={reduceMotion} />
-                <Text className="mt-3 text-[12px] text-secondary">Three.js</Text>
+                <Text className="mt-3 text-xs text-secondary">Three.js</Text>
               </View>
             </View>
           </View>
 
           <View className="gap-3">
-            <Text className="text-[11px] font-bold uppercase tracking-widest text-secondary">
+            <Text className="text-xs font-bold uppercase tracking-widest text-secondary">
               thinking-orbs
             </Text>
-            <Text className="text-[12px] leading-4 text-secondary">
+            <Text className="text-xs leading-4 text-secondary">
               Seis estados · tamaño 64 y 20 · theme dark
             </Text>
             <ThinkingOrbsGalleryWebView />
@@ -89,7 +89,7 @@ export default function OrbSkiaCompare({ visible, onClose }: OrbSkiaCompareProps
             accessibilityLabel="Cerrar vista previa del orbe"
             className="rounded-full bg-surface-2 px-5 py-2.5 active:opacity-80"
           >
-            <Text className="text-[14px] font-medium text-primary">Cerrar</Text>
+            <Text className="text-base font-medium text-primary">Cerrar</Text>
           </Pressable>
         </View>
       </View>

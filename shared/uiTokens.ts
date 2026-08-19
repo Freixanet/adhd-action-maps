@@ -1,24 +1,91 @@
-export const BG_BASE = '#181A1F';
-export const BG_SURFACE = '#24262D';
-export const BG_SURFACE_2 = '#2C2E37';
-export const TEXT_PRIMARY = '#FAFAFA';
-export const TEXT_BODY = '#D4D4DC';
-export const TEXT_SECONDARY = '#9CA0AB';
-export const ACCENT = '#8B8FF5';
-export const ACCENT_PRESSED = '#7A7EE0';
+/**
+ * Static color aliases resolve to the **dark** theme for backward compatibility.
+ * Dynamic UI must use `uiColorsFor(scheme)` or `useThemeColors()` from ThemeContext.
+ * Do not treat these constants as theme-aware.
+ */
+import { themeColor, type ColorSchemeName } from './design-tokens/generated/tokens';
+
+const darkColor = themeColor.dark;
+
+export const BG_BASE = darkColor.background.canvas;
+export const BG_SURFACE = darkColor.background.surface;
+export const BG_SURFACE_2 = darkColor.background.surfaceRaised;
+export const TEXT_PRIMARY = darkColor.text.primary;
+export const TEXT_BODY = darkColor.text.body;
+export const TEXT_SECONDARY = darkColor.text.secondary;
+export const ACCENT = darkColor.action.primary;
+export const ACCENT_PRESSED = darkColor.action.primaryPressed;
 /** Primary reading CTA fill (Siguiente / Completar) — distinct from brand accent. */
-export const CTA_FILL = '#6A6FE0';
-export const CTA_FILL_PRESSED = '#5B60D4';
-export const SEM_CLAVE = '#8B8FF5';
-export const SEM_MATIZ = '#E0B45C';
-export const SEM_EJEMPLO = '#6FBF8F';
-export const SEM_ALERTA = '#E07A6B';
-export const VIZ_GRID = '#3A3D47';
-export const VIZ_MUTED = '#656A78';
-export const VIZ_SERIES = [ACCENT, SEM_EJEMPLO, SEM_MATIZ, SEM_ALERTA] as const;
+export const CTA_FILL = darkColor.action.cta;
+export const CTA_FILL_PRESSED = darkColor.action.ctaPressed;
+/** Callout accents — dark defaults; use uiColorsFor(scheme) for theme-aware. */
+export const SEM_CLAVE = darkColor.text.accent;
+export const SEM_MATIZ = darkColor.text.warning;
+export const SEM_EJEMPLO = darkColor.text.success;
+export const SEM_ALERTA = darkColor.text.danger;
+export const VIZ_GRID = darkColor.viz.grid;
+export const VIZ_MUTED = darkColor.viz.muted;
+export const VIZ_SERIES = [
+  darkColor.viz.series0,
+  darkColor.viz.series1,
+  darkColor.viz.series2,
+  darkColor.viz.series3,
+] as const;
 
 export const APP_DARK_BACKGROUND = BG_BASE;
 export const APP_DARK_BACKGROUND_RGB = '24, 26, 31';
+
+/** Theme-resolved aliases matching the legacy uiTokens names. Prefer `themeColor[scheme]`. */
+export function uiColorsFor(scheme: ColorSchemeName) {
+  const c = themeColor[scheme];
+  return {
+    BG_BASE: c.background.canvas,
+    BG_SURFACE: c.background.surface,
+    BG_SURFACE_2: c.background.surfaceRaised,
+    TEXT_PRIMARY: c.text.primary,
+    TEXT_BODY: c.text.body,
+    TEXT_SECONDARY: c.text.secondary,
+    ACCENT: c.action.primary,
+    ACCENT_PRESSED: c.action.primaryPressed,
+    CTA_FILL: c.action.cta,
+    CTA_FILL_PRESSED: c.action.ctaPressed,
+    SEM_CLAVE: c.text.accent,
+    SEM_MATIZ: c.text.warning,
+    SEM_EJEMPLO: c.text.success,
+    SEM_ALERTA: c.text.danger,
+    VIZ_GRID: c.viz.grid,
+    VIZ_MUTED: c.viz.muted,
+    VIZ_SERIES: [c.viz.series0, c.viz.series1, c.viz.series2, c.viz.series3] as const,
+  } as const;
+}
+
+/** Editorial reading sheet — see `@shared/editorial/colors`. */
+export {
+  EDITORIAL_SHEET_BG,
+  EDITORIAL_SHEET_BG_WARM,
+  EDITORIAL_TEXT,
+  EDITORIAL_TEXT_BODY,
+  EDITORIAL_TEXT_MUTED,
+  EDITORIAL_GRAPHIC_YELLOW,
+  EDITORIAL_TEXT_OCHRE,
+  EDITORIAL_ACCENT_YELLOW,
+  EDITORIAL_ACCENT_LAVENDER,
+  EDITORIAL_CALLOUT_DARK,
+  EDITORIAL_CALLOUT_DARK_TEXT,
+  EDITORIAL_PHRASE_BG,
+  EDITORIAL_BORDER_SOFT,
+  EDITORIAL_YELLOW_BORDER,
+} from './editorial/colors';
+
+export {
+  EDITORIAL_GUTTER,
+  EDITORIAL_GUTTER_NARROW,
+  EDITORIAL_NARROW_BREAKPOINT,
+  EDITORIAL_MAX_READ_WIDTH,
+  EDITORIAL_SPACE,
+  editorialGutter,
+  editorialContentWidth,
+} from './editorial/space';
 
 export const RADII = { sm: 12, md: 16, lg: 24, pill: 9999 } as const;
 export const HAIRLINE = 1;

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChevronDown, ChevronUp, Layers, Bookmark } from '../icons';
-import { RADII } from '@shared/uiTokens';
+import { RADII, ACCENT } from '@shared/uiTokens';
 import type { KnowledgeSection } from '../logic/contracts';
 import GlassSurface from './GlassSurface';
 import { useTheme } from '../context/ThemeContext';
 import { useAppSession } from '../context/AppSessionContext';
+import { color, type } from '@shared/design-tokens';
+import { ReadingText } from '../context/TypographyContext';
 
 type KnowledgeSectionsListProps = {
   sections?: KnowledgeSection[];
@@ -39,16 +41,16 @@ export default function KnowledgeSectionsList({
         glassRefreshKey={isStreamGenerating ? 'streaming' : 'ready'}
       >
         <View className="px-5 py-6">
-          <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary mb-2">
+          <Text className="text-meta font-bold uppercase text-secondary mb-2">
             Secciones extraídas
           </Text>
 
-          <Text className="text-xs leading-[18px] text-secondary font-medium mb-4">
+          <Text className="text-xs text-secondary font-medium mb-4">
             Bloques de información que Núcleo pudo organizar desde la fuente.
           </Text>
 
           <View className="flex-row items-center gap-2 mb-4 bg-accent/100/10 bg-accent px-3 py-1.5 rounded-full self-start">
-            <Layers size={13} color="#8B8FF5" />
+            <Layers size={13} color={ACCENT} />
             <Text className="text-xs font-semibold text-accent">
               {sections.length} {sections.length === 1 ? 'sección' : 'secciones'}
             </Text>
@@ -71,22 +73,22 @@ export default function KnowledgeSectionsList({
                       {section.title}
                     </Text>
                     {isExpanded ? (
-                      <ChevronUp size={16} color="#737373" />
+                      <ChevronUp size={16} color={color.text.muted} />
                     ) : (
-                      <ChevronDown size={16} color="#737373" />
+                      <ChevronDown size={16} color={color.text.muted} />
                     )}
                   </Pressable>
 
                   {isExpanded ? (
                     <View className="px-4 pb-4 border-t border-neutral-200/25 dark:border-white/5 pt-3">
-                      <Text className="text-sm leading-relaxed text-body">
+                      <ReadingText typeRole="readingBody">
                         {section.summary}
-                      </Text>
+                      </ReadingText>
 
                       {/* Referencias */}
                       {section.references && section.references.length > 0 ? (
                         <View className="mt-4 pt-3 border-t border-neutral-200/20 dark:border-white/5">
-                          <Text className="text-[10px] font-bold uppercase tracking-wider text-secondary mb-2">
+                          <Text className="text-micro font-bold uppercase tracking-wider text-secondary mb-2">
                             Referencias
                           </Text>
                           {section.references.map((ref, rIndex) => (
@@ -94,7 +96,7 @@ export default function KnowledgeSectionsList({
                               key={`${ref.label}-${rIndex}`}
                               className="flex-row gap-2 mt-2 bg-neutral-200/20 dark:bg-white/[0.02] p-2.5 rounded-lg border border-neutral-200/35 dark:border-white/[0.02]"
                             >
-                              <Bookmark size={12} color="#8b5cf6" style={{ marginTop: 2 }} />
+                              <Bookmark size={12} color={ACCENT} style={{ marginTop: 2 }} />
                               <View className="flex-1">
                                 <Text className="text-xs font-semibold text-body leading-4">
                                   {ref.label}{' '}
@@ -106,7 +108,7 @@ export default function KnowledgeSectionsList({
                                 </Text>
                                 {ref.excerpt ? (
                                   <Text
-                                    className="text-xs leading-[18px] text-secondary mt-1 italic"
+                                    className="text-xs text-secondary mt-1 italic"
                                     numberOfLines={3}
                                   >
                                     &ldquo;{ref.excerpt.trim()}&rdquo;
@@ -125,7 +127,7 @@ export default function KnowledgeSectionsList({
           </View>
 
           {/* Nota/Límite de exhaustividad */}
-          <Text className="text-[11px] leading-[16px] text-secondary mt-5 pt-3 border-t border-white/10 text-center font-medium italic">
+          <Text className="text-meta text-secondary mt-5 pt-3 border-t border-white/10 text-center font-medium italic">
             Esto no sustituye la fuente original: organiza la señal que el Núcleo pudo extraer.
           </Text>
         </View>

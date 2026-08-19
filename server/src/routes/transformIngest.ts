@@ -50,11 +50,14 @@ function toIngestorInput(body: TransformRequest): IngestorInput {
 }
 
 /**
- * Decide ask vs source ingest. YouTube / video stay on the legacy Gemini path.
- * PDF uses local text extract when possible; otherwise passthrough to multimodal.
+ * Decide ask vs source ingest. YouTube / video / vision fallback stay passthrough
+ * so `canRunUnderstandingEngine` routes them to the legacy transcript/multimodal path.
+ * PDF uses native text extract only — scanned/empty/encrypted are honest errors
+ * (S08: never pretend OCR success via multimodal fallback).
  */
 export async function prepareTransformIngest(
-  body: TransformRequest
+  body: TransformRequest,
+  opts?: { signal?: AbortSignal }
 ): Promise<PrepareIngestOutcome> {
   if (isAskLaneInput(body)) {
     return { kind: "ask" };
@@ -82,6 +85,7 @@ export async function prepareTransformIngest(
 
   try {
     const input = toIngestorInput(body);
+    if (opts?.signal) input.signal = opts.signal;
 
     // Plain text without URL → text ingestor via factory.
     if (body.type === "text" && body.text?.trim() && !input.buffer) {
@@ -98,10 +102,18 @@ export async function prepareTransformIngest(
     const ingestor = getIngestor(input);
     const ingest = await ingestor.ingest(input);
 
-    // No citable text recovered (e.g. a photo with no readable words). Send the
-    // original bytes to the multimodal path instead of a placeholder chunk.
-    if (ingest.needsVisionFallback && input.buffer?.length) {
+    // Image OCR empty → multimodal. PDF scanned/empty must NOT take this path.
+    if (ingest.needsVisionFallback && input.buffer?.length && body.type !== "pdf") {
       return { kind: "passthrough" };
+    }
+    if (body.type === "pdf" && ingest.needsVisionFallback) {
+      return {
+        kind: "error",
+        status: 422,
+        error:
+          "No se extrajo texto verificable del PDF. Núcleo no presenta OCR como exitoso.",
+        code: "PDF_INSUFFICIENT_TEXT",
+      };
     }
 
     validateIngestChunks(ingest);
@@ -113,6 +125,20 @@ export async function prepareTransformIngest(
       ? labelledOverviewSeedText(ingest.chunks, ingest.chapters!)
       : labelledChunkText(ingest.chunks);
 
+    const coverageNote =
+      body.type === "pdf" && ingest.metadata.pdfCoverageSummary
+        ? [
+            `LIMITACIONES PDF: ${ingest.metadata.pdfCoverageSummary}`,
+            ingest.metadata.pdfLimitations
+              ? `Códigos: ${ingest.metadata.pdfLimitations}.`
+              : "",
+            "No inventes tablas, diagramas ni texto de páginas sin chunk.",
+            "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : "";
+
     const preface = overviewOnly
       ? [
           "MODO OVERVIEW (libro/documento largo):",
@@ -120,11 +146,13 @@ export async function prepareTransformIngest(
           "Genera un Núcleo overview de 3–6 pasos. No inventes citas fuera de este texto.",
           "Los capítulos completos quedan para una futura acción «Profundizar».",
           "Los marcadores [[chunk_…]] son ids de cita: úsalos en references.chunkId. Nunca los escribas en la prosa.",
+          coverageNote,
           "",
         ].join("\n")
       : [
           "Los marcadores [[chunk_…]] en la fuente son ids de cita. Solo puedes poner en references.chunkId un id que aparezca entre [[…]].",
           "Si un hecho no tiene fuente en esos chunks, no cites. Nunca escribas los marcadores en la prosa del Núcleo.",
+          coverageNote,
           "",
         ].join("\n");
 
@@ -143,9 +171,16 @@ export async function prepareTransformIngest(
     return { kind: "source", body: nextBody, ingest, overviewOnly };
   } catch (err) {
     if (err instanceof IngestError) {
-      // PDF extract failure → fall back to legacy multimodal Gemini path.
-      if (body.type === "pdf" && err.code === "INGEST_FAILED") {
-        return { kind: "passthrough" };
+      // S08: PDF failures are honest errors — never silent multimodal fallback.
+      if (body.type === "pdf") {
+        const pdfCode =
+          (err as IngestError & { pdfCode?: string }).pdfCode || err.code;
+        return {
+          kind: "error",
+          status: err.httpStatus,
+          error: err.message,
+          code: pdfCode,
+        };
       }
       return {
         kind: "error",
@@ -155,7 +190,12 @@ export async function prepareTransformIngest(
       };
     }
     if (body.type === "pdf") {
-      return { kind: "passthrough" };
+      return {
+        kind: "error",
+        status: 422,
+        error: err instanceof Error ? err.message : "No se pudo ingerir el PDF.",
+        code: "PDF_EXTRACT_FAILED",
+      };
     }
     return {
       kind: "error",

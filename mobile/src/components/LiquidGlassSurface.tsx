@@ -1,11 +1,13 @@
 import React from 'react';
 import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { GlassView } from 'expo-glass-effect';
-import { useTheme } from '../context/ThemeContext';
+import { useTheme, useThemeColors } from '../context/ThemeContext';
 import { useDeferredGlassMount } from '../hooks/useDeferredGlassMount';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { COMPOSER_NATIVE_CORNERS } from '../logic/nativeGlassComposer';
-import { APP_DARK_BACKGROUND_RGB, COMPOSER_DARK_SURFACE } from '@shared/uiTokens';
+import { BLUR_INTENSITY, COMPOSER_DARK_SURFACE } from '@shared/uiTokens';
+import { glass } from '@shared/design-tokens';
 
 export type LiquidGlassVariant = 'regular' | 'clear' | 'composer';
 
@@ -34,37 +36,54 @@ export type LiquidGlassSurfaceProps = {
 
 export { canUseNativeLiquidGlass } from '../logic/glassAvailability';
 
-function fallbackColors(
+function opaqueFallbackColors(
   isDark: boolean,
+  colors: ReturnType<typeof useThemeColors>,
   variant: LiquidGlassVariant,
   tintColor?: string
 ): { backgroundColor: string; borderColor: string } {
   if (tintColor) {
     return {
       backgroundColor: tintColor,
-      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+      borderColor: isDark ? colors.background.whiteFade10 : colors.border.subtle,
     };
   }
   if (variant === 'composer') {
     return {
-      backgroundColor: isDark ? COMPOSER_DARK_SURFACE : 'rgba(255, 255, 255, 0.96)',
-      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+      backgroundColor: isDark ? COMPOSER_DARK_SURFACE : (glass.opaqueFallbackLight as string),
+      borderColor: isDark ? colors.background.whiteFade08 : colors.border.default,
     };
   }
   if (variant === 'clear') {
     return {
       backgroundColor: isDark
-        ? `rgba(${APP_DARK_BACKGROUND_RGB}, 0.82)`
-        : 'rgba(255, 255, 255, 0.82)',
-      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+        ? colors.background.glassClearDark
+        : (glass.clearWashLight as string),
+      borderColor: isDark ? colors.background.whiteFade10 : colors.border.subtle,
     };
   }
   return {
     backgroundColor: isDark
-      ? `rgba(${APP_DARK_BACKGROUND_RGB}, 0.88)`
-      : 'rgba(255, 255, 255, 0.88)',
-    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+      ? colors.background.glassRegularDark
+      : (glass.regularWashLight as string),
+    borderColor: isDark ? colors.background.whiteFade10 : colors.border.subtle,
   };
+}
+
+/** Moderate wash over BlurView when Liquid Glass is unavailable (not reduce-transparency). */
+function blurWashColor(
+  isDark: boolean,
+  colors: ReturnType<typeof useThemeColors>,
+  variant: LiquidGlassVariant,
+  tintColor?: string
+): string {
+  if (tintColor) return tintColor;
+  if (isDark) {
+    if (variant === 'composer') return COMPOSER_DARK_SURFACE;
+    if (variant === 'clear') return colors.background.glassClearDark;
+    return colors.background.glassRegularDark;
+  }
+  return glass.blurWashLight as string;
 }
 
 /** Stable native glass style — composer always stays `regular` (no idle/focus material swap). */
@@ -86,7 +105,8 @@ export default function LiquidGlassSurface({
   hostsContent = false,
 }: LiquidGlassSurfaceProps) {
   const { isDark } = useTheme();
-  const { reduceMotion, nativeGlass } = useGlassAccessibility();
+  const colors = useThemeColors();
+  const { reduceMotion, reduceTransparency, nativeGlass } = useGlassAccessibility();
   const isControlled = glassEnabled !== undefined;
   const internalGlass = useDeferredGlassMount(isControlled ? undefined : layoutRefreshKey);
 
@@ -100,9 +120,10 @@ export default function LiquidGlassSurface({
     ...(Platform.OS === 'ios' ? { borderCurve: 'continuous' as const } : null),
   };
 
-  const fallback = fallbackColors(isDark, variant, tintColor);
+  const opaque = opaqueFallbackColors(isDark, colors, variant, tintColor);
   const active = isControlled ? glassEnabled : internalGlass.glassActive;
   const mountKey = isControlled ? (glassMountKey ?? 0) : internalGlass.glassMountKey;
+  const blurIntensity = variant === 'composer' ? (isDark ? 28 : 24) : BLUR_INTENSITY;
 
   if (nativeGlass && hostsContent) {
     return (
@@ -141,7 +162,7 @@ export default function LiquidGlassSurface({
             pointerEvents="none"
             style={[
               StyleSheet.absoluteFill,
-              { backgroundColor: fallback.backgroundColor },
+              { backgroundColor: opaque.backgroundColor },
               nativeCorners ? { borderRadius } : null,
             ]}
           />
@@ -153,19 +174,38 @@ export default function LiquidGlassSurface({
     );
   }
 
+  // Accessibility: Reduce Transparency → solid surface (white in light).
+  if (reduceTransparency) {
+    return (
+      <View
+        style={[
+          shellStyle,
+          {
+            backgroundColor: opaque.backgroundColor,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: opaque.borderColor,
+          },
+          style,
+        ]}
+      >
+        {children}
+      </View>
+    );
+  }
+
+  // No Liquid Glass API: BlurView + moderate wash (not the opaque white used above).
+  const wash = blurWashColor(isDark, colors, variant, tintColor);
   return (
-    <View
-      style={[
-        shellStyle,
-        {
-          backgroundColor: fallback.backgroundColor,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: fallback.borderColor,
-        },
-        style,
-      ]}
-    >
-      {children}
+    <View style={[shellStyle, { overflow: 'hidden' }, style]}>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <BlurView
+          intensity={blurIntensity}
+          tint={isDark ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: wash }]} />
+      </View>
+      <View style={styles.content}>{children}</View>
     </View>
   );
 }

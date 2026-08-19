@@ -13,6 +13,45 @@ import {
 
 export type { MapStatus } from './categories';
 import { getStorage } from './storage';
+import {
+  selectLatestHistoryEntryByTime,
+  synthesizeTldrFromMap,
+  tldrItemsEqual,
+} from './tldr';
+import { TLDR_MAX_COUNT } from './contracts';
+import { clearPendingSourceSyncForUser } from './pendingSourceSync';
+import { clearPendingPdfSourceSyncForUser } from './pendingPdfSourceSync';
+import { clearPendingEvidenceSyncForUser } from './pendingEvidenceSync';
+import { sessionWithSemanticProgress } from './progress/deriveProgress';
+import { clearPendingProgressSyncForUser } from './pendingProgressSync';
+import {
+  createEmptyEnvelope,
+  getActiveStore,
+  parseOwnedHistoryEnvelope,
+  removeHistoryOwner,
+  replaceActiveStore,
+  serializeOwnedHistoryEnvelope,
+  transitionHistoryOwner,
+  type HistoryOwner,
+  type OwnedHistoryEnvelope,
+  type OwnerTransitionResult,
+} from './historyOwnership';
+
+export type {
+  HistoryOwner,
+  OwnedHistoryEnvelope,
+  OwnerTransitionResult,
+  GuestAdoptionRecord,
+} from './historyOwnership';
+export {
+  cloudMigrateEntriesForUser,
+  createEmptyEnvelope,
+  getActiveStore,
+  ownersEqual,
+  parseOwnedHistoryEnvelope,
+  removeHistoryOwner,
+  transitionHistoryOwner,
+} from './historyOwnership';
 
 export type HistoryEntry = {
   id: string;
@@ -30,6 +69,10 @@ export type HistoryEntry = {
   updatedAt: number;
   sourceType: SourceType;
   session: SavedSession;
+  /** S03 pasted-text cloud/source metadata (no full text). */
+  sourceMeta?:
+    | import('./pastedText').PastedTextSourceMeta
+    | import('./pdf/types').PdfSourceMeta;
 };
 
 export type HistoryStore = {
@@ -41,6 +84,8 @@ export type HistoryStore = {
 const HISTORY_KEY = 'tdah-optimizer-history';
 const LEGACY_SESSION_KEY = 'tdah-optimizer-session';
 const MAX_ENTRIES = 30;
+/** One-shot: rewrite «En 60 segundos» on the most recently touched entry. */
+const TLDR_SIXTY_REWRITE_FLAG = 'tdah-tldr-sixty-rewrite-v1';
 
 function generateId(): string {
   try {
@@ -112,32 +157,111 @@ function trimEntries(entries: HistoryEntry[]): HistoryEntry[] {
   return entries.slice(0, MAX_ENTRIES);
 }
 
-function persist(store: HistoryStore): boolean {
-  const trimmed: HistoryStore = {
-    activeId: store.activeId,
-    entries: trimEntries(store.entries),
-    collections: store.collections ?? [],
-  };
+/** In-memory ownership envelope; kept in sync with HISTORY_KEY. */
+let ownershipEnvelope: OwnedHistoryEnvelope | null = null;
 
+function normalizeStore(store: HistoryStore): HistoryStore {
+  return {
+    activeId: resolveActiveId(store.activeId, store.entries.filter(isValidEntry).map(normalizeHistoryEntry)),
+    entries: trimEntries(store.entries.filter(isValidEntry).map(normalizeHistoryEntry)),
+    collections: Array.isArray(store.collections)
+      ? store.collections.filter(
+          (collection) =>
+            collection?.id &&
+            collection?.title &&
+            Array.isArray(collection.nucleoIds) &&
+            typeof collection.createdAt === 'number' &&
+            typeof collection.updatedAt === 'number'
+        )
+      : [],
+  };
+}
+
+function persistEnvelope(envelope: OwnedHistoryEnvelope): boolean {
+  const active = normalizeStore(getActiveStore(envelope));
+  const withActive = replaceActiveStore(envelope, active);
+  ownershipEnvelope = withActive;
   try {
-    getStorage().setItem(HISTORY_KEY, JSON.stringify(trimmed));
+    getStorage().setItem(HISTORY_KEY, serializeOwnedHistoryEnvelope(withActive));
     return true;
   } catch {
-    if (trimmed.entries.length <= 1) return false;
-
-    const reduced: HistoryStore = {
-      activeId: trimmed.activeId,
-      entries: trimmed.entries.slice(0, Math.max(1, Math.floor(trimmed.entries.length / 2))),
-      collections: trimmed.collections,
+    if (active.entries.length <= 1) return false;
+    const reduced = {
+      ...active,
+      entries: active.entries.slice(0, Math.max(1, Math.floor(active.entries.length / 2))),
     };
-
+    const reducedEnvelope = replaceActiveStore(withActive, reduced);
+    ownershipEnvelope = reducedEnvelope;
     try {
-      getStorage().setItem(HISTORY_KEY, JSON.stringify(reduced));
+      getStorage().setItem(HISTORY_KEY, serializeOwnedHistoryEnvelope(reducedEnvelope));
       return true;
     } catch {
       return false;
     }
   }
+}
+
+function persist(store: HistoryStore): boolean {
+  const envelope = ownershipEnvelope ?? createEmptyEnvelope();
+  return persistEnvelope(replaceActiveStore(envelope, store));
+}
+
+export function getHistoryOwnershipEnvelope(): OwnedHistoryEnvelope {
+  if (!ownershipEnvelope) {
+    ownershipEnvelope = loadOwnershipEnvelopeFromStorage();
+  }
+  return ownershipEnvelope;
+}
+
+function loadOwnershipEnvelopeFromStorage(): OwnedHistoryEnvelope {
+  try {
+    const raw = getStorage().getItem(HISTORY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      const envelope = parseOwnedHistoryEnvelope(parsed);
+      // Normalize partitions
+      const guest = normalizeStore(envelope.guest);
+      const byUserId: OwnedHistoryEnvelope['byUserId'] = {};
+      for (const [userId, store] of Object.entries(envelope.byUserId)) {
+        byUserId[userId] = normalizeStore(store);
+      }
+      return { ...envelope, guest, byUserId };
+    }
+  } catch {
+    // fall through
+  }
+  return createEmptyEnvelope();
+}
+
+/**
+ * Switch visible history partition (guest ↔ user).
+ * Seals the previous user partition; never converts user maps into guest maps.
+ */
+export function activateHistoryOwner(owner: HistoryOwner): OwnerTransitionResult {
+  const current = getHistoryOwnershipEnvelope();
+  const result = transitionHistoryOwner(current, owner);
+  persistEnvelope(result.envelope);
+  return result;
+}
+
+/**
+ * Purge a user's local history partition and related metadata from durable storage.
+ * Guest and other users remain intact.
+ */
+export function removeHistoryOwnerFromStorage(userId: string): OwnedHistoryEnvelope {
+  const current = getHistoryOwnershipEnvelope();
+  const next = removeHistoryOwner(current, userId);
+  persistEnvelope(next);
+  try {
+    getStorage().removeItem(`nucleo_pending_deletes:user:${userId.trim()}`);
+  } catch {
+    // ignore
+  }
+  clearPendingSourceSyncForUser(userId);
+  void clearPendingPdfSourceSyncForUser(userId);
+  clearPendingEvidenceSyncForUser(userId);
+  clearPendingProgressSyncForUser(userId);
+  return next;
 }
 
 function resolveActiveId(
@@ -150,36 +274,100 @@ function resolveActiveId(
   return entries[0]?.id ?? null;
 }
 
-export function loadHistory(): HistoryStore {
+/**
+ * Rewrite only «En 60 segundos» on the entry with the latest created/updated
+ * timestamp. Keeps id, title, cover, progress, source, steps, etc. intact.
+ * Returns null when no rewrite is needed (and marks the one-shot flag).
+ * When a store is returned, the caller must persist it and then call
+ * markTldrSixtyRewriteDone().
+ */
+export function rewriteLatestEntryTldrSixtySeconds(store: HistoryStore): HistoryStore | null {
+  let alreadyDone = false;
   try {
-    const raw = getStorage().getItem(HISTORY_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as HistoryStore;
-      const entries = (parsed.entries || []).filter(isValidEntry).map(normalizeHistoryEntry);
-      const activeId = resolveActiveId(parsed.activeId, entries);
-      const collections = Array.isArray(parsed.collections)
-        ? parsed.collections.filter(
-            (collection) =>
-              collection?.id &&
-              collection?.title &&
-              Array.isArray(collection.nucleoIds) &&
-              typeof collection.createdAt === 'number' &&
-              typeof collection.updatedAt === 'number'
-          )
-        : [];
-      return { activeId, entries, collections };
-    }
+    alreadyDone = getStorage().getItem(TLDR_SIXTY_REWRITE_FLAG) === '1';
   } catch {
-    // fall through to migration
+    return null;
   }
 
-  const migrated = migrateLegacySession();
-  if (migrated) {
-    persist(migrated);
-    return migrated;
+  const latest = selectLatestHistoryEntryByTime(store.entries);
+  if (!latest?.session?.data) {
+    markTldrSixtyRewriteDone();
+    return null;
   }
 
-  return { activeId: null, entries: [], collections: [] };
+  const data = latest.session.data as ActionMapData;
+  const currentTldr = Array.isArray(data.tldr) ? data.tldr : [];
+  const oversized = currentTldr.length > TLDR_MAX_COUNT;
+  // Re-run if never migrated, or if something restored >4 items (e.g. cloud hydrate).
+  if (alreadyDone && !oversized) return null;
+
+  const nextTldr = synthesizeTldrFromMap(data);
+  if (!nextTldr.length) {
+    markTldrSixtyRewriteDone();
+    return null;
+  }
+
+  if (!oversized && tldrItemsEqual(currentTldr, nextTldr)) {
+    markTldrSixtyRewriteDone();
+    return null;
+  }
+
+  const now = Date.now();
+  return {
+    ...store,
+    entries: store.entries.map((entry) => {
+      if (entry.id !== latest.id) return entry;
+      return {
+        ...entry,
+        updatedAt: now,
+        session: {
+          ...entry.session,
+          data: {
+            ...entry.session.data,
+            tldr: nextTldr,
+          },
+        },
+      };
+    }),
+  };
+}
+
+export function markTldrSixtyRewriteDone(): void {
+  try {
+    getStorage().setItem(TLDR_SIXTY_REWRITE_FLAG, '1');
+  } catch {
+    // ignore
+  }
+}
+
+export function loadHistory(): HistoryStore {
+  ownershipEnvelope = loadOwnershipEnvelopeFromStorage();
+
+  if (
+    ownershipEnvelope.activeOwner.kind === 'guest' &&
+    ownershipEnvelope.guest.entries.length === 0 &&
+    Object.keys(ownershipEnvelope.byUserId).length === 0
+  ) {
+    const migrated = migrateLegacySession();
+    if (migrated) {
+      ownershipEnvelope = {
+        ...createEmptyEnvelope(),
+        guest: normalizeStore(migrated),
+      };
+      persistEnvelope(ownershipEnvelope);
+      return getActiveStore(ownershipEnvelope);
+    }
+  }
+
+  const active = getActiveStore(ownershipEnvelope);
+  const rewritten = rewriteLatestEntryTldrSixtySeconds(active);
+  if (rewritten) {
+    if (persist(rewritten)) {
+      markTldrSixtyRewriteDone();
+    }
+    return getActiveStore(ownershipEnvelope!);
+  }
+  return active;
 }
 
 export function saveHistory(store: HistoryStore): boolean {
@@ -187,14 +375,14 @@ export function saveHistory(store: HistoryStore): boolean {
 }
 
 export function clearAllHistory(): HistoryStore {
-  const empty: HistoryStore = { activeId: null, entries: [], collections: [] };
+  ownershipEnvelope = createEmptyEnvelope();
   try {
     getStorage().removeItem(HISTORY_KEY);
     getStorage().removeItem(LEGACY_SESSION_KEY);
   } catch {
-    // ignore storage errors during dev wipe
+    // ignore storage errors during wipe
   }
-  return empty;
+  return { activeId: null, entries: [], collections: [] };
 }
 
 export function getActiveEntry(store: HistoryStore): HistoryEntry | null {
@@ -221,19 +409,25 @@ export function createEntry(
   session: SavedSession,
   sourceType: SourceType,
   providedId?: string,
-  collectionId?: string
+  collectionId?: string,
+  sourceMeta?:
+    | import('./pastedText').PastedTextSourceMeta
+    | import('./pdf/types').PdfSourceMeta
 ): HistoryStore {
   const now = Date.now();
-  const title = (session.data as { title?: string } | undefined)?.title || 'Mapa sin título';
-  const metadata = metadataFromSession(session, sourceType);
+  const resumableSession = sessionWithSemanticProgress(session, session.data, now);
+  const title =
+    (resumableSession.data as { title?: string } | undefined)?.title || 'Mapa sin título';
+  const metadata = metadataFromSession(resumableSession, sourceType);
   const entry: HistoryEntry = {
     id: providedId || generateId(),
     title,
     createdAt: now,
     updatedAt: now,
     sourceType,
-    session,
+    session: resumableSession,
     ...(collectionId ? { collectionId } : {}),
+    ...(sourceMeta ? { sourceMeta } : {}),
     ...metadata,
   };
 
@@ -241,6 +435,23 @@ export function createEntry(
     activeId: entry.id,
     entries: [entry, ...store.entries],
     collections: store.collections ?? [],
+  };
+}
+
+export function updateEntrySourceMeta(
+  store: HistoryStore,
+  id: string,
+  sourceMeta:
+    | import('./pastedText').PastedTextSourceMeta
+    | import('./pdf/types').PdfSourceMeta
+): HistoryStore {
+  return {
+    ...store,
+    entries: store.entries.map((entry) =>
+      entry.id === id
+        ? { ...entry, sourceMeta, updatedAt: Date.now() }
+        : entry
+    ),
   };
 }
 
@@ -293,12 +504,21 @@ export function updateActiveSession(
   const entries = store.entries.map((entry) => {
     if (entry.id !== store.activeId) return entry;
 
-    const title = ((session.data as { title?: string } | undefined)?.title || entry.title) as string;
-    const metadata = metadataFromSession(session, entry.sourceType);
+    const nextSavedAt = Date.now();
+    const resumableSession = sessionWithSemanticProgress(
+      session,
+      session.data,
+      nextSavedAt
+    );
+    const title = ((resumableSession.data as { title?: string } | undefined)?.title ||
+      entry.title) as string;
+    const metadata = metadataFromSession(resumableSession, entry.sourceType);
     const progressChanged =
-      entry.session.currentStep !== session.currentStep ||
-      entry.session.isComplete !== session.isComplete ||
-      entry.session.viewAll !== session.viewAll;
+      entry.session.currentStep !== resumableSession.currentStep ||
+      entry.session.isComplete !== resumableSession.isComplete ||
+      entry.session.viewAll !== resumableSession.viewAll ||
+      entry.session.progress?.currentStepId !== resumableSession.progress?.currentStepId ||
+      entry.session.progress?.state !== resumableSession.progress?.state;
     const titleChanged = title !== entry.title;
     const metadataChanged =
       entry.category !== metadata.category ||
@@ -307,8 +527,8 @@ export function updateActiveSession(
       JSON.stringify(entry.tags ?? []) !== JSON.stringify(metadata.tags ?? []);
 
     if (!progressChanged && !titleChanged && !metadataChanged) {
-      if (entry.session.data === session.data) return entry;
-      return { ...entry, title, session, ...metadata };
+      if (entry.session.data === resumableSession.data) return entry;
+      return { ...entry, title, session: resumableSession, ...metadata };
     }
 
     const now = Date.now();
@@ -316,7 +536,7 @@ export function updateActiveSession(
       ...entry,
       title,
       updatedAt: now,
-      session,
+      session: resumableSession,
       ...metadata,
     };
   });

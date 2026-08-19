@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import { useInViewportOnce } from '../../hooks/useInViewportOnce';
+import { motion, type } from '@shared/design-tokens';
 
 type BlockEnterProps = {
   children: React.ReactNode;
@@ -30,7 +31,7 @@ export default function BlockEnter({ children, delayMs = 0, style }: BlockEnterP
     }
     progress.value = withDelay(
       delayMs,
-      withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) })
+      withTiming(1, { duration: motion.sheet.duration, easing: Easing.out(Easing.cubic) })
     );
   }, [delayMs, progress, reduceMotion, visible]);
 

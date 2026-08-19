@@ -7,13 +7,14 @@ import Animated, {
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import { HAIRLINE, RADII, TEXT_BODY, TEXT_PRIMARY, TEXT_SECONDARY } from '@shared/uiTokens';
+import { HAIRLINE, RADII } from '@shared/uiTokens';
 import type { StepContentBlockComparison } from '@shared/contracts';
 import GlassSurface from '../GlassSurface';
 import { useTheme } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import { useInViewportOnce } from '../../hooks/useInViewportOnce';
 import BlockEnter from './BlockEnter';
+import { motion, typography } from '@shared/design-tokens';
 
 type Props = {
   block: StepContentBlockComparison;
@@ -33,6 +34,7 @@ function SideCard({
   visible: boolean;
   reduceMotion: boolean;
 }) {
+  const { colors } = useTheme();
   const progress = useSharedValue(reduceMotion ? 1 : 0);
 
   useEffect(() => {
@@ -43,7 +45,7 @@ function SideCard({
     }
     progress.value = withDelay(
       side === 'left' ? 0 : 80,
-      withTiming(1, { duration: 480, easing: Easing.out(Easing.cubic) })
+      withTiming(1, { duration: motion.reveal.duration, easing: Easing.out(Easing.cubic) })
     );
   }, [progress, reduceMotion, side, visible]);
 
@@ -63,16 +65,16 @@ function SideCard({
         borderRadius={RADII.sm}
         className="rounded-xl overflow-hidden"
         style={styles.sideGlass}
-        overlayClassName="bg-white/[0.05]"
+        overlayClassName="bg-white/45 dark:bg-white/[0.05]"
       >
         <View style={styles.sideInner}>
-          <Text style={styles.colTitle} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.colTitle, { color: colors.text.primary }]} maxFontSizeMultiplier={1.3}>
             {title}
           </Text>
           {rows.map((row) => (
             <View key={row.label} style={styles.sideRow}>
-              <Text style={styles.rowLabel}>{row.label}</Text>
-              <Text style={styles.rowValue}>{row.value}</Text>
+              <Text style={[styles.rowLabel, { color: colors.text.secondary }]}>{row.label}</Text>
+              <Text style={[styles.rowValue, { color: colors.text.body }]}>{row.value}</Text>
             </View>
           ))}
         </View>
@@ -82,7 +84,7 @@ function SideCard({
 }
 
 export default function ComparisonBlock({ block, index = 0 }: Props) {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
   const { visible, onLayout } = useInViewportOnce();
   const cols = block.columns;
@@ -132,9 +134,9 @@ export default function ComparisonBlock({ block, index = 0 }: Props) {
         >
           <View style={styles.table}>
             <View style={[styles.tableRow, styles.headerRow]}>
-              <Text style={[styles.cell, styles.headerCell, styles.labelCell]}> </Text>
+              <Text style={[styles.cell, styles.headerCell, styles.labelCell, { color: colors.text.secondary }]}> </Text>
               {cols.map((col) => (
-                <Text key={col} style={[styles.cell, styles.headerCell]}>
+                <Text key={col} style={[styles.cell, styles.headerCell, { color: colors.text.primary }]}>
                   {col}
                 </Text>
               ))}
@@ -144,12 +146,12 @@ export default function ComparisonBlock({ block, index = 0 }: Props) {
                 key={`${row.label}-${rowIndex}`}
                 style={[
                   styles.tableRow,
-                  rowIndex < block.rows.length - 1 && styles.rowDivider,
+                  rowIndex < block.rows.length - 1 && [styles.rowDivider, { borderBottomColor: colors.border.subtle }],
                 ]}
               >
-                <Text style={[styles.cell, styles.labelCell]}>{row.label}</Text>
+                <Text style={[styles.cell, styles.labelCell, { color: colors.text.secondary }]}>{row.label}</Text>
                 {row.values.map((value, i) => (
-                  <Text key={`${row.label}-${i}`} style={styles.cell}>
+                  <Text key={`${row.label}-${i}`} style={[styles.cell, { color: colors.text.body }]}>
                     {value}
                   </Text>
                 ))}
@@ -181,24 +183,17 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   colTitle: {
-    color: TEXT_PRIMARY,
-    fontSize: 14,
-    fontWeight: '700',
+    ...typography('calloutBold'),
   },
   sideRow: {
     gap: 2,
   },
   rowLabel: {
-    color: TEXT_SECONDARY,
-    fontSize: 11,
-    fontWeight: '600',
+    ...typography('captionSemiboldTrack'),
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
   },
   rowValue: {
-    color: TEXT_BODY,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography('callout'),
   },
   tableGlass: {
     borderRadius: RADII.md,
@@ -218,23 +213,17 @@ const styles = StyleSheet.create({
   },
   rowDivider: {
     borderBottomWidth: HAIRLINE,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
   cell: {
     flex: 1,
-    color: TEXT_BODY,
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography('label'),
     paddingHorizontal: 4,
   },
   headerCell: {
-    color: TEXT_PRIMARY,
-    fontWeight: '700',
-    fontSize: 12,
+    ...typography('captionBold'),
   },
   labelCell: {
     flex: 1.1,
-    color: TEXT_SECONDARY,
-    fontWeight: '600',
+    ...typography('labelSemibold'),
   },
 });

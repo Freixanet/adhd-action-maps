@@ -1,6 +1,6 @@
 import React from 'react';
 import Svg, { Circle } from 'react-native-svg';
-import { ACCENT, TEXT_PRIMARY } from '@shared/uiTokens';
+import { useThemeColors } from '../context/ThemeContext';
 
 type AppIconProps = {
   className?: string;
@@ -11,8 +11,9 @@ type AppIconProps = {
 };
 
 export default function AppIcon({ size = 24, color, dotColor }: AppIconProps) {
-  const strokeColor = color ?? TEXT_PRIMARY;
-  const fillColor = dotColor ?? color ?? ACCENT;
+  const colors = useThemeColors();
+  const strokeColor = color ?? colors.icon.primary;
+  const fillColor = dotColor ?? color ?? colors.action.primary;
 
   return (
     <Svg viewBox="0 0 24 24" fill="none" width={size} height={size} aria-hidden={true}>

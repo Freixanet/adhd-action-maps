@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Asset } from 'expo-asset';
 import { WebView } from 'react-native-webview';
+import { color, shadow } from '@shared/design-tokens';
 import { nucleoOrbWebViewLayout } from './liquidOrbLayout';
 import LiquidOrbSkia from './LiquidOrbSkia';
 
@@ -110,7 +111,7 @@ export default function NucleoOrbWebView({
     nestedScrollEnabled: false,
     allowsBackForwardNavigationGestures: false,
     // Explicit zero-alpha so RNCWebView sets drawsTransparentBackground.
-    backgroundColor: 'rgba(0,0,0,0)',
+    backgroundColor: color.background.transparent,
     injectedJavaScriptBeforeContentLoaded: configScript,
     injectedJavaScript: configScript,
   };
@@ -156,8 +157,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'transparent',
     borderWidth: 0,
-    shadowOpacity: 0,
-    elevation: 0,
+    ...shadow.none,
     alignSelf: 'center',
   },
   webviewContainer: {

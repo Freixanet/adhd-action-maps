@@ -3,10 +3,10 @@ import { Pressable, Text, View } from 'react-native';
 import { ChevronDown, ChevronRight } from '../icons';
 import type { Coleccion } from '@shared/collections';
 import { formatCollectionProgress, getCollectionProgress } from '@shared/collections';
-import { APP_DARK_BACKGROUND } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
 import type { HistoryEntry } from '../logic/history';
 import HistoryEntryCard from './HistoryEntryCard';
+import { type } from '@shared/design-tokens';
 
 type HistoryCollectionGroupProps = {
   collection: Coleccion;
@@ -51,8 +51,8 @@ export default function HistoryCollectionGroup({
   onMenuOpen,
   onMenuClose,
 }: HistoryCollectionGroupProps) {
-  const { isDark } = useTheme();
-  const cardBackground = isDark ? APP_DARK_BACKGROUND : '#f0f0f0';
+  const { isDark, colors } = useTheme();
+  const cardBackground = isDark ? colors.background.canvas : colors.background.surface;
   const progress = getCollectionProgress(collection, allEntries);
   const progressLabel = formatCollectionProgress(progress.completed, progress.total);
   const isGroupActive = members.some((member) => member.id === activeId);
@@ -68,15 +68,15 @@ export default function HistoryCollectionGroup({
       >
         <View className="flex-row items-center gap-3">
           {expanded ? (
-            <ChevronDown size={18} color={isDark ? '#a3a3a3' : '#737373'} />
+            <ChevronDown size={18} color={colors.icon.muted} />
           ) : (
-            <ChevronRight size={18} color={isDark ? '#a3a3a3' : '#737373'} />
+            <ChevronRight size={18} color={colors.icon.muted} />
           )}
           <View className="flex-1">
-            <Text className="text-[15px] font-semibold text-body" numberOfLines={2}>
+            <Text className="text-body font-semibold text-body" numberOfLines={2}>
               {collection.title}
             </Text>
-            <Text className="mt-1 text-[12px] text-secondary">{progressLabel}</Text>
+            <Text className="mt-1 text-caption text-secondary">{progressLabel}</Text>
           </View>
         </View>
       </Pressable>

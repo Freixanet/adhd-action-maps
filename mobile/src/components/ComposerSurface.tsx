@@ -1,5 +1,5 @@
 import React from 'react';
-import { TextInput } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
 import { GlassContainer } from 'expo-glass-effect';
 import LiquidGlassMotionShell from './LiquidGlassMotionShell';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
@@ -7,12 +7,13 @@ import {
   COMPOSER_GLASS_CONTAINER,
   COMPOSER_GLASS_MERGE_SPACING,
 } from '../logic/nativeGlassComposer';
+import { radius } from '@shared/design-tokens';
 
 type ComposerSurfaceProps = {
   children: React.ReactNode;
-  /** Sustained focus — native interactive glass + focused idle scale (1.006). */
+  /** Sustained focus — native interactive glass. */
   focused?: boolean;
-  /** Optional TextInput ref — tapping the shell chrome focuses the field. */
+  /** Optional TextInput ref — tapping the field still focuses it. */
   inputRef?: React.RefObject<TextInput | null>;
 };
 
@@ -25,21 +26,28 @@ export default function ComposerSurface({
 
   const shell = (
     <LiquidGlassMotionShell
-      borderRadius={26}
+      borderRadius={radius.composer}
       variant="composer"
       focused={focused}
       inputRef={inputRef}
       className="rounded-cta"
     >
-      {children}
+      <View pointerEvents="box-none" style={styles.hit}>
+        {children}
+      </View>
     </LiquidGlassMotionShell>
   );
 
-  // The container has to sit above both the bar's glass and the send button's,
-  // which is what lets UIKit merge the two shapes.
+  // Merge the bar with the send control so UIKit morphs one glass shape.
   if (nativeGlass && COMPOSER_GLASS_CONTAINER) {
     return <GlassContainer spacing={COMPOSER_GLASS_MERGE_SPACING}>{shell}</GlassContainer>;
   }
 
   return shell;
 }
+
+const styles = StyleSheet.create({
+  hit: {
+    alignSelf: 'stretch',
+  },
+});

@@ -1,5 +1,6 @@
 import type { PersistedVisualizationRun } from './visualize';
 import type { Citation, SourceChunk } from './types/chunk';
+import type { EditorialPlan } from './editorial';
 
 export type SourceType = 'text' | 'link' | 'youtube' | 'file' | 'pdf';
 
@@ -9,11 +10,21 @@ export type MapDepth = 'rapido' | 'estandar' | 'profundo';
 
 export type OutputLanguagePreference = 'device' | 'es' | 'en';
 
-export type NucleoGenerationMode = 'classic' | 'study-doc-beta' | 'visualize-html-test';
+export type NucleoGenerationMode =
+  | 'classic'
+  | 'study-doc-beta'
+  | 'visualize-html-test'
+  | 'editorial-v1';
 
 /** Resolve client/server generationMode; unknown values fall back to classic. */
 export function resolveNucleoGenerationMode(value: unknown): NucleoGenerationMode {
-  if (value === 'study-doc-beta' || value === 'visualize-html-test') return value;
+  if (
+    value === 'study-doc-beta' ||
+    value === 'visualize-html-test' ||
+    value === 'editorial-v1'
+  ) {
+    return value;
+  }
   return 'classic';
 }
 
@@ -163,6 +174,15 @@ export type KnowledgeSection = {
   references?: SourceReference[];
 };
 
+/**
+ * «En 60 segundos» budget: default 3 essential ideas; 4 only when a fourth is
+ * indispensable; never more than 4. Subtitles are written to fit two mobile lines.
+ */
+export const TLDR_DEFAULT_COUNT = 3;
+export const TLDR_MAX_COUNT = 4;
+export const TLDR_TITLE_MAX_CHARACTERS = 42;
+export const TLDR_SUBTITLE_MAX_CHARACTERS = 65;
+
 export type TLDRItem = {
   title: string;
   desc: string;
@@ -217,7 +237,8 @@ export type CalloutLabel =
   | 'Matiz'
   | 'Ejemplo'
   | 'Precaución'
-  | 'Para aplicarlo';
+  | 'Para aplicarlo'
+  | 'Conexión';
 
 export type StepListItem = {
   strong: string;
@@ -239,6 +260,8 @@ export type StepContentBlockCallout = {
   text: string;
   kind?: 'action' | 'info' | 'alert';
   label?: CalloutLabel;
+  /** Stable IR relation id when this callout is a compiled Conexión. */
+  relationId?: string;
   references?: SourceReference[];
 };
 
@@ -261,7 +284,7 @@ export type StepContentBlockStat = {
 export type StepContentBlockComparison = {
   type: 'comparison';
   columns: [string, string] | [string, string, string];
-  rows: { label: string; values: string[] }[];
+  rows: { label: string; values: string[]; /** Stable IR relation id when compiled. */ relationId?: string }[];
   emphasis?: BlockEmphasis;
 };
 
@@ -316,6 +339,22 @@ export type CompletionCard = {
   promptQuestion?: string;
 };
 
+/** First screen when opening a Núcleo — readable in ~15s, zero scroll. */
+export type Layer0Action = {
+  id: string;
+  /** Imperative action starting with a verb. */
+  label: string;
+};
+
+export type Layer0 = {
+  /** What this is in one sentence, ≤12 words, no jargon. */
+  what: string;
+  /** Why it matters; must start with a verb. */
+  why: string;
+  /** Exactly three checkable next actions. */
+  actions: Layer0Action[];
+};
+
 export type ActionMapData = {
   title: string;
   category?: string;
@@ -328,8 +367,15 @@ export type ActionMapData = {
   generationMode?: NucleoGenerationMode;
   sourceMetadata?: SourceMetadata;
   coverage?: Coverage;
+  /** Capa 0 — emitted first in the stream so the app can open before steps land. */
+  layer0?: Layer0;
   coreIdea: string;
   coreSupport: string;
+  /**
+   * Chat handoff after generation: one sentence telling the user what Núcleo
+   * did with their source (concrete, first person or direct). Not a title echo.
+   */
+  deliveryMessage?: string;
   tldr: TLDRItem[];
   visualization?: NucleoVisualSpec;
   /** Experimental Visualize-compiler artifact (__DEV__ generationMode visualize-html-test). */
@@ -339,6 +385,11 @@ export type ActionMapData = {
    * Debug payloads must NOT be stored here — see shared/visualize VisualizationRunDebug.
    */
   visualizeRun?: PersistedVisualizationRun | null;
+  /**
+   * Editorial results system (native pages + separate illustration layer).
+   * First vertical: fixture / progressive planner; never a full-page raster.
+   */
+  editorialPlan?: EditorialPlan | null;
   knowledgeSections?: KnowledgeSection[];
   /** Agrupación de pasos para mini-completado (SPEC §4); solo si steps.length >= 6. */
   readingSections?: ReadingSection[] | null;
@@ -356,6 +407,27 @@ export type ActionMapData = {
   citedChunks?: SourceChunk[];
   completionCard?: CompletionCard;
   modelUsed?: string;
+  /**
+   * S04 Understanding Engine artifact (intent=understand).
+   * Optional; legacy maps omit it. References inside stay `pending` until S05.
+   */
+  /** S04 Understanding IR (optional; absent on legacy maps). */
+  understanding?: import('./understanding/types').UnderstandingArtifact;
+  /**
+   * S05 Evidence artifact (claims, links, coverage).
+   * `verified` means the source supports the representation — not world-truth.
+   */
+  evidence?: import('./evidence/types').EvidenceArtifact;
+  /**
+   * S06 Application artifact (fuente / inferencia / adaptación / revisión).
+   * Optional; legacy apply maps omit it. Invalid IR is dropped on normalize.
+   */
+  application?: import('./application/types').ApplicationArtifactV1;
+  /**
+   * Chunk IDs from ingest at generation time (IDs only — never fabricated text).
+   * Independent of segmentRefs; used for rehydrate authorization when present.
+   */
+  chunkIdManifest?: string[];
 };
 
 export type SavedSession = {
@@ -363,6 +435,12 @@ export type SavedSession = {
   currentStep: number;
   isComplete?: boolean;
   viewAll?: boolean;
+  /** User tapped “Ver núcleo completo” and left Capa 0. */
+  layer0Passed?: boolean;
+  /** Checked action ids on Capa 0. */
+  layer0CheckedActionIds?: string[];
+  /** S07 semantic progress and exact resume target. */
+  progress?: import('./progress/types').SemanticProgressV1;
 };
 
 export type MapRecord = {
@@ -380,6 +458,12 @@ export type MapRecord = {
 export type TransformRequest = {
   text?: string;
   type: 'text' | 'link' | 'youtube' | 'pdf' | 'image' | 'video';
+  /**
+   * Provenance of plain text (S03).
+   * `source` = paste-chip / explicit source — never routed to ASK heuristics.
+   * `ask` = conversational question — ASK lane when type is text.
+   */
+  textMode?: 'ask' | 'source';
   fileData?: string;
   mimeType?: string;
   preferredModel?: string;
@@ -387,6 +471,15 @@ export type TransformRequest = {
   outputLanguage?: string;
   sourceLabel?: string;
   mapId?: string;
+  /**
+   * Client-minted UUID for this generation attempt. Reused on retry so the
+   * server can return an already-completed map without re-running models.
+   */
+  generationRunId?: string;
+  /** Stable source identity for pasted-text idempotency (S03). */
+  sourceId?: string;
+  sourceVersionId?: string;
+  sourceRequestId?: string;
   /** Nombre visible opcional para personalizar el tono del Núcleo. No debe ser email. */
   userDisplayName?: string;
   depth?: MapDepth;
@@ -398,6 +491,11 @@ export type TransformRequest = {
   segmentTitle?: string;
   /** Semantic source classification determined from content, never from extension alone. */
   sourceContentKind?: SourceContentKind;
+  /**
+   * S06 — minimal personal context for Aplicar.
+   * Never log raw values; cache keys use canonicalContextHash only.
+   */
+  applicationContext?: import('./application/types').ApplicationContextV1;
 };
 
 export type SourceAnalysisResponse = {
@@ -445,8 +543,35 @@ export type AskResponse = {
 };
 
 export type TransformStreamEvent = {
-  type: 'partial' | 'done' | 'error';
+  type:
+    | 'partial'
+    | 'done'
+    | 'error'
+    | 'source_meta'
+    | 'essential_ready'
+    | 'stage'
+    | 'heartbeat'
+    | 'run';
   map?: ActionMapData;
   model?: string;
   error?: string;
+  code?: string;
+  mapId?: string;
+  generationRunId?: string;
+  sourceMeta?:
+    | import('./pastedText').PastedTextSourceMeta
+    | import('./pdf/types').PdfSourceMeta;
+  /** S08: segments+coverage for persist-only retry when sync_failed. */
+  pdfPersistRetry?: import('./pdf/types').PdfPersistRetryPayload;
+  /** S04: human stage label for UI (never technical). */
+  stageLabel?: string;
+  /** Keep-alive during long stages; does not change UI progress. */
+  heartbeatAt?: number;
+  /** S04: essential-ready payload before full map. */
+  essential?: {
+    title: string;
+    coreIdea: string;
+    coreSupport: string;
+    layer0: Layer0;
+  };
 };

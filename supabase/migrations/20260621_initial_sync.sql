@@ -16,6 +16,13 @@ create index if not exists maps_owner_updated_idx on public.maps (owner_id, upda
 
 alter table public.maps enable row level security;
 
+-- Idempotent: remote may already have these policies from a manual/bootstrap apply
+-- without supabase_migrations history.
+drop policy if exists "maps are readable by their owner" on public.maps;
+drop policy if exists "maps are insertable by their owner" on public.maps;
+drop policy if exists "maps are updatable by their owner" on public.maps;
+drop policy if exists "maps are deletable by their owner" on public.maps;
+
 create policy "maps are readable by their owner"
   on public.maps for select to authenticated using ((select auth.uid()) = owner_id);
 create policy "maps are insertable by their owner"

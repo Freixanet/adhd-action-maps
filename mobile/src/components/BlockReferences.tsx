@@ -3,10 +3,12 @@ import { Pressable, Text, View } from 'react-native';
 import type { SourceReference } from '../logic/contracts';
 import { useSourceViewer } from '../context/SourceViewerContext';
 import { stepHaptic } from '../context/AppSessionContext';
+import { type } from '@shared/design-tokens';
 
 /**
  * Citation / reference pills under a content block.
- * References with a verified chunkId are tappable and open SourceViewerSheet.
+ * A chunkId proves addressing (can open the fragment when citedChunks has exact text).
+ * It is NOT automatically verified evidence — S05 EvidenceLink + verifierStatus decide that.
  */
 export default function BlockReferences({ references }: { references?: SourceReference[] }) {
   const { openCitation } = useSourceViewer();
@@ -29,7 +31,7 @@ export default function BlockReferences({ references }: { references?: SourceRef
               accessibilityLabel={`Ver fuente ${reference.label}`}
               className="rounded-full border border-white/12 bg-white/6 px-2.5 py-1 active:opacity-80"
             >
-              <Text className="text-[11px] font-medium text-body" numberOfLines={1}>
+              <Text className="text-meta font-medium text-body" numberOfLines={1}>
                 [{reference.label}]
               </Text>
             </Pressable>
@@ -41,7 +43,7 @@ export default function BlockReferences({ references }: { references?: SourceRef
             key={`${reference.label}-${reference.locator}-${idx}`}
             className="rounded-full border border-white/12 px-2.5 py-1"
           >
-            <Text className="text-[11px] font-medium text-body" numberOfLines={1}>
+            <Text className="text-meta font-medium text-body" numberOfLines={1}>
               <Text className="text-secondary">{reference.label} </Text>
               {reference.locator}
             </Text>

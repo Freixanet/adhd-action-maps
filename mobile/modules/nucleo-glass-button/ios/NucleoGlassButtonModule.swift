@@ -1,36 +1,35 @@
 import ExpoModulesCore
 import UIKit
 
+/**
+ Product path: unmodified UIKit Liquid Glass `UIButton.Configuration`.
+ - Secondary / nav / icons → `.glass()`
+ - One primary CTA per screen → `.prominentGlass()`
+ Never tint, overlay, or recolor the system material.
+ */
 public class NucleoGlassButtonModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NucleoGlassButton")
 
     Function("isAvailable") { () -> Bool in
-      if #available(iOS 26.0, *) {
-        return true
-      }
+      if #available(iOS 26.0, *) { return true }
       return false
     }
 
+    Function("implementationMode") { () -> String in
+      if #available(iOS 26.0, *) { return "native_system_glass" }
+      return "fallback_solid"
+    }
+
     View(NucleoGlassButtonView.self) {
-      // Not "onPress": React Native already registers topPress, and a view event
-      // cannot be both direct and bubbling.
       Events("onGlassPress")
 
       Prop("variant") { (view: NucleoGlassButtonView, variant: String?) in
         view.variant = variant ?? "glass"
       }
 
-      Prop("cornerStyle") { (view: NucleoGlassButtonView, style: String?) in
-        view.cornerStyle = style ?? "capsule"
-      }
-
-      Prop("cornerRadius") { (view: NucleoGlassButtonView, radius: Double?) in
-        view.fixedCornerRadius = radius.map { CGFloat($0) }
-      }
-
-      Prop("tintColor") { (view: NucleoGlassButtonView, color: UIColor?) in
-        view.glassTintColor = color
+      Prop("title") { (view: NucleoGlassButtonView, title: String?) in
+        view.titleText = title ?? ""
       }
 
       Prop("systemImage") { (view: NucleoGlassButtonView, name: String?) in
@@ -45,74 +44,89 @@ public class NucleoGlassButtonModule: Module {
         view.button.isEnabled = enabled ?? true
       }
 
+      Prop("isLoading") { (view: NucleoGlassButtonView, loading: Bool?) in
+        view.isLoading = loading ?? false
+      }
+
       Prop("accessibilityLabelText") { (view: NucleoGlassButtonView, label: String?) in
         view.button.accessibilityLabel = label
       }
+
+      Prop("cornerStyle") { (view: NucleoGlassButtonView, style: String?) in
+        view.cornerStyle = style ?? "capsule"
+      }
+
+      Prop("cornerRadius") { (view: NucleoGlassButtonView, radius: Double?) in
+        view.fixedCornerRadius = radius.map { CGFloat($0) }
+      }
+
+      // Retained for bridge compatibility — intentionally ignored (no tints).
+      Prop("tintColor") { (_: NucleoGlassButtonView, _: UIColor?) in }
     }
   }
 }
 
-/**
- Hosts a real `UIButton` using UIKit's Liquid Glass configurations (iOS 26+),
- so the material, press morph and highlight come from UIKit rather than from JS
- layers.
-
- The view takes no React children: reordering subviews to keep a label on top
- desynchronises Fabric's child indices and crashes on unmount. Callers render
- the label as a sibling above this view instead.
- */
-class NucleoGlassButtonView: ExpoView {
+final class NucleoGlassButtonView: ExpoView {
   let onGlassPress = EventDispatcher()
   let button = UIButton(type: .system)
 
-  var variant = "glass" {
-    didSet { applyConfiguration() }
-  }
+  var variant = "glass" { didSet { applyConfiguration() } }
+  var cornerStyle = "capsule" { didSet { applyConfiguration() } }
+  var fixedCornerRadius: CGFloat? { didSet { applyConfiguration() } }
+  var systemImageName: String? { didSet { applyConfiguration() } }
+  var symbolPointSize: CGFloat? { didSet { applyConfiguration() } }
+  var titleText = "" { didSet { applyConfiguration() } }
+  var isLoading = false { didSet { applyConfiguration() } }
 
-  var cornerStyle = "capsule" {
-    didSet { applyConfiguration() }
-  }
-
-  var fixedCornerRadius: CGFloat? {
-    didSet { applyConfiguration() }
-  }
-
-  var glassTintColor: UIColor? {
-    didSet { applyConfiguration() }
-  }
-
-  var systemImageName: String? {
-    didSet { applyConfiguration() }
-  }
-
-  var symbolPointSize: CGFloat? {
-    didSet { applyConfiguration() }
-  }
+  private let spinner = UIActivityIndicatorView(style: .medium)
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
 
-    button.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    clipsToBounds = false
+    backgroundColor = .clear
+    isOpaque = false
+    isUserInteractionEnabled = true
+
+    button.clipsToBounds = false
+    button.translatesAutoresizingMaskIntoConstraints = false
     button.addTarget(self, action: #selector(handleTap), for: .touchUpInside)
     addSubview(button)
+
+    spinner.hidesWhenStopped = true
+    spinner.translatesAutoresizingMaskIntoConstraints = false
+    spinner.isUserInteractionEnabled = false
+    addSubview(spinner)
+
+    NSLayoutConstraint.activate([
+      button.leadingAnchor.constraint(equalTo: leadingAnchor),
+      button.trailingAnchor.constraint(equalTo: trailingAnchor),
+      button.topAnchor.constraint(equalTo: topAnchor),
+      button.bottomAnchor.constraint(equalTo: bottomAnchor),
+      spinner.centerXAnchor.constraint(equalTo: centerXAnchor),
+      spinner.centerYAnchor.constraint(equalTo: centerYAnchor),
+    ])
+
     applyConfiguration()
   }
 
   override func layoutSubviews() {
     super.layoutSubviews()
-    button.frame = bounds
+    clipsToBounds = false
+    backgroundColor = .clear
+    isOpaque = false
+    button.clipsToBounds = false
   }
 
   @objc private func handleTap() {
-    // A detached view can still deliver a queued touch; dispatching then crashes.
-    guard window != nil else { return }
+    guard window != nil, button.isEnabled, !isLoading else { return }
     onGlassPress()
   }
 
   @available(iOS 26.0, *)
   private func baseConfiguration() -> UIButton.Configuration {
     switch variant {
-    case "prominentGlass":
+    case "prominent", "prominentGlass", "glassProminent":
       return .prominentGlass()
     case "clearGlass":
       return .clearGlass()
@@ -130,7 +144,6 @@ class NucleoGlassButtonView: ExpoView {
     }
 
     var configuration = baseConfiguration()
-    configuration.contentInsets = .zero
 
     switch cornerStyle {
     case "fixed":
@@ -144,6 +157,12 @@ class NucleoGlassButtonView: ExpoView {
       configuration.cornerStyle = .capsule
     }
 
+    let hasTitle = !titleText.isEmpty
+    let hasSymbol = systemImageName != nil
+
+    if hasTitle {
+      configuration.title = titleText
+    }
     if let systemImageName {
       configuration.image = UIImage(systemName: systemImageName)
       if let symbolPointSize {
@@ -154,9 +173,29 @@ class NucleoGlassButtonView: ExpoView {
       }
     }
 
-    // Prominent glass derives its fill from the tint; without one it is system blue.
-    configuration.baseBackgroundColor = glassTintColor
+    // Icon-only: zero insets so circular hosts (send 38²) stay round.
+    // Labeled CTAs keep comfortable padding.
+    if hasTitle {
+      configuration.contentInsets = NSDirectionalEdgeInsets(
+        top: 12, leading: 16, bottom: 12, trailing: 16
+      )
+      if hasSymbol {
+        configuration.imagePadding = 8
+      }
+    } else {
+      configuration.contentInsets = .zero
+    }
+
+    // Standard glass only — never set baseBackgroundColor / tintColor.
     button.configuration = configuration
-    button.tintColor = glassTintColor
+    button.tintColor = nil
+
+    if isLoading {
+      spinner.startAnimating()
+      button.alpha = 0.35
+    } else {
+      spinner.stopAnimating()
+      button.alpha = 1
+    }
   }
 }

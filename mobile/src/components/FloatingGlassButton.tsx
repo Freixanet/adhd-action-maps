@@ -2,7 +2,6 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Pressable } from 'react-native-gesture-handler';
-import { ACCENT } from '@shared/uiTokens';
 import GlassBarShell, { GLASS_BAR_BUTTON_RADIUS } from './GlassBarShell';
 import GlassSurface from './GlassSurface';
 import NativeGlassButton from './NativeGlassButton';
@@ -10,23 +9,30 @@ import { usePressScale } from '../hooks/usePressScale';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import {
   shouldUseNativeGlassButton,
-  shouldUseNativeGlassFilledCta,
 } from '../logic/nativeGlassButtons';
-import { SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
+import { SIDEBAR_TOGGLE_BUTTON_SIZE } from './sidebarLayout';
 import { useTheme } from '../context/ThemeContext';
+import { ACCENT } from '@shared/uiTokens';
+import { radius, color, primitive, type, shadow } from '@shared/design-tokens';
 
 type FloatingGlassButtonProps = {
   onPress: () => void;
   accessibilityLabel: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   shape?: 'circle' | 'pill' | 'rounded';
+  /**
+   * `accent` → the single primary CTA on that surface (prominentGlass).
+   * `neutral` → standard glass (nav / icons / secondary).
+   */
   tone?: 'neutral' | 'accent';
   /** Circle diameter in points. Defaults to {@link FLOATING_CIRCLE_SIZE}. */
   size?: number;
-  /** Smaller pill padding for inline toolbars (e.g. map header). */
   compact?: boolean;
-  /** Stretch pill/bar to parent width (e.g. completion CTAs). */
   fullWidth?: boolean;
+  /** Prefer SF Symbol inside UIButton over RN children. */
+  systemImage?: string;
+  title?: string;
+  symbolPointSize?: number;
 };
 
 /** Profile circle diameter and paired bar height (e.g. Nuevo Núcleo in history). */
@@ -57,7 +63,7 @@ export function FloatingGlassShell({
     height: size,
   };
 
-  const accentTint = isDark ? 'rgba(139, 143, 245, 0.52)' : 'rgba(139, 143, 245, 0.46)';
+  const accentTint = isDark ? color.background.accentTintDark : color.background.accentTintLight;
   const accentOverlay = isDark ? 'bg-accent/100/32' : 'bg-accent/28';
 
   if (isAccent) {
@@ -122,8 +128,8 @@ export function FloatingGlassShell({
         tintColor={
           prominent
             ? isDark
-              ? 'rgba(64, 64, 64, 0.48)'
-              : 'rgba(245, 245, 245, 0.72)'
+              ? color.background.neutralProminentDark
+              : color.background.neutralProminentLight
             : undefined
         }
         contentClassName="h-full w-full items-center justify-center"
@@ -132,7 +138,7 @@ export function FloatingGlassShell({
       </GlassSurface>
     );
 
-    if (size <= SIDEBAR_HEADER_BUTTON_SIZE) {
+    if (size < SIDEBAR_TOGGLE_BUTTON_SIZE) {
       return circleGlass;
     }
 
@@ -176,13 +182,14 @@ function FloatingGlassButton({
   size = FLOATING_CIRCLE_SIZE,
   compact = false,
   fullWidth = false,
+  systemImage,
+  title,
+  symbolPointSize,
 }: FloatingGlassButtonProps) {
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
   const { reduceTransparency } = useGlassAccessibility();
   const isAccent = tone === 'accent';
-  const native = isAccent
-    ? shouldUseNativeGlassFilledCta(reduceTransparency)
-    : shouldUseNativeGlassButton(reduceTransparency);
+  const native = shouldUseNativeGlassButton(reduceTransparency);
   const hitSlop =
     shape === 'circle' && size < 44
       ? { top: 6, bottom: 6, left: 6, right: 6 }
@@ -191,13 +198,16 @@ function FloatingGlassButton({
   if (native) {
     const isCircle = shape === 'circle';
     const height = isCircle ? size : compact ? FLOATING_PILL_MIN_HEIGHT : FLOATING_BAR_HEIGHT;
+    const ownsLabel = Boolean(title || systemImage);
     return (
       <NativeGlassButton
         onPress={onPress}
         accessibilityLabel={accessibilityLabel}
         variant={isAccent ? 'prominentGlass' : 'glass'}
-        // Without a tint, prominentGlass falls back to the system blue.
-        tintColor={isAccent ? ACCENT : undefined}
+        title={title}
+        systemImage={systemImage}
+        symbolPointSize={symbolPointSize ?? (isCircle ? 20 : 17)}
+        cornerRadius={isCircle ? size / 2 : undefined}
         style={[
           { height },
           isCircle ? { width: size } : null,
@@ -205,7 +215,7 @@ function FloatingGlassButton({
           !isCircle && !fullWidth ? styles.nativePillPadding : null,
         ]}
       >
-        {children}
+        {ownsLabel ? null : children}
       </NativeGlassButton>
     );
   }
@@ -242,32 +252,19 @@ export default React.memo(FloatingGlassButton);
 
 const styles = StyleSheet.create({
   shadow: {
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    elevation: 8,
+    ...shadow.glassFloating,
   },
   shadowCompact: {
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 4,
+    ...shadow.glassFloatingCompact,
   },
   pressedOpacity: {
     opacity: 0.82,
   },
   accentShadow: {
-    shadowColor: '#8B8FF5',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    elevation: 4,
+    ...shadow.glassFloatingAccent,
   },
   shadowProminent: {
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 10,
+    ...shadow.glassFloatingProminent,
   },
   circleShell: {
     alignItems: 'center',

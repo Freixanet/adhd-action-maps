@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Plus,
 } from '../icons';
 import ProfileMenu from './ProfileMenu';
 import {
@@ -19,7 +18,7 @@ import {
   sidebarListPaddingTop,
   sidebarSearchStackHeight,
 } from './SidebarGlassHeader';
-import { APP_DARK_BACKGROUND } from '@shared/uiTokens';
+import { ACCENT, TEXT_SECONDARY } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
 import {
   sortPinnedEntries,
@@ -32,6 +31,14 @@ import HistoryCategoryFilter from './HistoryCategoryFilter';
 import CategoryEditSheet from './CategoryEditSheet';
 import { collectUsedCategories, collectUserCategories } from '@shared/categories';
 import type { ActionMapData } from '../logic/contracts';
+import {
+  countEntriesByLibraryState,
+  filterEntriesByLibraryState,
+  libraryStateForEntry,
+  type LibraryStateFilter as LibraryStateFilterValue,
+} from '@shared/progress';
+import LibraryStateFilter from './LibraryStateFilter';
+import { color, type } from '@shared/design-tokens';
 
 type HistorySheetProps = {
   visible: boolean;
@@ -106,6 +113,8 @@ export default function HistorySheet({
   const [renameValue, setRenameValue] = useState('');
   const [indexExpanded, setIndexExpanded] = useState(true);
   const [listFilter, setListFilter] = useState<HistoryListFilter>('all');
+  const [libraryFilter, setLibraryFilter] =
+    useState<LibraryStateFilterValue>('all');
   // Search UI (hide index, show filters) follows searchActive immediately.
   const searchMode = searchActive;
   const insets = useSafeAreaInsets();
@@ -113,7 +122,7 @@ export default function HistorySheet({
   const listBottomInset = searchActive
     ? floatingActionsBottom + 16
     : floatingActionsBottom + FLOATING_PILL_MIN_HEIGHT + 20;
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const modalSearchProgress = useSharedValue(searchActive ? 1 : 0);
   useEffect(() => {
     modalSearchProgress.value = searchActive ? 1 : 0;
@@ -122,7 +131,7 @@ export default function HistorySheet({
   const usedCategories = useMemo(() => collectUsedCategories(entries), [entries]);
   const userCategories = useMemo(() => collectUserCategories(entries), [entries]);
   const hasIncompleteEntries = useMemo(
-    () => entries.some((entry) => !entry.session.isComplete),
+    () => entries.some((entry) => libraryStateForEntry(entry) !== 'completed'),
     [entries]
   );
 
@@ -148,11 +157,23 @@ export default function HistorySheet({
     }
   }, [hasIncompleteEntries, listFilter, usedCategories]);
 
+  const libraryCounts = useMemo(
+    () => countEntriesByLibraryState(entries),
+    [entries]
+  );
+
+  useEffect(() => {
+    if (libraryFilter !== 'all' && libraryCounts[libraryFilter] === 0) {
+      setLibraryFilter('all');
+    }
+  }, [libraryCounts, libraryFilter]);
+
   const filteredEntries = useMemo(() => {
-    if (!searchMode) return entries;
-    const searched = filterHistoryEntries(entries, searchQuery);
+    const byState = filterEntriesByLibraryState(entries, libraryFilter);
+    if (!searchMode) return byState;
+    const searched = filterHistoryEntries(byState, searchQuery);
     return applyHistoryListFilter(searched, listFilter);
-  }, [entries, listFilter, searchMode, searchQuery]);
+  }, [entries, libraryFilter, listFilter, searchMode, searchQuery]);
 
   const pinnedStandalone = useMemo(
     () => sortPinnedEntries(filteredEntries.filter((entry) => entry.pinned && !entry.collectionId)),
@@ -260,7 +281,7 @@ export default function HistorySheet({
                 : 'pt-1';
         return (
           <Text
-            className={`px-1 pb-2 text-[11px] font-bold uppercase tracking-widest text-secondary ${
+            className={`px-1 pb-2 text-meta font-bold uppercase tracking-widest text-secondary ${
               isRecentHeader ? 'pt-8' : pinTopPadding
             }`}
           >
@@ -344,16 +365,15 @@ export default function HistorySheet({
   );
 
   const listHeaderComponent = useMemo(() => {
-    if (searchMode) {
-      return null;
-    }
-
-    if (!showIndex || !data) {
-      return null;
-    }
-
     return (
-      <View className="mb-6">
+      <View>
+        <LibraryStateFilter
+          value={libraryFilter}
+          counts={libraryCounts}
+          onChange={setLibraryFilter}
+        />
+        {searchMode || !showIndex || !data ? null : (
+        <View className="mb-6">
         <Pressable
           onPress={() => setIndexExpanded((value) => !value)}
           className="flex-row items-center gap-2 mb-3 px-1 py-1"
@@ -361,9 +381,9 @@ export default function HistorySheet({
         >
           <View style={styles.indexChevronSlot}>
             {indexExpanded ? (
-              <ChevronDown size={16} color="#a3a3a3" />
+              <ChevronDown size={16} color={TEXT_SECONDARY} />
             ) : (
-              <ChevronRight size={16} color="#a3a3a3" />
+              <ChevronRight size={16} color={TEXT_SECONDARY} />
             )}
           </View>
           <Text className="text-xs font-bold tracking-widest uppercase text-secondary">Índice</Text>
@@ -424,12 +444,14 @@ export default function HistorySheet({
                       {step.shortNav || step.title}
                     </Text>
                   </View>
-                  <CheckCircle2 size={16} color={isPast ? '#8B8FF5' : '#a3a3a3'} />
+                  <CheckCircle2 size={16} color={isPast ? ACCENT : TEXT_SECONDARY} />
                 </Pressable>
               );
             })}
           </View>
         ) : null}
+        </View>
+        )}
       </View>
     );
   }, [
@@ -437,6 +459,8 @@ export default function HistorySheet({
     data,
     indexExpanded,
     isComplete,
+    libraryCounts,
+    libraryFilter,
     onClose,
     onGoToStep,
     showIndex,
@@ -448,7 +472,7 @@ export default function HistorySheet({
       return (
         <View className="py-8 px-2">
           <Text className="text-center text-body leading-6">
-            Nada por aquí. Prueba con otra categoría.
+            Nada por aquí. Prueba con otro estado o categoría.
           </Text>
         </View>
       );
@@ -470,7 +494,7 @@ export default function HistorySheet({
     ? searchStackHeight + SIDEBAR_SEARCH_FILTER_LIST_GAP
     : listTopInset;
   const listBottomPadding = Math.max(SIDEBAR_OCCLUSION.listBottomMin, listBottomInset);
-  const sheetBackground = canvasColor ?? (isDark ? APP_DARK_BACKGROUND : '#f0f0f0');
+  const sheetBackground = canvasColor ?? (isDark ? colors.background.canvas : colors.background.surface);
   const modalBrandHeaderHeight =
     searchActive && !hideBrandHeader ? searchStackHeight : headerSolidHeight;
 
@@ -571,9 +595,9 @@ export default function HistorySheet({
             accessibilityLabel="Nuevo Núcleo"
             shape="circle"
             tone="accent"
-          >
-            <Plus size={22} color="#ffffff" strokeWidth={2.5} />
-          </FloatingGlassButton>
+            systemImage="plus"
+            symbolPointSize={15}
+          />
         </View>
       ) : null}
 

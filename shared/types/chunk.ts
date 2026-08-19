@@ -48,11 +48,21 @@ export type IngestResult = {
     type: string;
     title?: string;
     cover?: string;
+    /** S08 PDF coverage status when type=pdf. */
+    pdfCoverage?: string;
+    pdfPageCount?: string;
+    pdfTextualPages?: string;
+    pdfExtractionDigest?: string;
+    pdfLimitations?: string;
+    pdfCoverageSummary?: string;
+    pdfSchemaVersion?: string;
+    pdfExtractorVersion?: string;
   };
   rawHash: string;
   /**
    * No citable text was recovered, so the chunks carry no source content.
    * Callers should route the original bytes to the multimodal path instead.
+   * S08 PDF must NOT set this for scanned/empty — those are hard errors.
    */
   needsVisionFallback?: boolean;
 };

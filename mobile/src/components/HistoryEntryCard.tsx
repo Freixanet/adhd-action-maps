@@ -2,14 +2,15 @@ import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MenuView, type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
 import * as Haptics from 'expo-haptics';
-import { FALLBACK_MAP_CATEGORY, getIntentLabel } from '@shared/categories';
-import { APP_DARK_BACKGROUND } from '@shared/uiTokens';
+import { FALLBACK_MAP_CATEGORY } from '@shared/categories';
+import { resolveLibraryStatePresentation } from '@shared/progress';
 import { useTheme } from '../context/ThemeContext';
 import { formatRelativeDate, type HistoryEntry } from '../logic/history';
 import HistoryEntrySourceIcon from './HistoryEntrySourceIcon';
 import MapCategoryLabel from './MapCategoryLabel';
+import { type } from '@shared/design-tokens';
 
-export const HISTORY_ENTRY_CARD_HEIGHT = 92;
+export const HISTORY_ENTRY_CARD_HEIGHT = 104;
 const MENU_TAP_GUARD_MS = 1200;
 
 type HistoryEntryCardProps = {
@@ -52,12 +53,14 @@ export default function HistoryEntryCard({
   onMenuClose,
 }: HistoryEntryCardProps) {
   const lastMenuOpenAtRef = useRef<number | null>(null);
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const category = entry.category || FALLBACK_MAP_CATEGORY;
-  const cardBackground = isDark ? APP_DARK_BACKGROUND : '#f0f0f0';
-  const metaIconColor = isDark ? '#a3a3a3' : '#737373';
+  const cardBackground = isDark ? colors.background.canvas : colors.background.surface;
+  const metaIconColor = colors.icon.muted;
+  const state = resolveLibraryStatePresentation(entry);
   const metaTextParts = [
-    entry.intent ? getIntentLabel(entry.intent) : null,
+    state.label,
+    state.detail,
     formatRelativeDate(entry.updatedAt),
   ].filter(Boolean);
 
@@ -136,13 +139,13 @@ export default function HistoryEntryCard({
         style={[
           styles.cardPressable,
           isMenuOpen
-            ? { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.72)' }
+            ? { backgroundColor: isDark ? colors.background.whiteFade08 : colors.background.whiteFade72 }
             : !showActiveStyle
               ? { backgroundColor: cardBackground }
               : null,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={entry.title}
+        accessibilityLabel={`${entry.title}. ${state.label}. ${state.detail}`}
       >
         <MenuView
           style={styles.menuFill}

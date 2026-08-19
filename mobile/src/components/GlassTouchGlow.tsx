@@ -2,12 +2,8 @@ import React, { useId, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
-import {
-  GLASS_TOUCH_GLOW_CENTER_OPACITY_DARK,
-  GLASS_TOUCH_GLOW_CENTER_OPACITY_LIGHT,
-  GLASS_TOUCH_GLOW_RADIAL_STOP_RATIOS,
-  GLASS_TOUCH_GLOW_RADIUS_SCALE,
-} from '@shared/uiTokens';
+import { GLASS_TOUCH_GLOW_CENTER_OPACITY_DARK, GLASS_TOUCH_GLOW_CENTER_OPACITY_LIGHT, GLASS_TOUCH_GLOW_RADIAL_STOP_RATIOS, GLASS_TOUCH_GLOW_RADIUS_SCALE, TEXT_PRIMARY } from '@shared/uiTokens';
+import { radius, type } from '@shared/design-tokens';
 
 type GlassTouchGlowProps = {
   width: number;
@@ -102,7 +98,7 @@ export default function GlassTouchGlow({
                 <Stop
                   key={stop.offset}
                   offset={stop.offset}
-                  stopColor="#FFFFFF"
+                  stopColor={TEXT_PRIMARY}
                   stopOpacity={stop.stopOpacity}
                 />
               ))}

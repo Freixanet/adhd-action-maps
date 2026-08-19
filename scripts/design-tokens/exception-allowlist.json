@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "budgetNote": "Every exception must be inevitable, concrete, and reviewed. CI fails on new ignores not listed here, and on stale allowlist entries.",
+  "exceptions": [
+    {
+      "id": "callout-brand-accent-rgb-runtime",
+      "file": "mobile/src/components/blocks/CalloutBlock.tsx",
+      "line": 42,
+      "rule": "color-rgb",
+      "match": "rgba(",
+      "reason": "runtime alpha wash from brand.accentRgb channels",
+      "whyInevitable": "Callout tint alpha is computed from brand.accentRgb channels at runtime. A static color.* wash cannot express arbitrary alpha."
+    },
+    {
+      "id": "callout-parsed-hex-runtime",
+      "file": "mobile/src/components/blocks/CalloutBlock.tsx",
+      "line": 44,
+      "rule": "color-rgb",
+      "match": "rgba(",
+      "reason": "runtime alpha wash from parsed hex channels",
+      "whyInevitable": "Channels come from Number.parseInt on a runtime hex; the rgba() string is assembled, not a fixed design literal."
+    }
+  ]
+}

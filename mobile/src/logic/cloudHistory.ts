@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { HistoryEntry, HistoryStore } from './history';
 import { supabase } from './supabase';
 
@@ -207,18 +208,26 @@ export async function signOut() {
   if (supabase) await supabase.auth.signOut();
 }
 
-export async function migrateLocalHistory(store: HistoryStore) {
-  if (!supabase || store.entries.length === 0) return;
-  const { error } = await supabase.from('maps').upsert(
-    store.entries.map(toCloudMap),
-    { onConflict: 'id', ignoreDuplicates: false }
-  );
+type MapsClient = {
+  from: SupabaseClient['from'];
+};
+
+/** Upsert entries using a session-bound client (not the mutable global singleton). */
+export async function migrateLocalHistoryWithClient(
+  client: MapsClient,
+  entries: HistoryEntry[] | HistoryStore
+) {
+  const list = Array.isArray(entries) ? entries : entries.entries;
+  if (list.length === 0) return;
+  const { error } = await client.from('maps').upsert(list.map(toCloudMap), {
+    onConflict: 'id',
+    ignoreDuplicates: false,
+  });
   if (error) throw error;
 }
 
-export async function pullCloudHistory(): Promise<HistoryEntry[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase
+export async function pullCloudHistoryWithClient(client: MapsClient): Promise<HistoryEntry[]> {
+  const { data, error } = await client
     .from('maps')
     .select('id,title,category,pinned_at,source_type,session,created_at,updated_at')
     .order('updated_at', { ascending: false });
@@ -226,20 +235,38 @@ export async function pullCloudHistory(): Promise<HistoryEntry[]> {
   return (data as CloudMap[]).map(fromCloudMap);
 }
 
-export async function pushHistoryEntry(entry: HistoryEntry) {
-  if (!supabase) return;
-  const { error } = await supabase.from('maps').upsert(toCloudMap(entry), { onConflict: 'id' });
+export async function deleteCloudHistoryEntryWithClient(client: MapsClient, id: string) {
+  const { error } = await client.from('maps').delete().eq('id', id);
   if (error) throw error;
 }
 
-export async function deleteCloudHistoryEntry(id: string) {
-  if (!supabase) return;
-  const { error } = await supabase.from('maps').delete().eq('id', id);
+export async function pushHistoryEntryWithClient(client: MapsClient, entry: HistoryEntry) {
+  const { error } = await client.from('maps').upsert(toCloudMap(entry), { onConflict: 'id' });
   if (error) throw error;
 }
 
-export async function deleteAllCloudHistory(): Promise<void> {
-  if (!supabase) return;
-  const entries = await pullCloudHistory();
-  await Promise.all(entries.map((entry) => deleteCloudHistoryEntry(entry.id)));
+/**
+ * Global singleton helpers are intentionally unavailable for authenticated mobile sync.
+ * Use the WithClient variants with createSessionBoundSupabase(accessToken).
+ */
+export async function migrateLocalHistory(_entries: HistoryEntry[] | HistoryStore): Promise<never> {
+  throw new Error('migrateLocalHistory requires a session-bound client (migrateLocalHistoryWithClient)');
+}
+
+export async function pullCloudHistory(): Promise<never> {
+  throw new Error('pullCloudHistory requires a session-bound client (pullCloudHistoryWithClient)');
+}
+
+export async function pushHistoryEntry(_entry: HistoryEntry): Promise<never> {
+  throw new Error('pushHistoryEntry requires a session-bound client (pushHistoryEntryWithClient)');
+}
+
+export async function deleteCloudHistoryEntry(_id: string): Promise<never> {
+  throw new Error(
+    'deleteCloudHistoryEntry requires a session-bound client (deleteCloudHistoryEntryWithClient)'
+  );
+}
+
+export async function deleteAllCloudHistory(): Promise<never> {
+  throw new Error('deleteAllCloudHistory is disabled; use bound deletes per entry');
 }

@@ -116,7 +116,7 @@ export function normalizeStepContentBlock(
       return null;
     }
     const colCount = columns.length;
-    const rows: { label: string; values: string[] }[] = [];
+    const rows: { label: string; values: string[]; relationId?: string }[] = [];
     for (const row of raw.rows) {
       if (!row || typeof row !== 'object') continue;
       const r = row as Record<string, unknown>;
@@ -130,7 +130,8 @@ export function normalizeStepContentBlock(
           : valuesRaw.length > colCount
             ? valuesRaw.slice(0, colCount)
             : [...valuesRaw, ...Array(colCount - valuesRaw.length).fill('')];
-      rows.push({ label, values });
+      const relationId = asString(r.relationId) || undefined;
+      rows.push(relationId ? { label, values, relationId } : { label, values });
     }
     if (rows.length === 0) {
       options?.onDrop?.('comparison-no-valid-rows', input);
@@ -215,6 +216,7 @@ export function normalizeStepContentBlock(
       return null;
     }
     if (resolvedType === 'callout') {
+      const relationId = asString(raw.relationId) || undefined;
       return {
         type: 'callout',
         text,
@@ -223,6 +225,7 @@ export function normalizeStepContentBlock(
           (asString(raw.label) as CalloutLabel) ||
           DEFAULT_CALLOUT_LABELS[kind || 'info'] ||
           'Idea clave',
+        ...(relationId ? { relationId } : {}),
         references: normalizeReferences(raw.references),
       };
     }

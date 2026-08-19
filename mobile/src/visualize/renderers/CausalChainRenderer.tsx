@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { CausalChainRenderSpec } from '@shared/visualize';
 import { ACCENT, TEXT_BODY, TEXT_PRIMARY, TEXT_SECONDARY } from '@shared/uiTokens';
+import { typography, type } from '@shared/design-tokens';
 
 type Props = {
   spec: CausalChainRenderSpec;
@@ -53,14 +54,11 @@ const styles = StyleSheet.create({
   },
   title: {
     color: TEXT_PRIMARY,
-    fontSize: 20,
-    fontWeight: '600',
-    lineHeight: 26,
+    ...typography('subtitle'),
   },
   insight: {
     color: TEXT_SECONDARY,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography('callout'),
   },
   chain: {
     gap: 0,
@@ -78,14 +76,11 @@ const styles = StyleSheet.create({
   },
   nodeLabel: {
     color: TEXT_PRIMARY,
-    fontSize: 17,
-    fontWeight: '600',
-    lineHeight: 22,
+    ...typography('inputTitle'),
   },
   nodeDetail: {
     color: TEXT_BODY,
-    fontSize: 15,
-    lineHeight: 21,
+    ...typography('body'),
   },
   edge: {
     flexDirection: 'row',
@@ -102,8 +97,7 @@ const styles = StyleSheet.create({
   },
   edgeLabel: {
     color: ACCENT,
-    fontSize: 13,
-    fontWeight: '600',
+    ...typography('labelSemibold'),
     flexShrink: 1,
   },
   edgeSpacer: {

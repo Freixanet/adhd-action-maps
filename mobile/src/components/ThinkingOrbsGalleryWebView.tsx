@@ -3,6 +3,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { Asset } from 'expo-asset';
 import { WebView } from 'react-native-webview';
 import { BG_BASE } from '@shared/uiTokens';
+import { color } from '@shared/design-tokens';
 
 /** Approximate height for 6 rows × ~90px in the gallery HTML. */
 const GALLERY_HEIGHT = 560;
@@ -53,7 +54,7 @@ export default function ThinkingOrbsGalleryWebView({
     incognito: true,
     overScrollMode: 'never' as const,
     nestedScrollEnabled: false,
-    backgroundColor: 'rgba(0,0,0,0)',
+    backgroundColor: color.background.transparent,
   };
 
   return (

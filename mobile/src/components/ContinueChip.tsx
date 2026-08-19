@@ -5,6 +5,8 @@ import { Play, X } from '../icons';
 import GlassSurface from './GlassSurface';
 import { buildContinueChipLabel } from '../logic/continueTransition';
 import type { HistoryEntry } from '../logic/history';
+import { ACCENT, TEXT_SECONDARY } from '@shared/uiTokens';
+import { color, type } from '@shared/design-tokens';
 
 export function getContinueChipLabel(entry: HistoryEntry): string {
   return buildContinueChipLabel(entry.title);
@@ -35,7 +37,7 @@ const ContinueChip = forwardRef<View, ContinueChipProps>(function ContinueChip(
             accessibilityLabel={`Continuar ${entry.title}`}
             className="flex-row items-center gap-2 flex-shrink min-w-0"
           >
-            <Play size={13} color="#8B8FF5" fill="#8B8FF5" />
+            <Play size={13} color={ACCENT} fill={ACCENT} />
             <Text className="text-sm font-semibold text-primary" numberOfLines={1}>
               {label}
             </Text>
@@ -47,7 +49,7 @@ const ContinueChip = forwardRef<View, ContinueChipProps>(function ContinueChip(
             accessibilityLabel="Ocultar continuar"
             className="p-1 active:opacity-70"
           >
-            <X size={14} color="#9CA0AB" />
+            <X size={14} color={TEXT_SECONDARY} />
           </Pressable>
         </View>
       </GlassSurface>

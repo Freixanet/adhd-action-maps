@@ -3,7 +3,7 @@ import type { SourceMetadata, SourceReference } from './contracts';
 export const STUDY_DOC_SCHEMA_VERSION = 1;
 
 export const STUDY_DOC_LIMITS = {
-  tldr: { min: 3, target: 5, max: 5 },
+  tldr: { min: 3, target: 3, max: 4 },
   concepts: { min: 5, max: 9 },
   pretest: { min: 2, max: 3 },
   sectionCheckQuestions: { min: 2, max: 5 },

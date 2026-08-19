@@ -6,46 +6,7 @@
 @source './node_modules/heroui-native/lib';
 
 /*
-  Nucleo tokens (migrated from tailwind.config.js).
-  App is dark-first; light + dark share the same values so Uniwind
-  theme parity checks pass (both themes must define the same vars).
+  Nucleo theme tokens — generated from shared/design-tokens/canonical.json.
+  Do not edit tokens.generated.css by hand; run: npm run tokens:generate
 */
-@theme {
-  --radius-card: 16px;
-  --radius-chip: 12px;
-  --radius-cta: 24px;
-}
-
-@layer theme {
-  :root {
-    @variant light {
-      --color-base: #181a1f;
-      --color-surface: #24262d;
-      --color-surface-2: #2c2e37;
-      --color-primary: #fafafa;
-      --color-body: #d4d4dc;
-      --color-secondary: #9ca0ab;
-      --color-accent: #8b8ff5;
-      --color-accent-pressed: #7a7ee0;
-      --color-sem-clave: #8b8ff5;
-      --color-sem-matiz: #e0b45c;
-      --color-sem-ejemplo: #6fbf8f;
-      --color-sem-alerta: #e07a6b;
-    }
-
-    @variant dark {
-      --color-base: #181a1f;
-      --color-surface: #24262d;
-      --color-surface-2: #2c2e37;
-      --color-primary: #fafafa;
-      --color-body: #d4d4dc;
-      --color-secondary: #9ca0ab;
-      --color-accent: #8b8ff5;
-      --color-accent-pressed: #7a7ee0;
-      --color-sem-clave: #8b8ff5;
-      --color-sem-matiz: #e0b45c;
-      --color-sem-ejemplo: #6fbf8f;
-      --color-sem-alerta: #e07a6b;
-    }
-  }
-}
+@import './src/theme/tokens.generated.css';

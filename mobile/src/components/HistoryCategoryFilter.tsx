@@ -4,7 +4,8 @@ import type { HistoryListFilter } from '@shared/historySearch';
 import { stepHaptic } from '../context/AppSessionContext';
 import { getHistoryFilterIcon } from '../logic/categoryIcons';
 import { useTheme } from '../context/ThemeContext';
-import { ACCENT } from '@shared/uiTokens';
+import { ACCENT, TEXT_SECONDARY } from '@shared/uiTokens';
+import { color, type } from '@shared/design-tokens';
 
 type HistoryCategoryFilterProps = {
   activeFilter: HistoryListFilter;
@@ -28,7 +29,7 @@ function FilterItem({
 }) {
   const { isDark } = useTheme();
   const Icon = getHistoryFilterIcon(filter);
-  const iconColor = selected ? ACCENT : isDark ? '#9CA0AB' : '#737373';
+  const iconColor = selected ? ACCENT : isDark ? TEXT_SECONDARY : color.text.muted;
 
   return (
     <Pressable
@@ -42,7 +43,7 @@ function FilterItem({
     >
       <Icon size={14} color={iconColor} strokeWidth={2} />
       <Text
-        className={`text-[13px] ${
+        className={`text-label ${
           selected ? 'font-semibold text-primary' : 'font-medium text-secondary'
         }`}
       >

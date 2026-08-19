@@ -3,6 +3,8 @@ import { View } from 'react-native';
 import { getEntrySourceLabel } from '@shared/categories';
 import { resolveEntrySourceIcon } from '../logic/entrySourceIcon';
 import type { HistoryEntry } from '../logic/history';
+import { TEXT_SECONDARY } from '@shared/uiTokens';
+import { color, type } from '@shared/design-tokens';
 
 type HistoryEntrySourceIconProps = {
   entry: HistoryEntry;
@@ -13,7 +15,7 @@ type HistoryEntrySourceIconProps = {
 export default function HistoryEntrySourceIcon({
   entry,
   size = 12,
-  color = '#a3a3a3',
+  color = TEXT_SECONDARY,
 }: HistoryEntrySourceIconProps) {
   const Icon = resolveEntrySourceIcon(entry);
   const label = getEntrySourceLabel(entry);

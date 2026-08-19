@@ -1,3 +1,4 @@
+.data/
 node_modules/
 build/
 dist/
@@ -26,6 +27,9 @@ logs/
 
 # Local dev runtime (Metro/backend service logs and state)
 .local-runtime/
+
+# Local Supabase dump artifacts (may contain user data; never commit)
+backups/
 
 # Tesseract language data, downloaded on first OCR run
 *.traineddata

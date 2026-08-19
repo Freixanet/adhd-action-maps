@@ -6,9 +6,24 @@ export const DEMO_NUCLEO_DATA: ActionMapData = {
   title: 'La atención como recurso limitado',
   category: 'Aprendizaje',
   intent: 'understand',
-  coreIdea: 'Tu atención no falla por flojera: se agota cuando el entorno exige cambios de foco sin pausa.',
+  layer0: {
+    what: 'Un mapa para proteger el foco cuando el entorno lo agota.',
+    why: 'Ordena qué cambiar primero para terminar lecturas sin pelear contra avisos.',
+    actions: [
+      { id: 'demo-a1', label: 'Silencia avisos 25 minutos' },
+      { id: 'demo-a2', label: 'Cierra una pestaña que no uses' },
+      { id: 'demo-a3', label: 'Marca dónde quedaste al cortar' },
+    ],
+  },
+  // Idea central title: aim to fill 2 lines (symmetry). Prefer ~55–60 chars at
+  // text-2xl in the demo card; do not spill into a 3rd line or truncate with ….
+  coreIdea: 'La atención se agota con cada cambio de foco del entorno.',
+  // Support: aim to fill 3 lines at text-lg (~110–125 chars). Same rule — fill
+  // lines for symmetry; never a 4th line; never ellipsis truncation.
   coreSupport:
-    'Cada interrupción obliga al cerebro a reorientarse, y ese coste acumulado es lo que deja las lecturas largas a medias.',
+    'Cada interrupción obliga a reconstruir el contexto mental. Ese coste acumulado es lo que deja las lecturas a medias.',
+  deliveryMessage:
+    'De tus notas sobre productividad saqué 5 pasos (avisos, contexto, cierre). Lo que queda: la atención se agota con cada cambio de foco del entorno.',
   tldr: [
     {
       title: 'Foco finito',

@@ -44,12 +44,16 @@ import {
   UserCircleIcon,
   Video01Icon,
   Wallet01Icon,
+  KeyboardIcon,
 } from '@hugeicons/core-free-icons';
 
 export type IconProps = {
   size?: number;
   color?: string;
   strokeWidth?: number;
+  fill?: string;
+  style?: any;
+  className?: string;
 };
 
 export type AppIconComponent = React.FC<IconProps>;
@@ -71,6 +75,7 @@ export const X = createIcon(Cancel01Icon, 'X');
 export const Search = createIcon(Search01Icon, 'Search');
 export const Settings = createIcon(Setting06Icon, 'Settings');
 export const MenuTwoLines = createIcon(MenuTwoLineIcon, 'MenuTwoLines');
+export const Keyboard = createIcon(KeyboardIcon, 'Keyboard');
 export const Check = createIcon(Tick02Icon, 'Check');
 export const CheckCircle2 = createIcon(CheckmarkCircle02Icon, 'CheckCircle2');
 export const ChevronDown = createIcon(ChevronDownIcon, 'ChevronDown');

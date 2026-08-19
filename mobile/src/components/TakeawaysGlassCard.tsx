@@ -4,6 +4,8 @@ import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 import { useTheme } from '../context/ThemeContext';
 import { useAppSession } from '../context/AppSessionContext';
+import { type } from '@shared/design-tokens';
+import { ReadingText } from '../context/TypographyContext';
 
 type TakeawaysGlassCardProps = {
   items: string[];
@@ -15,13 +17,13 @@ type TakeawaysGlassCardProps = {
 function TakeawaysContent({ items, title }: { items: string[]; title: string }) {
   return (
     <>
-      <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+      <Text className="text-meta font-bold uppercase text-secondary">
         {title}
       </Text>
       {items.slice(0, 7).map((item, index) => (
         <View key={`${item}-${index}`} className="flex-row gap-3 mt-4">
           <View className="mt-2 h-1.5 w-1.5 rounded-full bg-accent/100" />
-          <Text className="flex-1 text-base leading-6 text-body">{item}</Text>
+          <ReadingText className="flex-1" typeRole="readingBody">{item}</ReadingText>
         </View>
       ))}
     </>

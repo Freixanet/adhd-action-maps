@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Alert, Dimensions, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ChevronRight, FileText, LogIn, LogOut, Settings, Trash2 } from '../icons';
+import { Alert, Dimensions, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { CheckCircle2, ChevronRight, Cpu, FileText, LogIn, LogOut, Settings, Trash2 } from '../icons';
 import ProfileAvatar from './ProfileAvatar';
 import GlassSurface from './GlassSurface';
 import NativeGlassButton from './NativeGlassButton';
@@ -9,8 +9,9 @@ import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
 import { useAppSession, stepHaptic } from '../context/AppSessionContext';
 import { privacyPolicyUrl, termsOfUseUrl } from '../logic/legalUrls';
-import { SEM_ALERTA, TEXT_BODY, TEXT_PRIMARY } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
+import { useTypography } from '../context/TypographyContext';
+import { typography } from '@shared/design-tokens';
 
 type ProfileMenuProps = {
   placement?: 'topRight' | 'bottomLeft';
@@ -19,7 +20,7 @@ type ProfileMenuProps = {
 
 type MenuPanel = 'root' | 'settings';
 
-const MENU_WIDTH = 196;
+const MENU_WIDTH = 272;
 const MENU_GAP = 10;
 const SCREEN = Dimensions.get('window');
 
@@ -36,12 +37,16 @@ function MenuRow({
   onPress,
   accessibilityLabel,
   destructive = false,
+  destructiveColor,
+  font,
 }: {
   label: string;
   icon: React.ReactNode;
   onPress: () => void;
   accessibilityLabel?: string;
   destructive?: boolean;
+  destructiveColor?: string;
+  font: { family: string };
 }) {
   return (
     <Pressable
@@ -53,7 +58,7 @@ function MenuRow({
       {icon}
       <Text
         className={`flex-1 text-base font-semibold ${destructive ? '' : 'text-body'}`}
-        style={destructive ? { color: SEM_ALERTA } : undefined}
+        style={destructive ? { color: destructiveColor, fontFamily: font.family } : { fontFamily: font.family }}
       >
         {label}
       </Text>
@@ -63,9 +68,13 @@ function MenuRow({
 
 export default function ProfileMenu({ placement = 'topRight', floating = false }: ProfileMenuProps) {
   const session = useAppSession();
-  const { isDark } = useTheme();
+  const { colors, preference, setPreference, options: appearanceOptions } = useTheme();
+  const { readingSize, setReadingSize, options: readingSizeOptions, readingFont, setReadingFont, fontOptions, font } =
+    useTypography();
   const { reduceTransparency } = useGlassAccessibility();
   const nativeGlass = shouldUseNativeGlassButton(reduceTransparency);
+  const menuIconColor = colors.icon.primary;
+  const iconStroke = 2.25;
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<MenuPanel>('root');
@@ -153,9 +162,6 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
         }
     : null;
 
-  const menuIconColor = isDark ? TEXT_PRIMARY : TEXT_BODY;
-  const iconStroke = 2.25;
-
   const toggleMenu = () => {
     setOpen((current) => !current);
     stepHaptic();
@@ -205,7 +211,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
       </View>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={closeMenu}>
-        <View style={styles.modalRoot}>
+        <View style={[styles.modalRoot, { backgroundColor: colors.background.scrim }]}>
           <Pressable
             style={StyleSheet.absoluteFill}
             onPress={closeMenu}
@@ -218,7 +224,12 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
               accessibilityRole="menu"
             >
               <GlassSurface liquid borderRadius={16} className="rounded-card shadow-xl">
-                <View className="py-2 px-2">
+                <ScrollView
+                  className="py-2 px-2"
+                  style={styles.menuScroll}
+                  bounces={false}
+                  showsVerticalScrollIndicator={false}
+                >
                   {panel === 'root' ? (
                     <>
                       <Pressable
@@ -231,12 +242,33 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                         className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
                       >
                         <Settings size={20} color={menuIconColor} strokeWidth={iconStroke} />
-                        <Text className="flex-1 text-base font-semibold text-body">Ajustes</Text>
+                        <Text
+                          className="flex-1 text-base font-semibold text-body"
+                          style={{ fontFamily: font.family }}
+                        >
+                          Ajustes
+                        </Text>
                         <ChevronRight size={16} color={menuIconColor} strokeWidth={iconStroke} />
                       </Pressable>
 
+                      <MenuRow
+                        font={font}
+                        label={session.devToolsEnabled ? 'Salir de modo DEV' : 'Entrar en modo DEV'}
+                        icon={<Cpu size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                        onPress={() => {
+                          session.setDevToolsEnabled(!session.devToolsEnabled);
+                          closeMenu();
+                        }}
+                        accessibilityLabel={
+                          session.devToolsEnabled
+                            ? 'Salir de modo desarrollador'
+                            : 'Entrar en modo desarrollador'
+                        }
+                      />
+
                       {session.cloudSignedIn ? (
                         <MenuRow
+                          font={font}
                           label="Cerrar sesión"
                           icon={<LogOut size={20} color={menuIconColor} strokeWidth={iconStroke} />}
                           onPress={() => {
@@ -247,6 +279,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                         />
                       ) : session.isCloudSyncConfigured ? (
                         <MenuRow
+                          font={font}
                           label="Iniciar sesión"
                           icon={<LogIn size={20} color={menuIconColor} strokeWidth={iconStroke} />}
                           onPress={() => {
@@ -259,7 +292,152 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                     </>
                   ) : (
                     <>
+                      <View className="px-2.5 pt-1 pb-3">
+                        <Text
+                          className="text-meta font-bold uppercase tracking-widest text-secondary"
+                          style={{ fontFamily: font.family }}
+                        >
+                          Apariencia
+                        </Text>
+                        <Text
+                          className="mt-1 text-sm leading-5 text-secondary"
+                          style={{ fontFamily: font.family }}
+                        >
+                          Sigue el sistema o fíjala en claro u oscuro.
+                        </Text>
+                      </View>
+                      {appearanceOptions.map((option) => {
+                        const selected = option.id === preference;
+                        return (
+                          <Pressable
+                            key={option.id}
+                            onPress={() => {
+                              setPreference(option.id);
+                              stepHaptic();
+                            }}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                            accessibilityLabel={`Apariencia: ${option.label}`}
+                            className="px-2.5 py-3 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+                          >
+                            <CheckCircle2
+                              size={18}
+                              color={selected ? colors.action.primary : colors.text.muted}
+                              strokeWidth={selected ? 2.2 : 1.5}
+                            />
+                            <Text
+                              className="flex-1 text-base font-semibold text-body"
+                              style={{ fontFamily: font.family }}
+                            >
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                      <View className="px-2.5 pt-3 pb-3">
+                        <Text
+                          className="text-meta font-bold uppercase tracking-widest text-secondary"
+                          style={{ fontFamily: font.family }}
+                        >
+                          Fuente
+                        </Text>
+                        <Text
+                          className="mt-1 text-sm leading-5 text-secondary"
+                          style={{ fontFamily: font.family }}
+                        >
+                          Cambia y mira la muestra. En iOS, Rounded no es el mismo corte que SF Pro.
+                        </Text>
+                      </View>
+                      {fontOptions.map((option) => {
+                        const selected = option.id === readingFont;
+                        return (
+                          <Pressable
+                            key={option.id}
+                            onPress={() => {
+                              setReadingFont(option.id);
+                              stepHaptic();
+                            }}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                            accessibilityLabel={`Fuente: ${option.label}`}
+                            className="px-2.5 py-3 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+                          >
+                            <CheckCircle2
+                              size={18}
+                              color={selected ? colors.action.primary : colors.text.muted}
+                              strokeWidth={selected ? 2.2 : 1.5}
+                            />
+                            <Text
+                              className="flex-1 text-base font-semibold text-body"
+                              style={{ fontFamily: font.family }}
+                            >
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                      <View className="px-2.5 pb-3">
+                        <Text
+                          style={[
+                            typography('heading'),
+                            { color: colors.text.primary, fontFamily: font.family },
+                          ]}
+                        >
+                          caso, oso, año
+                        </Text>
+                        <Text
+                          style={[
+                            typography('body'),
+                            { marginTop: 4, color: colors.text.secondary, fontFamily: font.family },
+                          ]}
+                        >
+                          Separa lo importante del ruido
+                        </Text>
+                      </View>
+                      <View className="px-2.5 pt-3 pb-3">
+                        <Text
+                          className="text-meta font-bold uppercase tracking-widest text-secondary"
+                          style={{ fontFamily: font.family }}
+                        >
+                          Tamaño de lectura
+                        </Text>
+                        <Text
+                          className="mt-1 text-sm leading-5 text-secondary"
+                          style={{ fontFamily: font.family }}
+                        >
+                          Se combina con el tamaño de texto del sistema.
+                        </Text>
+                      </View>
+                      {readingSizeOptions.map((option) => {
+                        const selected = option.id === readingSize;
+                        return (
+                          <Pressable
+                            key={option.id}
+                            onPress={() => {
+                              setReadingSize(option.id);
+                              stepHaptic();
+                            }}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                            accessibilityLabel={`Tamaño de lectura: ${option.label}`}
+                            className="px-2.5 py-3 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+                          >
+                            <CheckCircle2
+                              size={18}
+                              color={selected ? colors.action.primary : colors.text.muted}
+                              strokeWidth={selected ? 2.2 : 1.5}
+                            />
+                            <Text
+                              className="flex-1 text-base font-semibold text-body"
+                              style={{ fontFamily: font.family }}
+                            >
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                       <MenuRow
+                        font={font}
                         label="Privacidad"
                         icon={<FileText size={20} color={menuIconColor} strokeWidth={iconStroke} />}
                         onPress={() => {
@@ -268,6 +446,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                         }}
                       />
                       <MenuRow
+                        font={font}
                         label="Términos"
                         icon={<FileText size={20} color={menuIconColor} strokeWidth={iconStroke} />}
                         onPress={() => {
@@ -278,18 +457,36 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                       />
                       {session.cloudSignedIn ? (
                         <MenuRow
+                          font={font}
                           label="Eliminar cuenta"
                           destructive
-                          icon={<Trash2 size={20} color={SEM_ALERTA} strokeWidth={iconStroke} />}
+                          destructiveColor={colors.action.danger}
+                          icon={<Trash2 size={20} color={colors.action.danger} strokeWidth={iconStroke} />}
                           onPress={() => {
                             confirmDeleteAccount();
                             stepHaptic();
                           }}
                         />
                       ) : null}
+                      <MenuRow
+                        font={font}
+                        label={session.devToolsEnabled ? 'Salir de modo DEV' : 'Entrar en modo DEV'}
+                        icon={<Cpu size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                        onPress={() => {
+                          session.setDevToolsEnabled(!session.devToolsEnabled);
+                          if (!session.devToolsEnabled) {
+                            closeMenu();
+                          }
+                        }}
+                        accessibilityLabel={
+                          session.devToolsEnabled
+                            ? 'Salir de modo desarrollador'
+                            : 'Entrar en modo desarrollador'
+                        }
+                      />
                     </>
                   )}
-                </View>
+                </ScrollView>
               </GlassSurface>
             </View>
           ) : null}
@@ -306,9 +503,11 @@ const styles = StyleSheet.create({
   },
   modalRoot: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.18)',
   },
   menuHost: {
     position: 'absolute',
+  },
+  menuScroll: {
+    maxHeight: SCREEN.height * 0.72,
   },
 });

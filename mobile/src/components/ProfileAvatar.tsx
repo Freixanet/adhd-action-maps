@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Image, View } from 'react-native';
 import { UserRound } from '../icons';
 import { useTheme } from '../context/ThemeContext';
+import { ACCENT, TEXT_PRIMARY, TEXT_BODY } from '@shared/uiTokens';
+import { color, type } from '@shared/design-tokens';
 
 type ProfileAvatarProps = {
   signedIn?: boolean;
@@ -44,7 +46,7 @@ export default function ProfileAvatar({
     return (
       <UserRound
         size={20}
-        color={signedIn ? '#8B8FF5' : isDark ? '#d4d4d4' : '#525252'}
+        color={signedIn ? ACCENT : isDark ? TEXT_BODY : color.text.muted}
         strokeWidth={2.25}
       />
     );
@@ -56,7 +58,7 @@ export default function ProfileAvatar({
         signedIn ? 'bg-accent' : 'bg-base0/10 dark:bg-white/10'
       }`}
     >
-      <UserRound size={18} color={signedIn ? '#ffffff' : '#525252'} />
+      <UserRound size={18} color={signedIn ? TEXT_PRIMARY : color.text.muted} />
     </View>
   );
 }

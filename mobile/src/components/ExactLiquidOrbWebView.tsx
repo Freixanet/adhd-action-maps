@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { BG_BASE } from '@shared/uiTokens';
+import { color, motion, shadow } from '@shared/design-tokens';
 
 type ExactLiquidOrbWebViewProps = {
   size?: number;
@@ -67,17 +68,17 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       align-items: center;
       justify-content: center;
       overflow: visible;
-      animation: levitation 4s ease-in-out infinite;
+      animation: levitation ${motion.orbLevitation.duration}ms ease-in-out infinite;
       will-change: transform;
     }
     .ambient-glow {
       position: absolute;
       inset: -15%;
       border-radius: 50%;
-      background: rgba(139, 143, 245, 0.4);
+      background: ${color.orb.ambient};
       filter: blur(16px);
       -webkit-filter: blur(16px);
-      animation: ambient-glow 4s ease-in-out infinite;
+      animation: ambient-glow ${motion.orbLevitation.duration}ms ease-in-out infinite;
       will-change: transform, opacity;
       pointer-events: none;
     }
@@ -94,15 +95,15 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       -webkit-backdrop-filter: blur(12px);
       background: radial-gradient(
         circle at 30% 30%,
-        rgba(255, 255, 255, 0.12) 0%,
-        rgba(139, 143, 245, 0.15) 50%,
-        rgba(0, 0, 0, 0.65) 100%
+        ${color.orb.glassHighlight} 0%,
+        ${color.orb.glassAccent} 50%,
+        ${color.orb.glassDepth} 100%
       );
       box-shadow:
-        inset 4px 4px 12px rgba(255, 255, 255, 0.4),
-        inset -8px -8px 24px rgba(0, 0, 0, 0.8),
-        inset 0 0 24px rgba(139, 143, 245, 0.5),
-        0 10px 30px rgba(0, 0, 0, 0.5);
+        inset 4px 4px 12px ${color.orb.glassSpecular},
+        inset -8px -8px 24px ${color.orb.glassInsetDark},
+        inset 0 0 24px ${color.orb.glassGlow},
+        0 10px 30px ${color.background.overlay};
     }
     .specular {
       position: absolute;
@@ -111,7 +112,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       width: 40%;
       height: 20%;
       border-radius: 50%;
-      background: rgba(255, 255, 255, 0.4);
+      background: ${color.orb.glassSpecular};
       filter: blur(2px);
       -webkit-filter: blur(2px);
       transform: rotate(-25deg);
@@ -127,8 +128,8 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       filter: blur(6px);
       -webkit-filter: blur(6px);
       z-index: 10;
-      background: conic-gradient(from 0deg, transparent, rgba(139, 143, 245, 0.6) 40%, transparent 60%);
-      animation: swirl-rotate 4s linear infinite;
+      background: conic-gradient(from 0deg, transparent, ${color.orb.swirl} 40%, transparent 60%);
+      animation: swirl-rotate ${motion.orbLevitation.duration}ms linear infinite;
       will-change: transform;
       pointer-events: none;
     }
@@ -146,13 +147,13 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       opacity: 1;
     }
     .orbit-1 {
-      animation: orbit-dash-a 0.7s linear infinite;
+      animation: orbit-dash-a ${motion.orbOrbit.duration}ms linear infinite;
     }
     .orbit-2 {
-      animation: orbit-dash-b 0.7s linear infinite;
+      animation: orbit-dash-b ${motion.orbOrbit.duration}ms linear infinite;
     }
     .orbit-3 {
-      animation: orbit-dash-a 0.7s linear infinite;
+      animation: orbit-dash-a ${motion.orbOrbit.duration}ms linear infinite;
     }
     .caustics {
       position: absolute;
@@ -161,12 +162,12 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       width: ${Math.round((orbSize / 96) * 112)}px;
       height: ${Math.round((orbSize / 96) * 112)}px;
       border-radius: 50%;
-      background: rgba(139, 143, 245, 0.3);
+      background: ${color.orb.caustics};
       filter: blur(24px);
       -webkit-filter: blur(24px);
       mix-blend-mode: screen;
       z-index: 10;
-      animation: caustics-spin 6s linear infinite;
+      animation: caustics-spin ${motion.orbCaustics.duration}ms linear infinite;
       will-change: transform;
       pointer-events: none;
     }
@@ -174,11 +175,11 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       position: absolute;
       inset: 35%;
       z-index: 10;
-      background: linear-gradient(to top right, #c7d2fe, #8B8FF5, #1e1a4b);
+      background: linear-gradient(to top right, ${color.orb.nucleusLight}, ${color.action.primary}, ${color.orb.nucleusDark});
       filter: blur(5px);
       -webkit-filter: blur(5px);
-      box-shadow: 0 0 24px rgba(139, 143, 245, 0.6);
-      animation: nucleus-morph 3.5s ease-in-out infinite;
+      box-shadow: 0 0 24px ${color.orb.swirl};
+      animation: nucleus-morph ${motion.orbNucleus.duration}ms ease-in-out infinite;
       will-change: transform, opacity, border-radius;
       pointer-events: none;
     }
@@ -189,11 +190,11 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
       width: ${Math.round((orbSize / 96) * 64)}px;
       height: ${Math.round((orbSize / 96) * 8)}px;
       margin-left: -${Math.round((orbSize / 96) * 32)}px;
-      background: #000;
+      background: ${color.orb.shadow};
       border-radius: 9999px;
       filter: blur(4px);
       -webkit-filter: blur(4px);
-      animation: levitation-shadow 4s ease-in-out infinite;
+      animation: levitation-shadow ${motion.orbLevitation.duration}ms ease-in-out infinite;
       will-change: transform, opacity;
       pointer-events: none;
     }
@@ -304,7 +305,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
               class="orbit-1"
               cx="50" cy="50" rx="38" ry="14"
               fill="none"
-              stroke="rgba(139, 143, 245, 0.8)"
+              stroke="${color.orb.orbit}"
               stroke-width="4"
               stroke-dasharray="60 80"
               stroke-linecap="round"
@@ -315,7 +316,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
               class="orbit-2"
               cx="50" cy="50" rx="38" ry="14"
               fill="none"
-              stroke="rgba(139, 143, 245, 0.8)"
+              stroke="${color.orb.orbit}"
               stroke-width="4"
               stroke-dasharray="60 80"
               stroke-linecap="round"
@@ -326,7 +327,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
               class="orbit-3"
               cx="50" cy="50" rx="38" ry="14"
               fill="none"
-              stroke="rgba(139, 143, 245, 0.8)"
+              stroke="${color.orb.orbit}"
               stroke-width="4"
               stroke-dasharray="60 80"
               stroke-linecap="round"
@@ -420,8 +421,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     overflow: 'visible',
     borderWidth: 0,
-    shadowOpacity: 0,
-    elevation: 0,
+    ...shadow.none,
     alignSelf: 'center',
   },
   webviewContainer: {

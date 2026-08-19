@@ -12,15 +12,7 @@ import Svg, {
   Polyline,
   Text as SvgText,
 } from 'react-native-svg';
-import {
-  ACCENT,
-  TEXT_BODY,
-  TEXT_PRIMARY,
-  TEXT_SECONDARY,
-  VIZ_GRID,
-  VIZ_MUTED,
-  VIZ_SERIES,
-} from '@shared/uiTokens';
+import { ACCENT, TEXT_BODY, TEXT_PRIMARY, TEXT_SECONDARY, VIZ_GRID, VIZ_MUTED, VIZ_SERIES, RADII } from '@shared/uiTokens';
 import { getVisualGeometry, type VisualNodeFrame } from '@shared/nucleoVisualGeometry';
 import type {
   NucleoVisualItem,
@@ -29,6 +21,7 @@ import type {
 } from '../logic/contracts';
 import { stepHaptic } from '../context/AppSessionContext';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { color, type, typography, radius } from '@shared/design-tokens';
 
 type NucleoVisualOverviewProps = {
   visual: NucleoVisualSpec;
@@ -614,14 +607,11 @@ const styles = StyleSheet.create({
   },
   visualTitle: {
     color: TEXT_PRIMARY,
-    fontSize: 18,
-    lineHeight: 23,
-    fontWeight: '700',
+    ...typography('sectionTitle'),
   },
   visualSummary: {
     color: TEXT_SECONDARY,
-    fontSize: 13,
-    lineHeight: 19,
+    ...typography('label'),
     marginTop: 5,
   },
   nodeFrame: {
@@ -642,7 +632,7 @@ const styles = StyleSheet.create({
   nodeMarker: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: radius.tick,
     marginBottom: 7,
     backgroundColor: VIZ_MUTED,
   },
@@ -651,9 +641,7 @@ const styles = StyleSheet.create({
   },
   nodeLabel: {
     color: TEXT_SECONDARY,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '600',
+    ...typography('caption'),
     textAlign: 'center',
   },
   nodeLabelSelected: {
@@ -679,9 +667,7 @@ const styles = StyleSheet.create({
   },
   comparisonDimension: {
     color: TEXT_PRIMARY,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '700',
+    ...typography('caption'),
     marginBottom: 4,
     paddingHorizontal: 8,
   },
@@ -711,32 +697,24 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     paddingHorizontal: 4,
-    fontSize: 11,
-    lineHeight: 15,
-    fontWeight: '800',
-    letterSpacing: 0.8,
+    ...typography('metaWide'),
     textTransform: 'uppercase',
     marginBottom: 8,
   },
   comparisonLabel: {
     color: TEXT_BODY,
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: '700',
+    ...typography('label'),
   },
   comparisonDetail: {
     width: '100%',
     flexShrink: 1,
     color: TEXT_SECONDARY,
-    fontSize: 11,
-    lineHeight: 16,
+    ...typography('meta'),
     marginTop: 4,
   },
   comparisonValue: {
     color: ACCENT,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '800',
+    ...typography('caption'),
     marginTop: 3,
   },
   barRoot: {
@@ -756,14 +734,10 @@ const styles = StyleSheet.create({
   barLabel: {
     flex: 1,
     color: TEXT_BODY,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '600',
+    ...typography('caption'),
   },
   barValue: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '800',
+    ...typography('caption'),
   },
   barTrack: {
     height: 8,
@@ -784,12 +758,12 @@ const styles = StyleSheet.create({
   },
   axisTitle: {
     color: TEXT_SECONDARY,
-    fontSize: 11,
+    fontSize: type.meta.fontSize,
     marginBottom: 12,
   },
   axisCaption: {
     color: TEXT_SECONDARY,
-    fontSize: 10,
+    fontSize: type.micro.fontSize,
     textAlign: 'right',
     marginTop: 2,
   },
@@ -797,21 +771,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: radius.overview,
   },
   lineYLabel: {
     position: 'absolute',
     left: 0,
     top: 0,
     color: TEXT_SECONDARY,
-    fontSize: 10,
+    fontSize: type.micro.fontSize,
   },
   lineXLabel: {
     position: 'absolute',
     right: 0,
     bottom: 0,
     color: TEXT_SECONDARY,
-    fontSize: 10,
+    fontSize: type.micro.fontSize,
   },
   lineCategories: {
     position: 'absolute',
@@ -839,11 +813,11 @@ const styles = StyleSheet.create({
   lineSeriesDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: radius.tick,
   },
   lineSeriesText: {
     color: TEXT_SECONDARY,
-    fontSize: 9,
+    fontSize: type.microLabel.fontSize,
   },
   lineCategory: {
     width: '50%',
@@ -855,14 +829,12 @@ const styles = StyleSheet.create({
   },
   lineCategoryIndex: {
     color: ACCENT,
-    fontSize: 10,
-    fontWeight: '800',
+    ...typography('microExtrabold'),
   },
   lineCategoryLabel: {
     flex: 1,
     color: TEXT_SECONDARY,
-    fontSize: 10,
-    lineHeight: 14,
+    ...typography('micro'),
   },
   detail: {
     minHeight: 76,
@@ -880,27 +852,21 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     color: TEXT_PRIMARY,
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: '700',
+    ...typography('callout'),
   },
   detailValue: {
     color: ACCENT,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '800',
+    ...typography('caption'),
     marginTop: 2,
   },
   detailText: {
     color: TEXT_SECONDARY,
-    fontSize: 13,
-    lineHeight: 19,
+    ...typography('label'),
     marginTop: 3,
   },
   referenceText: {
     color: VIZ_MUTED,
-    fontSize: 10,
-    lineHeight: 14,
+    ...typography('micro'),
     marginTop: 5,
   },
   openStep: {
@@ -910,7 +876,6 @@ const styles = StyleSheet.create({
   },
   openStepText: {
     color: ACCENT,
-    fontSize: 12,
-    fontWeight: '700',
+    ...typography('captionBold'),
   },
 });

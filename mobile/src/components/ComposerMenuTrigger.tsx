@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import type { MenuAction, NativeActionEvent } from '@react-native-menu/menu';
 import { NucleoUIMenuAnchor } from '../../modules/nucleo-ui-menu/src';
 import {
@@ -15,12 +15,16 @@ type ComposerMenuTriggerProps = {
   disabled?: boolean;
   themeVariant?: string;
   accessibilityLabel?: string;
+  style?: StyleProp<ViewStyle>;
 };
 
 /**
  * Composer chips: real iOS UIMenu via a native UIButton host.
  * Imperative performPrimaryAction on a temp button never presented; the user
  * tap must hit UIButton.menu directly.
+ *
+ * Children render behind a clear UIButton — use a Liquid Glass control as the
+ * visual (e.g. FloatingGlassButton) so the FAB matches other home glass buttons.
  */
 export default function ComposerMenuTrigger({
   title,
@@ -30,6 +34,7 @@ export default function ComposerMenuTrigger({
   disabled = false,
   themeVariant = 'dark',
   accessibilityLabel,
+  style,
 }: ComposerMenuTriggerProps) {
   if (disabled || Platform.OS !== 'ios') {
     return <>{children}</>;
@@ -61,9 +66,10 @@ export default function ComposerMenuTrigger({
         if (!id) return;
         onPressAction({ nativeEvent: { event: id } } as NativeActionEvent);
       }}
-      style={styles.host}
+      style={[styles.host, style]}
+      accessibilityLabel={accessibilityLabel}
     >
-      <View pointerEvents="none" collapsable={false}>
+      <View pointerEvents="none" collapsable={false} style={styles.visual}>
         {children}
       </View>
     </NucleoUIMenuAnchor>
@@ -73,5 +79,10 @@ export default function ComposerMenuTrigger({
 const styles = StyleSheet.create({
   host: {
     alignSelf: 'flex-start',
+  },
+  visual: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -18,8 +18,38 @@ export type UploadedFile = {
   isDocx?: boolean;
   fileData?: string;
   mimeType?: string;
+  /** Local file URI for on-device preview (PDF WebView, image fallback). */
+  localUri?: string;
+  /** Raster preview when available (images, video poster, generated thumbs). */
   previewUri?: string;
 };
+
+/** Prefer a raster URI the `<Image>` component can paint. */
+export function resolveAttachmentImagePreviewUri(
+  file: UploadedFile | null | undefined
+): string | null {
+  if (!file) return null;
+  // file:// and ph:// from the picker often fail in RN Image after the
+  // picker closes. The base64 we already hold for upload always paints.
+  if (file.isImage && file.fileData) {
+    const mime =
+      file.mimeType && file.mimeType.startsWith('image/') && file.mimeType !== 'image/heic'
+        ? file.mimeType
+        : 'image/jpeg';
+    return `data:${mime};base64,${file.fileData}`;
+  }
+  if (file.previewUri) return file.previewUri;
+  if (file.isImage && file.localUri) return file.localUri;
+  return null;
+}
+
+/** Local document URI for native/WebView preview (PDF on iOS). */
+export function resolveAttachmentDocumentUri(
+  file: UploadedFile | null | undefined
+): string | null {
+  if (!file?.localUri) return null;
+  return file.localUri;
+}
 
 /** Photos / camera (ADR-002 image limit). */
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -112,6 +142,7 @@ async function processImageAsset(
     isImage: true,
     fileData: base64,
     mimeType: mime,
+    localUri: asset.uri,
     previewUri: asset.uri,
   };
 }
@@ -142,6 +173,7 @@ async function readBinaryAttachment(params: {
       size: resolvedSize,
       fileData: base64,
       mimeType,
+      localUri: uri,
       previewUri,
       ...flags,
     };
@@ -279,6 +311,7 @@ export async function pickFileAttachment(): Promise<PickFileAttachmentResult | n
           name,
           size: asset.size ?? textContent.length,
           mimeType: mimeType || 'text/plain',
+          localUri: asset.uri,
         },
         textContent,
       };
@@ -309,6 +342,22 @@ export async function pickPdfAttachment(): Promise<UploadedFile | null> {
   }
 
   return readPdfAttachment(asset.uri, name, asset.size);
+}
+
+/**
+ * DEV/QA: load the bundled multipage PDF through the same attachment path as a
+ * user-picked file (no DocumentPicker). Used for S08 productive visual QA.
+ */
+export async function loadBundledQaMultipagePdf(): Promise<UploadedFile> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require('../../assets/s08-multipage.pdf') as number;
+  const { Asset } = await import('expo-asset');
+  const asset = Asset.fromModule(mod);
+  await asset.downloadAsync();
+  if (!asset.localUri) {
+    throw new Error(LOCAL_FILE_READ_ERROR_MESSAGE);
+  }
+  return readPdfAttachment(asset.localUri, 's08-multipage.pdf', null);
 }
 
 export async function pickImageFromLibrary(): Promise<UploadedFile | null> {

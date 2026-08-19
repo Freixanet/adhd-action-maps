@@ -17,9 +17,6 @@ export const VALID_TRANSFORM_TYPES = [
 
 export const ALLOWED_MIME_TYPES = [
   'application/pdf',
-  'application/epub+zip',
-  'application/epub',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'image/jpeg',
   'image/jpg',
   'image/png',

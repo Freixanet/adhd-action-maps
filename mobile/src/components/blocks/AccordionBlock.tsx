@@ -8,24 +8,31 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ChevronDown } from '../../icons';
 import * as Haptics from 'expo-haptics';
-import { RADII, TEXT_BODY, TEXT_PRIMARY, TEXT_SECONDARY } from '@shared/uiTokens';
+import { RADII } from '@shared/uiTokens';
 import type { SourceReference, StepContentBlockAccordion } from '@shared/contracts';
 import GlassSurface from '../GlassSurface';
 import { useTheme } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import BlockEnter from './BlockEnter';
+import { motion, type, typography } from '@shared/design-tokens';
 
 type Props = {
   block: StepContentBlockAccordion;
   index?: number;
 };
 
-function AccordionReferences({ references }: { references?: SourceReference[] }) {
+function AccordionReferences({
+  references,
+  mutedColor,
+}: {
+  references?: SourceReference[];
+  mutedColor: string;
+}) {
   if (!references?.length) return null;
   return (
     <View style={styles.refs}>
       {references.slice(0, 3).map((reference, idx) => (
-        <Text key={`${reference.label}-${idx}`} style={styles.refText}>
+        <Text key={`${reference.label}-${idx}`} style={[styles.refText, { color: mutedColor }]}>
           {reference.label} {reference.locator}
         </Text>
       ))}
@@ -34,7 +41,7 @@ function AccordionReferences({ references }: { references?: SourceReference[] })
 }
 
 export default function AccordionBlock({ block, index = 0 }: Props) {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
   const [open, setOpen] = useState(false);
   const [bodyHeight, setBodyHeight] = useState(0);
@@ -52,7 +59,7 @@ export default function AccordionBlock({ block, index = 0 }: Props) {
     }
     progress.value = next
       ? withSpring(1, { damping: 18, stiffness: 220 })
-      : withTiming(0, { duration: 200 });
+      : withTiming(0, { duration: motion.exitSoft.duration });
   };
 
   const chevronStyle = useAnimatedStyle(() => ({
@@ -86,11 +93,11 @@ export default function AccordionBlock({ block, index = 0 }: Props) {
             accessibilityLabel={block.title}
             style={styles.header}
           >
-            <Text style={styles.title} maxFontSizeMultiplier={1.35}>
+            <Text style={[styles.title, { color: colors.text.primary }]} maxFontSizeMultiplier={1.35}>
               {block.title}
             </Text>
             <Animated.View style={chevronStyle}>
-              <ChevronDown size={18} color={TEXT_SECONDARY} />
+              <ChevronDown size={18} color={colors.icon.muted} />
             </Animated.View>
           </Pressable>
 
@@ -102,10 +109,10 @@ export default function AccordionBlock({ block, index = 0 }: Props) {
                 if (next > 0 && next !== bodyHeight) setBodyHeight(next);
               }}
             >
-              <Text style={styles.body} maxFontSizeMultiplier={1.35}>
+              <Text style={[styles.body, { color: colors.text.body }]} maxFontSizeMultiplier={1.35}>
                 {block.body}
               </Text>
-              <AccordionReferences references={block.references} />
+              <AccordionReferences references={block.references} mutedColor={colors.text.secondary} />
             </View>
           </Animated.View>
 
@@ -118,8 +125,8 @@ export default function AccordionBlock({ block, index = 0 }: Props) {
                   if (next > 0) setBodyHeight(next);
                 }}
               >
-                <Text style={styles.body}>{block.body}</Text>
-                <AccordionReferences references={block.references} />
+                <Text style={[styles.body, { color: colors.text.body }]}>{block.body}</Text>
+                <AccordionReferences references={block.references} mutedColor={colors.text.secondary} />
               </View>
             </View>
           ) : null}
@@ -146,10 +153,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    color: TEXT_PRIMARY,
-    fontSize: 16,
-    fontWeight: '500',
-    lineHeight: 22,
+    ...typography('titleMedium'),
   },
   bodyMeasure: {
     paddingHorizontal: 16,
@@ -157,17 +161,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   body: {
-    color: TEXT_BODY,
-    fontSize: 15,
-    lineHeight: 22,
+    ...typography('body'),
   },
   refs: {
     gap: 4,
     marginTop: 4,
   },
   refText: {
-    color: TEXT_SECONDARY,
-    fontSize: 11,
+    fontSize: type.meta.fontSize,
   },
   offscreen: {
     position: 'absolute',

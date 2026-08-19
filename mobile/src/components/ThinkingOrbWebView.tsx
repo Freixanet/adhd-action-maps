@@ -3,6 +3,7 @@ import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'reac
 import { Asset } from 'expo-asset';
 import { WebView, type WebView as WebViewType } from 'react-native-webview';
 import type { ThinkingOrbState } from '@shared/resolveThinkingOrbState';
+import { color } from '@shared/design-tokens';
 
 type ThinkingOrbWebViewProps = {
   state: ThinkingOrbState;
@@ -94,7 +95,7 @@ export default function ThinkingOrbWebView({
     incognito: true,
     overScrollMode: 'never' as const,
     nestedScrollEnabled: false,
-    backgroundColor: 'rgba(0,0,0,0)',
+    backgroundColor: color.background.transparent,
     injectedJavaScriptBeforeContentLoaded: configScript,
     injectedJavaScript: configScript,
     onLoadEnd: () => setReady(true),

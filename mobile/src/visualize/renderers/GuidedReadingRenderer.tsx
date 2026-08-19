@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { GuidedReadingRenderSpec } from '@shared/visualize';
 import { SEM_CLAVE, SEM_EJEMPLO, TEXT_BODY, TEXT_PRIMARY, TEXT_SECONDARY } from '@shared/uiTokens';
+import { typography, type } from '@shared/design-tokens';
 
 type Props = {
   spec: GuidedReadingRenderSpec;
@@ -56,14 +57,11 @@ const styles = StyleSheet.create({
   },
   title: {
     color: TEXT_PRIMARY,
-    fontSize: 20,
-    fontWeight: '600',
-    lineHeight: 26,
+    ...typography('subtitle'),
   },
   insight: {
     color: TEXT_SECONDARY,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography('callout'),
   },
   nucleus: {
     gap: 6,
@@ -73,21 +71,16 @@ const styles = StyleSheet.create({
   },
   kicker: {
     color: SEM_CLAVE,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.4,
+    ...typography('captionBoldTrack'),
     textTransform: 'uppercase',
   },
   nucleusLabel: {
     color: TEXT_PRIMARY,
-    fontSize: 18,
-    fontWeight: '600',
-    lineHeight: 24,
+    ...typography('sectionTitle'),
   },
   detail: {
     color: TEXT_BODY,
-    fontSize: 15,
-    lineHeight: 21,
+    ...typography('body'),
   },
   idea: {
     flexDirection: 'row',
@@ -96,8 +89,7 @@ const styles = StyleSheet.create({
   },
   ideaIndex: {
     color: TEXT_SECONDARY,
-    fontSize: 15,
-    fontWeight: '700',
+    ...typography('bodyBold'),
     width: 20,
     textAlign: 'center',
     marginTop: 2,
@@ -108,9 +100,7 @@ const styles = StyleSheet.create({
   },
   ideaLabel: {
     color: TEXT_PRIMARY,
-    fontSize: 16,
-    fontWeight: '600',
-    lineHeight: 22,
+    ...typography('title'),
   },
   example: {
     gap: 6,
@@ -120,9 +110,7 @@ const styles = StyleSheet.create({
   },
   exampleKicker: {
     color: SEM_EJEMPLO,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.4,
+    ...typography('captionBoldTrack'),
     textTransform: 'uppercase',
   },
   check: {
@@ -131,9 +119,7 @@ const styles = StyleSheet.create({
   },
   checkKicker: {
     color: TEXT_SECONDARY,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.4,
+    ...typography('captionBoldTrack'),
     textTransform: 'uppercase',
   },
 });

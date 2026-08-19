@@ -3,11 +3,12 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { MenuView, type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
 import { MoreHorizontal } from '../icons';
-import { RADII } from '@shared/uiTokens';
+import { RADII, TEXT_BODY } from '@shared/uiTokens';
 import { stepHaptic } from '../context/AppSessionContext';
 import GlassSurface from './GlassSurface';
 import { usePressScale } from '../hooks/usePressScale';
 import { useTheme } from '../context/ThemeContext';
+import { color, type } from '@shared/design-tokens';
 
 type CompletionOverflowMenuProps = {
   onViewAll: () => void;
@@ -25,7 +26,7 @@ export default function CompletionOverflowMenu({ onViewAll }: CompletionOverflow
     stepHaptic();
   };
 
-  const iconColor = isDark ? '#d4d4d4' : '#525252';
+  const iconColor = isDark ? TEXT_BODY : color.text.muted;
 
   return (
     <View style={styles.wrapper} collapsable={false}>

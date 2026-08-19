@@ -1,4 +1,6 @@
+import { TEXT_PRIMARY } from '@shared/uiTokens';
 import { ViewStyle } from 'react-native';
+import { type, shadow } from '@shared/design-tokens';
 
 export type LiquidGlassVariant = 'purple' | 'blue' | 'mono';
 export type LiquidGlassIntensity = 'subtle' | 'balanced' | 'strong';
@@ -58,7 +60,7 @@ const PURPLE_PALETTE: LiquidGlassPalette = {
   orbitBack: 'rgba(221, 214, 254, 0.22)',
   orbitFront: 'rgba(255, 255, 255, 0.72)',
   orbitGlow: 'rgba(139, 92, 246, 0.32)',
-  nucleusHot: '#FFFFFF',
+  nucleusHot: TEXT_PRIMARY,
   nucleusLight: '#DDD6FE',
   nucleusMid: '#8B5CF6',
   nucleusDeep: '#312E81',
@@ -79,7 +81,7 @@ const BLUE_PALETTE: LiquidGlassPalette = {
   orbitBack: 'rgba(186, 230, 253, 0.22)',
   orbitFront: 'rgba(255, 255, 255, 0.70)',
   orbitGlow: 'rgba(56, 189, 248, 0.30)',
-  nucleusHot: '#FFFFFF',
+  nucleusHot: TEXT_PRIMARY,
   nucleusLight: '#BAE6FD',
   nucleusMid: '#38BDF8',
   nucleusDeep: '#1E3A8A',
@@ -100,7 +102,7 @@ const MONO_PALETTE: LiquidGlassPalette = {
   orbitBack: 'rgba(229, 231, 235, 0.20)',
   orbitFront: 'rgba(255, 255, 255, 0.66)',
   orbitGlow: 'rgba(156, 163, 175, 0.26)',
-  nucleusHot: '#FFFFFF',
+  nucleusHot: TEXT_PRIMARY,
   nucleusLight: '#E5E7EB',
   nucleusMid: '#9CA3AF',
   nucleusDeep: '#374151',

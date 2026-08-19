@@ -8,7 +8,8 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { ACCENT, TEXT_PRIMARY } from '@shared/uiTokens';
+import { useThemeColors } from '../context/ThemeContext';
+import { motion } from '@shared/design-tokens';
 
 type NucleoGlyphOrbProps = {
   size?: number;
@@ -25,6 +26,7 @@ export default function NucleoGlyphOrb({
   reduceMotion = false,
   style,
 }: NucleoGlyphOrbProps) {
+  const colors = useThemeColors();
   const breathe = useSharedValue(1);
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export default function NucleoGlyphOrb({
       return;
     }
     breathe.value = withRepeat(
-      withTiming(1.045, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
+      withTiming(1.045, { duration: motion.orbGlyph.duration, easing: Easing.inOut(Easing.sin) }),
       -1,
       true
     );
@@ -43,8 +45,8 @@ export default function NucleoGlyphOrb({
     transform: [{ scale: breathe.value }],
   }));
 
-  const stroke = TEXT_PRIMARY;
-  const fill = ACCENT;
+  const stroke = colors.icon.primary;
+  const fill = colors.action.primary;
   const glowSize = Math.round(size * 1.35);
 
   return (
@@ -57,6 +59,7 @@ export default function NucleoGlyphOrb({
             width: glowSize,
             height: glowSize,
             borderRadius: glowSize / 2,
+            backgroundColor: colors.background.accentFade16,
           },
         ]}
       />
@@ -73,6 +76,5 @@ export default function NucleoGlyphOrb({
 const styles = StyleSheet.create({
   glow: {
     position: 'absolute',
-    backgroundColor: 'rgba(139, 143, 245, 0.16)',
   },
 });

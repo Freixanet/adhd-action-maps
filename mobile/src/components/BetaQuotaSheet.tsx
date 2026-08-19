@@ -3,6 +3,8 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 import { stepHaptic } from '../context/AppSessionContext';
+import { type } from '@shared/design-tokens';
+import { useThemeColors } from '../context/ThemeContext';
 
 type BetaQuotaSheetProps = {
   visible: boolean;
@@ -14,20 +16,21 @@ type BetaQuotaSheetProps = {
  * Private-beta anon cap: ask for login instead of a red error toast.
  */
 export default function BetaQuotaSheet({ visible, onClose, onLogin }: BetaQuotaSheetProps) {
+  const colors = useThemeColors();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.root}>
+      <View style={[styles.root, { backgroundColor: colors.background.overlay }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Cerrar" />
         <View style={styles.sheetHost} pointerEvents="box-none">
           <GlassSurface liquid borderRadius={RADII.lg} style={styles.sheet}>
             <View className="px-5 pt-5 pb-6">
-              <Text className="text-[13px] font-bold uppercase tracking-widest text-secondary">
+              <Text className="text-label font-bold uppercase tracking-widest text-secondary">
                 beta
               </Text>
-              <Text className="mt-2 text-[24px] font-extrabold leading-8 text-primary">
+              <Text className="mt-2 text-heading font-extrabold leading-8 text-primary">
                 Has usado tus 5 Núcleos gratis de hoy
               </Text>
-              <Text className="mt-3 text-[16px] leading-6 text-body">
+              <Text className="mt-3 text-title leading-6 text-body">
                 Inicia sesión para seguir, es gratis en beta
               </Text>
 
@@ -40,7 +43,7 @@ export default function BetaQuotaSheet({ visible, onClose, onLogin }: BetaQuotaS
                 accessibilityLabel="Iniciar sesión"
                 className="mt-6 items-center justify-center rounded-full bg-accent px-5 py-4 active:opacity-90"
               >
-                <Text className="text-[16px] font-bold text-primary">Iniciar sesión</Text>
+                <Text className="text-title font-bold text-primary">Iniciar sesión</Text>
               </Pressable>
 
               <Pressable
@@ -52,7 +55,7 @@ export default function BetaQuotaSheet({ visible, onClose, onLogin }: BetaQuotaS
                 accessibilityLabel="Quizás mañana"
                 className="mt-3 items-center py-3"
               >
-                <Text className="text-[15px] text-secondary">Quizás mañana</Text>
+                <Text className="text-body text-secondary">Quizás mañana</Text>
               </Pressable>
             </View>
           </GlassSurface>
@@ -65,7 +68,6 @@ export default function BetaQuotaSheet({ visible, onClose, onLogin }: BetaQuotaS
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'flex-end',
   },
   sheetHost: {

@@ -7,13 +7,13 @@ export type GenerationPhaseStep = {
   orb: ThinkingOrbState;
 };
 
-/** Perplexity-style trail — light copy, one active step with a tiny orb. */
+/** Perplexity-style trail — S04 Entender stage copy (human, no technical jargon). */
 export const GENERATION_PHASE_STEPS: GenerationPhaseStep[] = [
   { id: 'searching', label: 'Analizando la fuente…', orb: 'searching' },
-  { id: 'working', label: 'Leyendo el material…', orb: 'working' },
-  { id: 'solving', label: 'Sacando la idea central…', orb: 'solving' },
-  { id: 'composing', label: 'Montando tu Núcleo…', orb: 'composing' },
-  { id: 'shaping', label: 'Ajustando la lectura…', orb: 'shaping' },
+  { id: 'working', label: 'Comprendiendo la estructura…', orb: 'working' },
+  { id: 'solving', label: 'Preparando Lo esencial…', orb: 'solving' },
+  { id: 'composing', label: 'Conectando las ideas…', orb: 'composing' },
+  { id: 'shaping', label: 'Terminando tu Núcleo…', orb: 'shaping' },
 ];
 
 export function resolveGenerationPhaseIndex(input: {
@@ -36,10 +36,10 @@ export function resolveGenerationPhaseIndex(input: {
   return 1;
 }
 
-export function pickReadyAssistantMessage(title?: string | null): string {
-  const clean = title?.trim();
-  if (clean) {
-    return `Listo. Ya tienes «${clean}» preparado para leer.`;
-  }
-  return 'Listo. Tu Núcleo ya está preparado para leer.';
-}
+export {
+  buildDeliveryMessageFallback,
+  pickReadyAssistantMessage,
+  pickReadyAssistantMessageFromMap,
+  softClipDeliveryMessage,
+  type ReadyAssistantMessageInput,
+} from '@shared/deliveryMessage';

@@ -20,6 +20,8 @@ export type ContinueProgress = {
   remainingMinutes: number | null;
   progress: number;
   metaLabel: string;
+  ctaLabel: string;
+  pointLabel: string;
 };
 
 /** Progress copy for the Home Continuar card (SPEC §5.1). */
@@ -41,6 +43,8 @@ export function resolveContinueProgress(entry: HistoryEntry): ContinueProgress {
     remainingMinutes,
     progress,
     metaLabel: `Paso ${pasoActual} de ${totalPasos}${remaining}`,
+    ctaLabel: 'Continuar',
+    pointLabel: (steps[pasoActual - 1] as { title?: string } | undefined)?.title || 'seguir leyendo',
   };
 }
 
@@ -71,6 +75,14 @@ export function selectHomeRecents(
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, limit);
 }
+
+export {
+  JUMP_BACK_IN_SECTION_TITLE,
+  isDemoOrPreviewHistoryEntry,
+  resolveNucleoCover,
+  selectLatestCreatedNucleos,
+  type NucleoCoverResolution,
+} from './nucleoCover';
 
 export function countNucleosThisWeek(entries: HistoryEntry[], now = Date.now()): number {
   const weekAgo = now - 7 * 24 * 60 * 60 * 1000;

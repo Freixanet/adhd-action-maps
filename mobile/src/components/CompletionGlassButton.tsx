@@ -1,26 +1,27 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { CTA_FILL, RADII } from '@shared/uiTokens';
+import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 import NativeGlassButton from './NativeGlassButton';
 import { usePressScale } from '../hooks/usePressScale';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
-import {
-  shouldUseNativeGlassButton,
-  shouldUseNativeGlassFilledCta,
-} from '../logic/nativeGlassButtons';
+import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
 import { useTheme } from '../context/ThemeContext';
+import { type } from '@shared/design-tokens';
 
 type CompletionGlassButtonProps = {
   label: string;
   onPress: () => void;
   icon?: React.ReactNode;
+  /** `accent` = the single primary CTA on that surface (prominentGlass). */
   variant?: 'neutral' | 'accent';
   accessibilityLabel?: string;
   disabled?: boolean;
   loading?: boolean;
   loadingLabel?: string;
+  /** SF Symbol drawn inside UIButton when native. */
+  systemImage?: string;
 };
 
 export default function CompletionGlassButton({
@@ -32,8 +33,9 @@ export default function CompletionGlassButton({
   disabled = false,
   loading = false,
   loadingLabel,
+  systemImage,
 }: CompletionGlassButtonProps) {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
   const { reduceTransparency } = useGlassAccessibility();
   const isAccent = variant === 'accent';
@@ -44,10 +46,8 @@ export default function CompletionGlassButton({
   const isButtonDisabled = disabled || loading;
 
   const spinnerColor = isAccent
-    ? '#ffffff'
-    : isDark
-      ? '#d4d4d4'
-      : '#525252';
+    ? colors.text.onAccent
+    : colors.icon.muted;
 
   const labelNode = (
     <Text
@@ -69,23 +69,24 @@ export default function CompletionGlassButton({
   );
 
   const resolvedLabel = accessibilityLabel ?? (showLoading ? (loadingLabel ?? label) : label);
-  const native = isAccent
-    ? shouldUseNativeGlassFilledCta(reduceTransparency)
-    : shouldUseNativeGlassButton(reduceTransparency);
+  const native = shouldUseNativeGlassButton(reduceTransparency);
+  const displayLabel = showLoading ? (loadingLabel ?? label) : label;
+  // Light-mode prominentGlass washes out on pale surfaces — keep the CTA solid.
+  const useNativeChrome = native && !(isAccent && !isDark);
 
-  if (native) {
+  if (useNativeChrome) {
     return (
       <NativeGlassButton
         onPress={onPress}
         accessibilityLabel={resolvedLabel}
         variant={isAccent ? 'prominentGlass' : 'glass'}
+        title={displayLabel}
+        systemImage={showLoading ? undefined : systemImage}
         cornerRadius={RADII.lg}
-        tintColor={isAccent ? CTA_FILL : undefined}
         disabled={isButtonDisabled}
+        loading={showLoading}
         style={styles.nativeShell}
-      >
-        {content}
-      </NativeGlassButton>
+      />
     );
   }
 
@@ -105,8 +106,7 @@ export default function CompletionGlassButton({
     >
       <Animated.View style={[styles.pressableInner, animatedStyle]}>
         {isAccent ? (
-          // Solid fill — liquid glass + deferred mount sometimes left this CTA with no background.
-          <View style={styles.accentShell}>{content}</View>
+          <View style={[styles.accentShell, { backgroundColor: colors.action.cta }]}>{content}</View>
         ) : (
           <GlassSurface
             liquid
@@ -137,7 +137,6 @@ const styles = StyleSheet.create({
     borderRadius: RADII.lg,
     overflow: 'hidden',
   },
-  /** Native button sizes itself, so mirror the JS content minHeight. */
   nativeShell: {
     width: '100%',
     alignSelf: 'stretch',
@@ -147,7 +146,6 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: RADII.lg,
     overflow: 'hidden',
-    backgroundColor: CTA_FILL,
     alignItems: 'center',
     justifyContent: 'center',
   },

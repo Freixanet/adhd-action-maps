@@ -34,6 +34,12 @@
       "expo-dev-client",
       "expo-asset",
       [
+        "expo-font",
+        {
+          "fonts": ["./assets/fonts/SourceSans3-wght.ttf"]
+        }
+      ],
+      [
         "expo-widgets",
         {
           "groupIdentifier": "group.com.freixanet.nucleo"

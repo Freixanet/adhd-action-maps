@@ -8,13 +8,14 @@ import {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-import { ACCENT, RADII, TEXT_BODY, TEXT_PRIMARY, TEXT_SECONDARY } from '@shared/uiTokens';
+import { RADII } from '@shared/uiTokens';
 import type { StepContentBlockStat } from '@shared/contracts';
 import GlassSurface from '../GlassSurface';
 import { useTheme } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import { useInViewportOnce } from '../../hooks/useInViewportOnce';
 import BlockEnter from './BlockEnter';
+import { motion, typography } from '@shared/design-tokens';
 
 function parseStatValue(raw: string): {
   prefix: string;
@@ -52,7 +53,7 @@ type Props = {
 };
 
 export default function StatBlock({ block, index = 0 }: Props) {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
   const { visible, onLayout } = useInViewportOnce();
   const emphasis = block.emphasis ?? 'normal';
@@ -96,7 +97,7 @@ export default function StatBlock({ block, index = 0 }: Props) {
     }
     count.value = 0;
     count.value = withTiming(parsed.number, {
-      duration: 800,
+      duration: motion.page.duration,
       easing: Easing.out(Easing.cubic),
     });
   }, [block.value, count, isHero, parsed.animate, parsed.number, reduceMotion, visible]);
@@ -109,9 +110,9 @@ export default function StatBlock({ block, index = 0 }: Props) {
           accessibilityRole="text"
           accessibilityLabel={`${block.value} ${block.label}`}
         >
-          <Text style={styles.compactValue}>{block.value}</Text>
-          <Text style={styles.compactLabel}>{block.label}</Text>
-          {block.source ? <Text style={styles.source}>{block.source}</Text> : null}
+          <Text style={[styles.compactValue, { color: colors.text.primary }]}>{block.value}</Text>
+          <Text style={[styles.compactLabel, { color: colors.text.body }]}>{block.label}</Text>
+          {block.source ? <Text style={[styles.source, { color: colors.text.secondary }]}>{block.source}</Text> : null}
         </View>
       </BlockEnter>
     );
@@ -131,25 +132,25 @@ export default function StatBlock({ block, index = 0 }: Props) {
             <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
               <Defs>
                 <LinearGradient id="statAccent" x1="0" y1="0" x2="1" y2="1">
-                  <Stop offset="0" stopColor={ACCENT} stopOpacity="0.22" />
-                  <Stop offset="1" stopColor={ACCENT} stopOpacity="0.02" />
+                  <Stop offset="0" stopColor={colors.action.primary} stopOpacity="0.22" />
+                  <Stop offset="1" stopColor={colors.action.primary} stopOpacity="0.02" />
                 </LinearGradient>
               </Defs>
               <Rect x="0" y="0" width="100%" height="100%" fill="url(#statAccent)" />
             </Svg>
             <Text
-              style={styles.heroValue}
+              style={[styles.heroValue, { color: colors.text.primary }]}
               maxFontSizeMultiplier={1.35}
               accessibilityRole="text"
               accessibilityLabel={`${block.value} ${block.label}`}
             >
               {display}
             </Text>
-            <Text style={styles.heroLabel} maxFontSizeMultiplier={1.35}>
+            <Text style={[styles.heroLabel, { color: colors.text.body }]} maxFontSizeMultiplier={1.35}>
               {block.label}
             </Text>
             {block.source ? (
-              <Text style={styles.source} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.source, { color: colors.text.secondary }]} maxFontSizeMultiplier={1.3}>
                 {block.source}
               </Text>
             ) : null}
@@ -176,22 +177,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroValue: {
-    color: TEXT_PRIMARY,
-    fontSize: 44,
-    fontWeight: '700',
-    letterSpacing: -0.8,
-    lineHeight: 50,
+    ...typography('display'),
   },
   heroLabel: {
-    color: TEXT_BODY,
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: '500',
+    ...typography('title'),
   },
   source: {
-    color: TEXT_SECONDARY,
-    fontSize: 12,
-    lineHeight: 16,
+    ...typography('caption'),
     marginTop: 2,
   },
   compact: {
@@ -202,14 +194,9 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   compactValue: {
-    color: TEXT_PRIMARY,
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: -0.3,
+    ...typography('pageTitleTight'),
   },
   compactLabel: {
-    color: TEXT_BODY,
-    fontSize: 15,
-    lineHeight: 21,
+    ...typography('body'),
   },
 });

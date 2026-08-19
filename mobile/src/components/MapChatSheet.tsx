@@ -19,6 +19,8 @@ import type { ActionMapData, ChatTurn, MapChatResponse } from '../logic/contract
 import { supabase } from '../logic/supabase';
 import GlassSurface from './GlassSurface';
 import { fetchWithTimeout } from '../logic/network';
+import { useThemeColors } from '../context/ThemeContext';
+import { type } from '@shared/design-tokens';
 
 type MapChatSheetProps = {
   visible: boolean;
@@ -105,7 +107,7 @@ function AssistantBubble({ text }: { text: string }) {
       <Text className="text-sm leading-relaxed text-primary">{parsed.answer}</Text>
       {parsed.citations?.length ? (
         <View className="mt-3 pt-3 border-t border-neutral-200/80 border-white/10">
-          <Text className="text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
+          <Text className="text-meta font-bold uppercase tracking-widest text-secondary mb-2">
             Fuentes
           </Text>
           {parsed.citations.map((citation, index) => (
@@ -127,7 +129,7 @@ function AssistantBubble({ text }: { text: string }) {
       ) : null}
       {parsed.limitations?.length ? (
         <View className="mt-3 pt-3 border-t border-neutral-200/80 border-white/10">
-          <Text className="text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
+          <Text className="text-meta font-bold uppercase tracking-widest text-secondary mb-2">
             Límites
           </Text>
           {parsed.limitations.map((item, index) => (
@@ -142,6 +144,7 @@ function AssistantBubble({ text }: { text: string }) {
 }
 
 export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapChatSheetProps) {
+  const colors = useThemeColors();
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
@@ -251,7 +254,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
               <Text className="text-base font-bold text-primary">
                 Preguntar sobre la fuente
               </Text>
-              <Text className="mt-1 text-[11px] text-secondary leading-normal">
+              <Text className="mt-1 text-meta text-secondary leading-normal">
                 Responde solo con el contenido de esta lectura y sus referencias.
               </Text>
             </View>
@@ -260,7 +263,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
               className="w-7 h-7 rounded-full items-center justify-center bg-neutral-200/60 dark:bg-white/5"
               accessibilityLabel="Cerrar chat"
             >
-              <X size={14} color="#737373" />
+              <X size={14} color={colors.icon.muted} />
             </Pressable>
           </View>
 
@@ -275,7 +278,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
           >
             {chatHistory.length === 0 ? (
               <View className="items-center justify-center py-6 px-4">
-                <MessageSquareText size={24} color="#8B8FF5" className="mb-3 opacity-60" />
+                <MessageSquareText size={24} color={colors.action.primary} className="mb-3 opacity-60" />
                 <Text className="text-sm font-bold text-primary text-center mb-1">
                   Preguntar sobre la fuente
                 </Text>
@@ -317,7 +320,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
 
             {chatBusy ? (
               <View className="self-start max-w-[92%] mb-4 rounded-card px-4 py-3 bg-neutral-100 dark:bg-white/5 flex-row items-center gap-2">
-                <ActivityIndicator size="small" color="#8B8FF5" />
+                <ActivityIndicator size="small" color={colors.action.primary} />
                 <Text className="text-sm text-body">Consultando el Núcleo…</Text>
               </View>
             ) : null}
@@ -330,7 +333,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
                 value={chatInput}
                 onChangeText={setChatInput}
                 placeholder="Pregunta sobre esta fuente…"
-                placeholderTextColor="#a3a3a3"
+                placeholderTextColor={colors.text.secondary}
                 multiline
                 textAlignVertical="center"
                 editable={!chatBusy}
@@ -347,9 +350,9 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
                 accessibilityLabel="Enviar pregunta"
               >
                 {chatBusy ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator size="small" color={colors.text.onAccent} />
                 ) : (
-                  <ArrowUp size={15} color={chatInput.trim() ? '#fff' : '#a3a3a3'} />
+                  <ArrowUp size={15} color={chatInput.trim() ? colors.text.primary : colors.text.secondary} />
                 )}
               </Pressable>
             </View>

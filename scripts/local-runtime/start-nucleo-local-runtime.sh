@@ -13,7 +13,7 @@ fi
 plutil -lint "${BACKEND_PLIST}" >/dev/null
 plutil -lint "${METRO_PLIST}" >/dev/null
 
-# Preview holds native ios/; keep JS/shared/server in sync with canonical before Metro.
+# Preview holds native experiments only; Metro serves canonical mobile/.
 sync_canonical_to_preview
 
 if ! launchctl print "${GUI_DOMAIN}/${BACKEND_LABEL}" >/dev/null 2>&1; then
@@ -46,6 +46,8 @@ echo "=== Health ==="
 curl_backend_health "http://localhost:3000" || echo "WARN: backend localhost health failed"
 echo
 curl_metro_status "http://localhost:8081" || echo "WARN: metro localhost status failed"
+echo
+assert_metro_canonical_cwd || echo "WARN: Metro is not serving canonical mobile/"
 
 if [[ -n "${MAC_IP}" ]]; then
   echo
@@ -57,4 +59,4 @@ if [[ -n "${MAC_IP}" ]]; then
 fi
 
 echo
-echo "Started (backend ROOT=${ROOT}; Metro PREVIEW=${PREVIEW_ROOT})."
+echo "Started (backend + Metro from ROOT=${ROOT}; Metro cwd=${METRO_MOBILE_ROOT})."

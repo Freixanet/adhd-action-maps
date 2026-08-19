@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import type { StepContentBlock } from '../logic/contracts';
 import BlockReferences from './BlockReferences';
 import StatBlock from './blocks/StatBlock';
@@ -7,6 +7,8 @@ import ComparisonBlock from './blocks/ComparisonBlock';
 import AccordionBlock from './blocks/AccordionBlock';
 import QuizBlock from './blocks/QuizBlock';
 import CalloutBlock from './blocks/CalloutBlock';
+import { color } from '@shared/design-tokens';
+import { NucleoText, ReadingText } from '../context/TypographyContext';
 
 type StepContentBlocksProps = {
   blocks: StepContentBlock[];
@@ -37,15 +39,15 @@ function renderBlock(block: StepContentBlock, idx: number) {
       return (
         <View key={idx} className="my-6">
           {block.text ? (
-            <Text className="text-[17px] leading-[26px] text-body mb-4">{block.text}</Text>
+            <ReadingText className="mb-4" typeRole="readingBody">{block.text}</ReadingText>
           ) : null}
           {block.items?.map((item, i) => (
             <View key={i} className="flex-row gap-3 items-start mb-4">
               <View className="w-1.5 h-1.5 rounded-full bg-secondary/70 mt-2.5 shrink-0" />
-              <Text className="flex-1 text-[17px] leading-[26px] text-body">
-                <Text className="font-bold text-primary">{item.strong}</Text>
-                {item.span ? <Text className="text-body"> {item.span}</Text> : null}
-              </Text>
+              <ReadingText className="flex-1" typeRole="readingBody">
+                <NucleoText typeRole="readingBodyStrong" style={{ color: color.text.primary }}>{item.strong}</NucleoText>
+                {item.span ? <NucleoText typeRole="readingBody"> {item.span}</NucleoText> : null}
+              </ReadingText>
             </View>
           ))}
           <BlockReferences references={block.references} />
@@ -57,7 +59,7 @@ function renderBlock(block: StepContentBlock, idx: number) {
       if (!textContent.trim()) return null;
       return (
         <View key={idx} className="my-4">
-          <Text className="text-[17px] leading-[26px] text-body">{textContent}</Text>
+          <ReadingText typeRole="readingBody">{textContent}</ReadingText>
           <BlockReferences references={block.references} />
         </View>
       );

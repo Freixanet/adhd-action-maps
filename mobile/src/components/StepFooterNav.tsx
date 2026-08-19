@@ -1,147 +1,98 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import Animated, {
+import React, { useCallback, useRef, useState } from 'react';
+import { type LayoutChangeEvent, StyleSheet, View } from 'react-native';
+import {
+  runOnJS,
   type SharedValue,
-  useAnimatedProps,
-  useAnimatedStyle,
-  withTiming,
+  useAnimatedReaction,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check } from '../icons';
 import StepFooterGlassButton from './StepFooterGlassButton';
-import { GenerationProgressBar } from './loadingGenerationUi';
 import { useAppSession } from '../context/AppSessionContext';
-
-/** CTA icon over the solid step-footer primary fill (SPEC §3.3). */
-const CTA_ICON_COLOR = '#FFFFFF';
-/** Approximate chrome height for slide-off (buttons + padding; safe area added at runtime). */
-const FOOTER_CHROME_BASE = 84;
+import { useThemeColors } from '../context/ThemeContext';
 
 type StepFooterNavProps = {
   completeLabel?: string;
-  /** Same shared value as the reading header — tap/scroll hides both. */
+  /** Shared with tap/scroll chrome — hides the complete CTA with the footer. */
   chromeVisibleShared?: SharedValue<boolean>;
+  onRevealLayout?: (height: number) => void;
 };
 
+/**
+ * Last-step complete CTA only. Page turns use the vertical swipe — no Atrás/Siguiente.
+ */
 export default function StepFooterNav({
   completeLabel = 'Completar Núcleo',
   chromeVisibleShared,
+  onRevealLayout,
 }: StepFooterNavProps) {
   const session = useAppSession();
+  const colors = useThemeColors();
   const insets = useSafeAreaInsets();
-  const showStepFooter = !session.viewAll && !session.isComplete;
-  const totalReadingPages = session.totalSteps;
-  const hideDistance = FOOTER_CHROME_BASE + insets.bottom;
+  const ctaIconColor = colors.text.onAccent;
+  const isLastReadingStep =
+    !session.viewAll &&
+    !session.isComplete &&
+    session.currentStep > 0 &&
+    session.currentStep >= session.totalSteps;
+  const [layoutVisible, setLayoutVisible] = useState(
+    () => chromeVisibleShared?.value ?? true
+  );
+  // The initially visible footer must compensate the page too, not only later reveals.
+  const revealLayoutPendingRef = useRef(layoutVisible);
 
-  const footerStyle = useAnimatedStyle(() => {
-    if (!chromeVisibleShared) {
-      return { transform: [{ translateY: 0 }], opacity: 1 };
-    }
-    const visible = chromeVisibleShared.value;
-    return {
-      transform: [
-        {
-          translateY: withTiming(visible ? 0 : hideDistance, { duration: 250 }),
-        },
-      ],
-      opacity: withTiming(visible ? 1 : 0, { duration: 200 }),
-    };
-  });
+  const commitLayoutVisibility = useCallback((visible: boolean) => {
+    if (visible) revealLayoutPendingRef.current = true;
+    setLayoutVisible(visible);
+  }, []);
 
-  const footerAnimatedProps = useAnimatedProps(() => {
-    if (!chromeVisibleShared) {
-      return { pointerEvents: 'auto' as const };
-    }
-    return {
-      pointerEvents: chromeVisibleShared.value ? ('auto' as const) : ('none' as const),
-    };
-  });
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const height = Math.ceil(event.nativeEvent.layout.height);
+      if (height <= 0) return;
+      if (revealLayoutPendingRef.current) {
+        revealLayoutPendingRef.current = false;
+        onRevealLayout?.(height);
+      }
+    },
+    [onRevealLayout]
+  );
 
-  if (!showStepFooter) return null;
+  useAnimatedReaction(
+    () => chromeVisibleShared?.value ?? true,
+    (visible, previous) => {
+      if (previous === null || visible === previous) return;
+      runOnJS(commitLayoutVisibility)(visible);
+    },
+    [chromeVisibleShared, commitLayoutVisibility]
+  );
+
+  if (!isLastReadingStep || !layoutVisible) return null;
 
   return (
-    <Animated.View
-      animatedProps={footerAnimatedProps}
-      style={footerStyle}
+    <View
+      style={styles.footerShell}
       className="border-t border-neutral-200 border-white/10 bg-base"
+      onLayout={handleLayout}
     >
       <View
         className="px-7"
         style={{ paddingTop: 16, paddingBottom: insets.bottom + 16 }}
       >
-        {session.currentStep === 0 ? (
-          session.isStreamGenerating ? (
-            <View>
-              <GenerationProgressBar
-                progressShared={session.streamProgressShared}
-                fullWidth
-                height={2}
-                style={styles.footerProgress}
-              />
-              <StepFooterGlassButton
-                variant="primary"
-                label="Generando pasos…"
-                disabled
-                onPress={() => undefined}
-              />
-            </View>
-          ) : (
-            <StepFooterGlassButton
-              variant="primary"
-              label="Explorar el Núcleo"
-              onPress={() => session.goToStep(1)}
-            />
-          )
-        ) : (
-          <View className="flex-row gap-3" style={styles.row}>
-            <View style={styles.backSlot}>
-              <StepFooterGlassButton
-                variant="secondary"
-                label="Atrás"
-                onPress={() => session.goToStep(session.currentStep - 1)}
-              />
-            </View>
-            <View style={styles.forwardSlot}>
-              {session.currentStep < totalReadingPages ? (
-                <StepFooterGlassButton
-                  variant="primary"
-                  label="Siguiente"
-                  onPress={() => session.goToStep(session.currentStep + 1)}
-                />
-              ) : (
-                <StepFooterGlassButton
-                  variant="primary"
-                  label={completeLabel}
-                  onPress={session.handleCompleteMap}
-                  icon={<Check size={20} color={CTA_ICON_COLOR} />}
-                  iconPlacement="leading"
-                />
-              )}
-            </View>
-          </View>
-        )}
+        <StepFooterGlassButton
+          variant="primary"
+          label={completeLabel}
+          onPress={session.handleCompleteMap}
+          icon={<Check size={20} color={ctaIconColor} />}
+          iconPlacement="leading"
+        />
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    width: '100%',
-    alignItems: 'stretch',
-  },
-  /** Fixed-ish width so Liquid Glass is not crushed / edge-clipped next to Siguiente. */
-  backSlot: {
-    width: 108,
-    flexGrow: 0,
+  footerShell: {
     flexShrink: 0,
-  },
-  forwardSlot: {
-    flex: 1,
-    minWidth: 0,
-  },
-  footerProgress: {
-    width: '100%',
-    marginBottom: 8,
   },
 });

@@ -21,7 +21,6 @@ import {
   sidebarHeaderSolidHeight,
   sidebarSearchStackHeight,
 } from './SidebarGlassHeader';
-import { APP_DARK_BACKGROUND } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
 import { DRAWER_WIDTH, MAIN_SHEET_CORNER_RADIUS, SCREEN_WIDTH } from './sidebarLayout';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
@@ -29,6 +28,7 @@ import type { Coleccion } from '@shared/collections';
 import type { ActionMapData } from '../logic/contracts';
 import type { HistoryEntry } from '../logic/history';
 import type { AppPhase } from '../context/AppSessionContext';
+import { motion, radius, color, primitive, type, shadow } from '@shared/design-tokens';
 
 export { DRAWER_WIDTH, MAIN_SHEET_CORNER_RADIUS } from './sidebarLayout';
 
@@ -37,7 +37,7 @@ const EDGE_SWIPE_TOP_INSET = 140;
 
 /** Single curve for clip + pill + sheet — no derived dual-easing hitch. */
 const SEARCH_TIMING = {
-  duration: 260,
+  duration: motion.drawer.duration,
   easing: Easing.bezier(0.25, 0.1, 0.25, 1),
 } as const;
 type HistoryDrawerProps = {
@@ -85,7 +85,7 @@ export default function HistoryDrawer({
   enableEdgeSwipe = true,
   children,
 }: HistoryDrawerProps) {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
   const insets = useSafeAreaInsets();
   const [searchActive, setSearchActive] = useState(false);
@@ -109,7 +109,14 @@ export default function HistoryDrawer({
   const headerSolidHeight = sidebarHeaderSolidHeight(insets.top);
   const searchStackHeight = sidebarSearchStackHeight(insets.top);
   const brandHeaderHeight = searchActive ? searchStackHeight : headerSolidHeight;
-  const sidebarCanvasColor = isDark ? APP_DARK_BACKGROUND : '#f0f0f0';
+  const sidebarCanvasColor = isDark ? colors.background.canvas : colors.background.surface;
+  const mainCanvasColor = colors.background.canvas;
+  // Precompute for worklets — Hermes throws ReferenceError if `isDark` /
+  // token objects are read as free identifiers inside useAnimatedStyle.
+  const drawerShadowPeak = isDark ? 0.55 : 0.22;
+  const drawerLightenPeak = isDark ? 0.1 : 0.22;
+  const drawerShadow = shadow.glassDrawer;
+  const drawerShadowFlatElevation = shadow.none.elevation;
 
   const bumpSearchFocus = useCallback(() => {
     setSearchFieldFocusToken((token) => token + 1);
@@ -323,7 +330,12 @@ export default function HistoryDrawer({
     const maxW = Math.max(drawerMaxWidth.value, 1);
     const progress = offsetX.value / maxW;
     const radius = offsetX.value > 0 ? MAIN_SHEET_CORNER_RADIUS : 0;
-    const shadowOpacity = interpolate(progress, [0, 1], [0, isDark ? 0.55 : 0.22], Extrapolation.CLAMP);
+    const shadowOpacity = interpolate(
+      progress,
+      [0, 1],
+      [0, drawerShadowPeak],
+      Extrapolation.CLAMP
+    );
 
     return {
       transform: [{ translateX: offsetX.value }],
@@ -331,11 +343,11 @@ export default function HistoryDrawer({
       borderBottomLeftRadius: radius,
       borderTopRightRadius: 0,
       borderBottomRightRadius: 0,
-      shadowColor: '#000000',
-      shadowOffset: { width: -10, height: 0 },
+      shadowColor: drawerShadow.shadowColor,
+      shadowOffset: drawerShadow.shadowOffset,
       shadowOpacity,
-      shadowRadius: 24,
-      elevation: progress > 0.01 ? 16 : 0,
+      shadowRadius: drawerShadow.shadowRadius,
+      elevation: progress > 0.01 ? drawerShadow.elevation : drawerShadowFlatElevation,
     };
   });
 
@@ -345,7 +357,7 @@ export default function HistoryDrawer({
     const opacity = interpolate(
       progress,
       [0, 1],
-      [0, isDark ? 0.1 : 0.22],
+      [0, drawerLightenPeak],
       Extrapolation.CLAMP
     );
 
@@ -361,7 +373,7 @@ export default function HistoryDrawer({
     ),
   }));
 
-  const canvasColor = isDark ? APP_DARK_BACKGROUND : '#fafafa';
+  const canvasColor = mainCanvasColor;
 
   return (
     <View
@@ -461,7 +473,12 @@ export default function HistoryDrawer({
           {children}
           <Animated.View
             pointerEvents={open ? 'auto' : 'none'}
-            style={[StyleSheet.absoluteFill, styles.mainLightenOverlay, mainLightenOverlayStyle]}
+            style={[
+              StyleSheet.absoluteFill,
+              styles.mainLightenOverlay,
+              mainLightenOverlayStyle,
+              { backgroundColor: isDark ? colors.text.primary : colors.background.surface },
+            ]}
           />
         </Animated.View>
       </GestureDetector>
@@ -501,7 +518,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   mainLightenOverlay: {
-    backgroundColor: '#ffffff',
     zIndex: 1,
   },
   edgeHitSlop: {

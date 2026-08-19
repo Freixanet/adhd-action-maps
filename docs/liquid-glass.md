@@ -19,14 +19,16 @@ Native iOS Liquid Glass for **floating UI only**, via [`expo-glass-effect`](http
 | `mobile/src/components/ModelChip.tsx` | Mode picker sheet chrome |
 | `mobile/src/components/MapChatSheet.tsx` | Sheet header + bottom composer chrome |
 | `mobile/src/components/AuthSheet.tsx` | Sheet header chrome |
-| `mobile/src/components/IntentSelector.tsx` | Entender / Aplicar segmented control |
+| `mobile/src/components/IntentSelector.tsx` | Entender / Aplicar — SwiftUI Liquid Glass product path; solid RN = fallback only |
+| `shared/intentSelectorModel.ts` | Intent↔index commit model + layout/test IDs |
+| `mobile/modules/nucleo-glass-segment/` | SwiftUI `GlassEffectContainer` + interactive lens (overflow reserved) |
 | `mobile/package.json` | `expo-glass-effect` dependency |
 
 ## What uses Liquid Glass
 
 - Composer input container (`ComposerSurface`)
 - Floating buttons (`FloatingGlassButton` — neutral tone only; accent stays solid indigo)
-- Attach menu, profile menu, history entry menu, intent selector
+- Attach menu, profile menu, history entry menu, intent selector (native sliding glass pill)
 - Modal/sheet chrome (ModelChip picker, MapChat, Auth headers + MapChat bottom bar)
 
 ## What does **not** use Liquid Glass

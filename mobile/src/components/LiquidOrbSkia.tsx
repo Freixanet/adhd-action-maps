@@ -27,64 +27,64 @@ import {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import { BG_BASE } from '@shared/uiTokens';
+import { color, motion, shadow } from '@shared/design-tokens';
 import { isSkiaAvailable } from '../logic/skiaAvailability';
 import ExactLiquidOrbWebView from './ExactLiquidOrbWebView';
 import { liquidOrbLayout, nucleusCornerRadii } from './liquidOrbLayout';
 
 const AMBIENT_GLOW_COLORS = [
-  'rgba(139, 143, 245, 0.14)',
-  'rgba(139, 143, 245, 0.05)',
-  'rgba(139, 143, 245, 0)',
+  color.background.accentSoft,
+  color.orb.accentFade05,
+  color.background.transparent,
 ] as const;
 const AMBIENT_GLOW_POSITIONS = [0, 0.42, 0.72] as const;
-const ACCENT_06 = 'rgba(139, 143, 245, 0.6)';
-const ACCENT_025 = 'rgba(139, 143, 245, 0.25)';
-const ACCENT_03 = 'rgba(139, 143, 245, 0.3)';
+const ACCENT_06 = color.orb.swirl;
+const ACCENT_025 = color.orb.accentFade25;
+const ACCENT_03 = color.orb.caustics;
 
 const GLASS_FILL_COLORS = [
-  'rgba(255, 255, 255, 0.05)',
-  'rgba(139, 143, 245, 0.06)',
-  'rgba(10, 10, 16, 0.22)',
+  color.background.whiteFade05,
+  color.orb.accentFade06,
+  color.orb.glassDark22,
 ] as const;
 
 /** Vertical specular map — same directional pattern as GlassPerimeterRing circular stops. */
 const FRESNEL_TOP_STOPS = {
   colors: [
-    'rgba(255, 255, 255, 0.55)',
-    'rgba(255, 255, 255, 0.14)',
-    'rgba(255, 255, 255, 0)',
-    'rgba(255, 255, 255, 0)',
-    'rgba(255, 255, 255, 0)',
+    color.orb.whiteFade55,
+    color.background.whiteFade14,
+    color.background.transparent,
+    color.background.transparent,
+    color.background.transparent,
   ],
   positions: [0, 0.28, 0.52, 0.85, 1],
 } as const;
 
 const FRESNEL_BOTTOM_STOPS = {
   colors: [
-    'rgba(0, 0, 0, 0)',
-    'rgba(0, 0, 0, 0)',
-    'rgba(0, 0, 0, 0)',
-    'rgba(0, 0, 0, 0.28)',
-    'rgba(0, 0, 0, 0.4)',
+    color.background.transparent,
+    color.background.transparent,
+    color.background.transparent,
+    color.orb.blackFade28,
+    color.orb.blackFade40,
   ],
   positions: [0, 0.52, 0.72, 0.88, 1],
 } as const;
 
 const SPHERE_SHADING_COLORS = [
-  'rgba(255, 255, 255, 0.10)',
-  'rgba(255, 255, 255, 0)',
-  'rgba(0, 0, 0, 0.22)',
+  color.background.whiteFade10,
+  color.background.transparent,
+  color.orb.blackFade22,
 ] as const;
 const SPHERE_SHADING_POSITIONS = [0, 0.45, 1] as const;
 
 /** HTML iteration specular — radial falloff + blur(3px), soft skirt to edge. */
 const SPECULAR_GRADIENT_COLORS = [
-  'rgba(255, 255, 255, 0.65)',
-  'rgba(255, 255, 255, 0.18)',
-  'rgba(255, 255, 255, 0.04)',
-  'rgba(255, 255, 255, 0)',
-  'rgba(255, 255, 255, 0)',
+  color.orb.whiteFade65,
+  color.orb.whiteFade18,
+  color.background.whiteFade04,
+  color.background.transparent,
+  color.background.transparent,
 ] as const;
 const SPECULAR_GRADIENT_POSITIONS = [0, 0.3, 0.55, 0.82, 1] as const;
 const SPECULAR_ROTATION_DEG = -24;
@@ -151,23 +151,23 @@ function useOrbAnimations(reduceMotion: boolean, orbSize: number) {
     shadowOpacity.value = 0.3;
 
     loop4s.value = withRepeat(
-      withTiming(1, { duration: 4000, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: motion.orbLevitation.duration, easing: Easing.inOut(Easing.ease) }),
       -1,
       false
     );
     swirlRotation.value = withRepeat(
-      withTiming(360, { duration: 4000, easing: Easing.linear }),
+      withTiming(360, { duration: motion.orbLevitation.duration, easing: Easing.linear }),
       -1,
       false
     );
     orbitOffset.value = 0;
     causticsProgress.value = withRepeat(
-      withTiming(1, { duration: 6000, easing: Easing.linear }),
+      withTiming(1, { duration: motion.orbCaustics.duration, easing: Easing.linear }),
       -1,
       false
     );
     nucleusProgress.value = withRepeat(
-      withTiming(1, { duration: 3500, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: motion.orbNucleus.duration, easing: Easing.inOut(Easing.ease) }),
       -1,
       false
     );
@@ -257,16 +257,16 @@ type OrbitLayerProps = {
 
 const ORBIT_EDGE_FADE_POSITIONS = [0, 0.1, 0.9, 1] as const;
 const ORBIT_HALO_EDGE_COLORS = [
-  'rgba(139, 143, 245, 0)',
-  'rgba(139, 143, 245, 0.22)',
-  'rgba(139, 143, 245, 0.22)',
-  'rgba(139, 143, 245, 0)',
+  color.background.transparent,
+  color.background.accentFade22,
+  color.background.accentFade22,
+  color.background.transparent,
 ] as const;
 const ORBIT_CORE_EDGE_COLORS = [
-  'rgba(198, 201, 255, 0)',
-  'rgba(198, 201, 255, 0.85)',
-  'rgba(198, 201, 255, 0.85)',
-  'rgba(198, 201, 255, 0)',
+  color.orb.coreTransparent,
+  color.orb.core,
+  color.orb.core,
+  color.orb.coreTransparent,
 ] as const;
 
 /** HTML iteration orbits — viewBox 200, rx 97 / ry 36, halo 14 + core 5, edge fade on major axis. */
@@ -521,7 +521,7 @@ function LiquidOrbSkiaCanvas({
           y={shadowCy - shadowH / 2}
           width={shadowW}
           height={shadowH}
-          color="#000000"
+          color={color.orb.shadow}
         >
           <BlurMask blur={2} style="normal" respectCTM={false} />
         </Oval>
@@ -547,13 +547,13 @@ function LiquidOrbSkiaCanvas({
 
         {/* glass-shell clip */}
         <Group clip={clipPath}>
-          {/* outer box-shadow: 0 10px 30px rgba(0,0,0,0.5) */}
+          {/* outer box-shadow: 0 10px 30px black at 50% opacity */}
           <Oval
             x={cx - r * 0.85}
             y={cy + r * 0.15}
             width={r * 1.7}
             height={r * 0.55}
-            color="rgba(0, 0, 0, 0.5)"
+            color={color.orb.blackFade50}
           >
             <BlurMask blur={15} style="normal" respectCTM={false} />
           </Oval>
@@ -624,7 +624,7 @@ function LiquidOrbSkiaCanvas({
               <LinearGradient
                 start={vec(cx - nucleusSize / 2, cy + nucleusSize / 2)}
                 end={vec(cx + nucleusSize / 2, cy - nucleusSize / 2)}
-                colors={['#dde3ff', '#9ba0f8', '#3b357e']}
+                colors={[color.orb.nucleusGradientLight, color.orb.nucleusGradientMid, color.orb.nucleusGradientDark]}
               />
               <BlurMask blur={1} style="normal" respectCTM={false} />
             </Path>
@@ -678,10 +678,9 @@ export default function LiquidOrbSkia({
 const styles = StyleSheet.create({
   shell: {
     overflow: 'visible',
-    backgroundColor: 'transparent',
+    backgroundColor: color.background.transparent,
+    ...shadow.none,
     borderWidth: 0,
-    shadowOpacity: 0,
-    elevation: 0,
     alignSelf: 'center',
   },
 });

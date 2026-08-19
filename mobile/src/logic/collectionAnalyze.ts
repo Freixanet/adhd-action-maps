@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import type { SourceAnalysisResponse, TransformRequest } from './contracts';
 import { apiUrl } from './apiBase';
 import { fetchWithTimeout } from './network';
+import { createPastedTextOperationIds } from '@shared/pastedText';
 
 export function analyzeTransformSourceLocally(body: TransformRequest): SourceAnalysisResponse | null {
   if (body.type === 'text' && body.text?.trim()) {
@@ -20,10 +21,17 @@ export function analyzeTransformSourceLocally(body: TransformRequest): SourceAna
 
 export async function analyzeTransformSource(
   body: TransformRequest,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
+  signal?: AbortSignal
 ): Promise<SourceAnalysisResponse> {
   const local = analyzeTransformSourceLocally(body);
   if (local) return local;
+
+  if (signal?.aborted) {
+    const err = new Error('Aborted');
+    err.name = 'AbortError';
+    throw err;
+  }
 
   const response = await fetchWithTimeout(
     apiUrl('/api/transform/analyze'),
@@ -34,6 +42,7 @@ export async function analyzeTransformSource(
         ...(headers ?? {}),
       },
       body: JSON.stringify(body),
+      signal,
     },
     { timeoutMs: 60_000 }
   );
@@ -67,10 +76,19 @@ export function promptCollectionSplit(partCount: number): Promise<'split' | 'sin
   });
 }
 
+/**
+ * Build a part body with stable operation IDs and forced textMode source.
+ * Short/interrogative part text never routes to ASK.
+ */
 export function buildCollectionPartBody(
   base: TransformRequest,
   part: { title: string; text?: string },
-  mapId: string
+  ids: {
+    mapId: string;
+    sourceId: string;
+    sourceVersionId: string;
+    sourceRequestId: string;
+  }
 ): TransformRequest {
   if (part.text?.trim()) {
     return {
@@ -85,7 +103,11 @@ export function buildCollectionPartBody(
       sourceLabel: part.title,
       segmentTitle: part.title,
       sourceContentKind: base.sourceContentKind,
-      mapId,
+      mapId: ids.mapId,
+      sourceId: ids.sourceId,
+      sourceVersionId: ids.sourceVersionId,
+      sourceRequestId: ids.sourceRequestId,
+      textMode: 'source',
     };
   }
 
@@ -93,7 +115,16 @@ export function buildCollectionPartBody(
     ...base,
     sourceLabel: part.title,
     segmentTitle: part.title,
-    mapId,
+    mapId: ids.mapId,
+    sourceId: ids.sourceId,
+    sourceVersionId: ids.sourceVersionId,
+    sourceRequestId: ids.sourceRequestId,
+    textMode: 'source',
     singleNucleoMode: undefined,
   };
+}
+
+/** Mint one stable identity per collection part (reused across part retries). */
+export function mintCollectionPartIdentities(partCount: number) {
+  return Array.from({ length: partCount }, () => createPastedTextOperationIds());
 }

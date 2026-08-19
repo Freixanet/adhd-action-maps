@@ -13,13 +13,13 @@ export const SIDEBAR_EDGE_INSET = 24;
 /** Matches NativeWind `px-3` on the main input / reading chrome. */
 export const MAIN_CONTENT_GUTTER = 12;
 
-/** Circle glass buttons in the sidebar header (lupa, etc.). */
-export const SIDEBAR_HEADER_BUTTON_SIZE = 36;
+/** Circle glass buttons in the sidebar header (lupa, etc.) — same as home toggle. */
+export const SIDEBAR_HEADER_BUTTON_SIZE = 44;
 
 /** Sidebar toggle on the main input screen only. */
 export const SIDEBAR_TOGGLE_BUTTON_SIZE = 44;
 
-/** Horizontal padding (inset×2) + gap (8) + trailing button (36). */
+/** Horizontal padding (inset×2) + gap (8) + trailing button. */
 export const SIDEBAR_SEARCH_SLOT_INSET = SIDEBAR_EDGE_INSET * 2 + 8 + SIDEBAR_HEADER_BUTTON_SIZE;
 
 export function sidebarSearchSlotWidth(drawerWidth: number) {

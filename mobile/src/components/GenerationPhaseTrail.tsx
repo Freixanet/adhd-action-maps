@@ -1,10 +1,11 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { TEXT_SECONDARY } from '@shared/uiTokens';
 import ThinkingOrbWebView from './ThinkingOrbWebView';
 import { GENERATION_PHASE_STEPS } from '../logic/generationPhaseTrail';
 import { formatCollectionProgress } from '@shared/collections';
+import { typography } from '@shared/design-tokens';
+import { useThemeColors } from '../context/ThemeContext';
 
 type GenerationPhaseTrailProps = {
   activeIndex: number;
@@ -21,6 +22,7 @@ export default function GenerationPhaseTrail({
   reduceMotion = false,
   collectionProgress = null,
 }: GenerationPhaseTrailProps) {
+  const colors = useThemeColors();
   const clamped = Math.max(0, Math.min(GENERATION_PHASE_STEPS.length - 1, activeIndex));
   const step = GENERATION_PHASE_STEPS[clamped]!;
   const label = collectionProgress
@@ -48,7 +50,7 @@ export default function GenerationPhaseTrail({
             theme="dark"
           />
         </View>
-        <Text style={styles.label} maxFontSizeMultiplier={1.3}>
+        <Text style={[styles.label, { color: colors.text.secondary }]} maxFontSizeMultiplier={1.3}>
           {label}
         </Text>
       </Animated.View>
@@ -76,9 +78,7 @@ const styles = StyleSheet.create({
   },
   label: {
     flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-    color: TEXT_SECONDARY,
+    ...typography('callout'),
     opacity: 0.92,
   },
 });

@@ -3,11 +3,9 @@ import { detectUrlInput } from './urlInput';
 
 export type ComposerSubmitKind = 'source' | 'ask';
 
-const DEV = false;
-
 /**
- * Source: file, URL/YouTube, long-paste chip, or invalid URL attempt (transform shows the error).
- * Ask: short free-form text / question without a source attachment.
+ * Source: file, URL/YouTube, paste-chip, or invalid URL attempt.
+ * Ask: free-form conversational text without a source attachment/paste.
  */
 export function classifyComposerSubmit(params: {
   inputText: string;
@@ -22,8 +20,12 @@ export function classifyComposerSubmit(params: {
   if (!bodyText) return 'source';
 
   const urlDetection = detectUrlInput(bodyText);
-  if (urlDetection.kind === 'youtube' || urlDetection.kind === 'link' || urlDetection.kind === 'invalid') {
+  if (
+    urlDetection.kind === 'youtube' ||
+    urlDetection.kind === 'link' ||
+    urlDetection.kind === 'invalid'
+  ) {
     return 'source';
   }
-  return DEV ? 'ask' : 'source';
+  return 'ask';
 }

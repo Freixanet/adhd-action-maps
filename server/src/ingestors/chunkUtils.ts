@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ChapterMeta, SourceChunk, SourceChunkLoc } from "../../../shared/types/chunk";
 import { CHUNK_OVERLAP, CHUNK_SIZE } from "../../../shared/types/chunk";
+import { canonicalizePastedText } from "../../../shared/pastedText";
 
 export function md5Short(input: string | Buffer, len = 8): string {
   return createHash("md5").update(input).digest("hex").slice(0, len);
@@ -25,8 +26,9 @@ export function stripHtml(html: string): string {
     .trim();
 }
 
+/** Alias of shared pasted-text canonicalize — single representation for plain text. */
 export function normalizePlainText(text: string): string {
-  return text.replace(/\u0000/g, "").replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+  return canonicalizePastedText(text);
 }
 
 /**
@@ -39,12 +41,13 @@ export function chunkText(
     size?: number;
     overlap?: number;
     idPrefix?: string;
+    alreadyCanonical?: boolean;
     locFor?: (start: number, end: number, index: number) => Omit<SourceChunkLoc, "start" | "end">;
   }
 ): SourceChunk[] {
   const size = options?.size ?? CHUNK_SIZE;
   const overlap = options?.overlap ?? CHUNK_OVERLAP;
-  const cleaned = normalizePlainText(text);
+  const cleaned = options?.alreadyCanonical ? text : normalizePlainText(text);
   if (!cleaned) return [];
 
   const chunks: SourceChunk[] = [];

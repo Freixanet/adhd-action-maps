@@ -1,0 +1,71 @@
+---
+description: Arquitectura, código y protocolo de implementación
+alwaysApply: true
+---
+
+# Ingeniería
+
+## Antes de editar
+
+1. Lee `docs/execution/STATUS.md`.
+2. Lee decisiones.
+3. Inspecciona archivos y tests relacionados.
+4. Comprueba cambios del propietario.
+5. Limita el trabajo al slice actual.
+
+## Arquitectura
+
+- Conserva stack existente viable.
+- No reescritura sin ADR y autorización.
+- Monolito modular inicialmente.
+- Dominio independiente de UI y proveedores.
+- Puertos y adaptadores.
+- Validación runtime en fronteras.
+- Proveedores detrás de interfaces.
+- Jobs idempotentes y cancelables.
+
+## TypeScript
+
+- Strict.
+- Evita `any`.
+- Uniones discriminadas para estados.
+- Errores tipados.
+- No lógica de dominio en componentes o handlers.
+- No casts para silenciar incoherencias.
+- No reglas desactivadas para pasar CI.
+
+## Datos
+
+- Migraciones versionadas.
+- RLS.
+- Índices.
+- Borrado en cascada explícito.
+- Service role solo en backend.
+- Storage privado.
+- No migración destructiva sin intervención.
+
+## Trabajo incremental
+
+- Un slice.
+- Pruebas en el mismo cambio.
+- Revisa diff.
+- Corrige.
+- Actualiza estado.
+- No implementes el siguiente slice hasta `DONE`.
+
+## Dependencias
+
+- Reutiliza las instaladas si son adecuadas.
+- Justifica cada nueva dependencia.
+- Prefiere librerías mantenidas y documentación oficial.
+- Bloquea versiones mediante lockfile.
+- No actualices dependencias no relacionadas.
+
+## Terminal y git
+
+- No comandos destructivos.
+- No sobrescribir cambios.
+- No push/deploy/release.
+- No secretos.
+- No generar artefactos enormes dentro del repo.
+

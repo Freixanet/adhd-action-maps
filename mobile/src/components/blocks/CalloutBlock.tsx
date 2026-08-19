@@ -1,28 +1,14 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import {
-  RADII,
-  SEM_ALERTA,
-  SEM_CLAVE,
-  SEM_EJEMPLO,
-  SEM_MATIZ,
-  TEXT_BODY,
-  TEXT_PRIMARY,
-} from '@shared/uiTokens';
+import { RADII } from '@shared/uiTokens';
 import type { SourceReference } from '@shared/contracts';
 import GlassSurface from '../GlassSurface';
 import { useTheme } from '../../context/ThemeContext';
 import BlockReferences from '../BlockReferences';
 import BlockEnter from './BlockEnter';
+import { typography, shadow, primitive } from '@shared/design-tokens';
 
 export type CalloutTone = 'clave' | 'matiz' | 'ejemplo' | 'alerta';
-
-const TONE_COLOR: Record<CalloutTone, string> = {
-  clave: SEM_CLAVE,
-  matiz: SEM_MATIZ,
-  ejemplo: SEM_EJEMPLO,
-  alerta: SEM_ALERTA,
-};
 
 const TONE_LABEL: Record<CalloutTone, string> = {
   clave: 'Idea clave',
@@ -51,8 +37,11 @@ function hexToRgba(hex: string, alpha: number): string {
           .join('')
       : raw;
   const n = Number.parseInt(normalized, 16);
-  if (!Number.isFinite(n)) return `rgba(139,143,245,${alpha})`;
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+  if (!Number.isFinite(n)) {
+    const [r, g, b] = primitive.color.brand.accentRgb;
+    return `rgba(${r},${g},${b},${alpha})`; // design-token-ignore: runtime alpha wash from brand.accentRgb channels
+  }
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`; // design-token-ignore: runtime alpha wash from parsed hex channels
 }
 
 export function resolveCalloutTone(kind?: string, label?: string): CalloutTone {
@@ -87,18 +76,25 @@ export default function CalloutBlock({
   references,
   index = 0,
 }: CalloutBlockProps) {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const tone = resolveCalloutTone(kind, label);
-  const color = TONE_COLOR[tone];
+  const toneColor =
+    tone === 'clave'
+      ? colors.text.accent
+      : tone === 'matiz'
+        ? colors.text.warning
+        : tone === 'ejemplo'
+          ? colors.text.success
+          : colors.text.danger;
   const title = (label && label.trim()) || TONE_LABEL[tone];
 
   const tint = useMemo(
-    () => hexToRgba(color, isDark ? 0.2 : 0.14),
-    [color, isDark]
+    () => hexToRgba(toneColor, isDark ? 0.2 : 0.1),
+    [toneColor, isDark]
   );
   const border = useMemo(
-    () => hexToRgba(color, isDark ? 0.42 : 0.35),
-    [color, isDark]
+    () => hexToRgba(toneColor, isDark ? 0.42 : 0.22),
+    [toneColor, isDark]
   );
 
   return (
@@ -113,14 +109,17 @@ export default function CalloutBlock({
           contentClassName="px-4 py-3.5"
         >
           <Text
-            style={[styles.title, { color }]}
+            style={[styles.title, { color: toneColor }]}
             maxFontSizeMultiplier={1.35}
             accessibilityRole="header"
           >
             {title}
           </Text>
           {text.trim() ? (
-            <Text style={styles.body} maxFontSizeMultiplier={1.35}>
+            <Text
+              style={[styles.body, { color: colors.text.body }]}
+              maxFontSizeMultiplier={1.35}
+            >
               {text}
             </Text>
           ) : null}
@@ -140,23 +139,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     // Soft depth like glass-sonner (no left rail).
-    shadowColor: '#000',
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    ...shadow.glassCallout,
   },
   title: {
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-    color: TEXT_PRIMARY,
+    ...typography('labelSemiboldTrack'),
     marginBottom: 6,
   },
   body: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: TEXT_BODY,
-    opacity: 0.78,
+    ...typography('title'),
+    opacity: 0.92,
   },
 });

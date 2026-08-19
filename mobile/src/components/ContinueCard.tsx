@@ -1,36 +1,39 @@
 import React, { forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { ACCENT } from '@shared/uiTokens';
-import { getEntrySourceLabel } from '@shared/categories';
 import { useTheme } from '../context/ThemeContext';
+import { useTypography } from '../context/TypographyContext';
+import { getEntrySourceLabel } from '@shared/categories';
+import { resolveContinueProgress } from '@shared/homeFeed';
 import { CONTINUE_CARD_RADIUS } from '../logic/continueTransition';
 import { resolveEntrySourceIcon } from '../logic/entrySourceIcon';
 import type { HistoryEntry } from '../logic/history';
+import { type } from '@shared/design-tokens';
 
 type ContinueCardProps = {
   entry: HistoryEntry;
   onPress: () => void;
 };
 
-/** Single title line, vertically centered in the row. */
-const TEXT_BLOCK_HEIGHT = 34;
+/** Two-line semantic resume row. */
+const TEXT_BLOCK_HEIGHT = 56;
 /** Square well matched to the text row. */
 const ICON_WELL = TEXT_BLOCK_HEIGHT;
-const ICON_SIZE = 20;
-/** Compact Surface padding around the text/icon row. */
-const TILE_PAD_V = 8;
-const TILE_PAD_H = 12;
+const ICON_SIZE = 18;
+/** Compact vertical padding around the text/icon row. */
+const TILE_PAD_V = 6;
 const TILE_MIN_HEIGHT = TEXT_BLOCK_HEIGHT + TILE_PAD_V * 2;
 
 const ContinueCard = forwardRef<View, ContinueCardProps>(function ContinueCard(
   { entry, onPress },
   ref
 ) {
-  const { isDark } = useTheme();
+  const { colors } = useTheme();
+  const { font } = useTypography();
   const Icon = resolveEntrySourceIcon(entry);
   const sourceLabel = getEntrySourceLabel(entry);
-  const wellBg = isDark ? 'rgba(139,143,245,0.14)' : 'rgba(139,143,245,0.12)';
+  const progress = resolveContinueProgress(entry);
+  const wellBg = colors.background.accentSoft;
 
   return (
     <View ref={ref} collapsable={false} style={styles.wrap}>
@@ -41,7 +44,7 @@ const ContinueCard = forwardRef<View, ContinueCardProps>(function ContinueCard(
             onPress();
           }}
           accessibilityRole="button"
-          accessibilityLabel={`Continuar ${entry.title} · ${sourceLabel}`}
+          accessibilityLabel={`${progress.ctaLabel}: ${entry.title}. ${progress.metaLabel}. ${progress.pointLabel}`}
           style={styles.press}
           className="active:opacity-80"
         >
@@ -50,16 +53,36 @@ const ContinueCard = forwardRef<View, ContinueCardProps>(function ContinueCard(
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants"
           >
-            <Icon size={ICON_SIZE} color={ACCENT} strokeWidth={1.6} />
+            <Icon size={ICON_SIZE} color={colors.action.primary} strokeWidth={1.6} />
           </View>
-          <Text
-            className="text-[16px] font-bold text-primary"
-            style={styles.title}
-            maxFontSizeMultiplier={1.3}
-            numberOfLines={1}
-          >
-            {entry.title}
-          </Text>
+          <View style={styles.textBlock}>
+            <View style={styles.titleRow}>
+              <Text
+                className="text-title font-bold text-primary"
+                style={[styles.title, { fontFamily: font.family }]}
+                maxFontSizeMultiplier={1.5}
+                numberOfLines={1}
+              >
+                {entry.title}
+              </Text>
+              <Text
+                className="text-meta font-semibold text-accent"
+                style={{ fontFamily: font.family }}
+                maxFontSizeMultiplier={1.5}
+                numberOfLines={1}
+              >
+                {progress.ctaLabel}
+              </Text>
+            </View>
+            <Text
+              className="mt-1 text-caption leading-4 text-secondary"
+              style={{ fontFamily: font.family }}
+              maxFontSizeMultiplier={1.5}
+              numberOfLines={1}
+            >
+              {progress.metaLabel}
+            </Text>
+          </View>
         </Pressable>
       </View>
     </View>
@@ -77,7 +100,8 @@ const styles = StyleSheet.create({
     minHeight: TILE_MIN_HEIGHT,
     borderRadius: CONTINUE_CARD_RADIUS,
     paddingVertical: TILE_PAD_V,
-    paddingHorizontal: TILE_PAD_H,
+    // Flush with the composer glass left/right — same ComposerDock column, no extra inset.
+    paddingHorizontal: 0,
     backgroundColor: 'transparent',
   },
   press: {
@@ -98,6 +122,17 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     minWidth: 0,
-    lineHeight: 20,
+    lineHeight: type.continueTitle.lineHeight,
+  },
+  textBlock: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
   },
 });

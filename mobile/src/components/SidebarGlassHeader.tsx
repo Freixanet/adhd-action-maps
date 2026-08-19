@@ -12,8 +12,9 @@ import { Search, X } from '../icons';
 import EngravedNucleoMark, { ENGRAVED_NUCLEO_COMPACT_FONT_SIZE } from './EngravedNucleoMark';
 import AppIcon from './AppIcon';
 import FloatingGlassButton from './FloatingGlassButton';
-import { TEXT_PRIMARY, TEXT_SECONDARY } from '@shared/uiTokens';
+import { useThemeColors } from '../context/ThemeContext';
 import { SCREEN_WIDTH, SIDEBAR_EDGE_INSET, SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
+import { type, color } from '@shared/design-tokens';
 
 /** Content row width at full-screen search (edge inset × 2). */
 const FULL_PILL_WIDTH = SCREEN_WIDTH - SIDEBAR_EDGE_INSET * 2;
@@ -122,10 +123,11 @@ export function SidebarBrandHeader({
   searchProgress,
   searchFieldFocusToken = 0,
 }: SidebarBrandHeaderProps) {
+  const colors = useThemeColors();
   const searchRef = useRef<TextInput>(null);
-  const iconColor = TEXT_SECONDARY;
-  const placeholderColor = TEXT_SECONDARY;
-  const inputColor = TEXT_PRIMARY;
+  const iconColor = colors.icon.muted;
+  const placeholderColor = colors.text.secondary;
+  const inputColor = colors.text.primary;
 
   useEffect(() => {
     if (!searchFieldFocusToken) return;
@@ -156,8 +158,8 @@ export function SidebarBrandHeader({
     opacity: interpolate(searchProgress.value, [0.2, 0.55], [0, 1], Extrapolation.CLAMP),
   }));
 
-  const searchSurfaceBg = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(120,120,128,0.12)';
-  const searchSurfaceBorder = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)';
+  const searchSurfaceBg = isDark ? color.background.whiteFade09 : color.background.sidebarSearchLight;
+  const searchSurfaceBorder = isDark ? color.background.whiteFade12 : color.background.blackFade06;
 
   const searchRow = (
     <View style={[styles.brandRow, { height: SIDEBAR_HEADER_BUTTON_SIZE }]}>
@@ -173,7 +175,7 @@ export function SidebarBrandHeader({
             accessibilityLabel="Ir a inicio"
           >
             <View style={[styles.brandMark, { height: SIDEBAR_HEADER_BUTTON_SIZE }]}>
-              <AppIcon size={28} color={TEXT_PRIMARY} />
+              <AppIcon size={28} color={colors.icon.primary} />
               <EngravedNucleoMark
                 fontSize={ENGRAVED_NUCLEO_COMPACT_FONT_SIZE}
                 tone="sidebar"
@@ -221,10 +223,10 @@ export function SidebarBrandHeader({
       >
         <View style={styles.iconSwap}>
           <Animated.View style={[styles.iconLayer, searchIconStyle]}>
-            <Search size={17} color={iconColor} strokeWidth={2.25} />
+            <Search size={20} color={iconColor} strokeWidth={2.25} />
           </Animated.View>
           <Animated.View style={[styles.iconLayer, closeIconStyle]}>
-            <X size={17} color={iconColor} strokeWidth={2.25} />
+            <X size={20} color={iconColor} strokeWidth={2.25} />
           </Animated.View>
         </View>
       </FloatingGlassButton>
@@ -337,7 +339,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: type.body.fontSize,
     paddingVertical: 0,
     height: SIDEBAR_HEADER_BUTTON_SIZE,
   },

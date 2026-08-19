@@ -1,63 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { configureStorage } from '@shared/storage';
+import { configureStorage, type DurableKeyValueStorage } from '@shared/storage';
+import { createAsyncStorageDurableAdapter } from '@shared/durableKvAdapter';
 
-class LocalStorageShim {
-  private cache: Record<string, string> = {};
-  private initialized = false;
+const adapter = createAsyncStorageDurableAdapter(AsyncStorage);
 
-  async init(): Promise<void> {
-    if (this.initialized) return;
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const pairs = await AsyncStorage.multiGet(keys);
-      for (const [key, value] of pairs) {
-        if (value !== null) {
-          this.cache[key] = value;
-        }
-      }
-    } catch (error) {
-      console.error('Error loading AsyncStorage into localStorage shim', error);
-    }
-    this.initialized = true;
-  }
-
-  getItem(key: string): string | null {
-    return key in this.cache ? this.cache[key] : null;
-  }
-
-  setItem(key: string, value: string): void {
-    const stringValue = String(value);
-    this.cache[key] = stringValue;
-    AsyncStorage.setItem(key, stringValue).catch((error) => {
-      console.error(`Error saving key ${key} to AsyncStorage`, error);
-    });
-  }
-
-  removeItem(key: string): void {
-    delete this.cache[key];
-    AsyncStorage.removeItem(key).catch((error) => {
-      console.error(`Error removing key ${key} from AsyncStorage`, error);
-    });
-  }
-
-  clear(): void {
-    this.cache = {};
-    AsyncStorage.clear().catch((error) => {
-      console.error('Error clearing AsyncStorage', error);
-    });
-  }
-
-  get length(): number {
-    return Object.keys(this.cache).length;
-  }
-
-  key(index: number): string | null {
-    const keys = Object.keys(this.cache);
-    return index >= 0 && index < keys.length ? keys[index] : null;
-  }
-}
-
-export const localStorageShim = new LocalStorageShim();
+/** Back-compat export — same adapter instance used by bootstrapStorage. */
+export const localStorageShim = adapter as DurableKeyValueStorage & {
+  init(): Promise<void>;
+  length: number;
+  key(index: number): string | null;
+  clear(): void;
+};
 
 declare global {
   // eslint-disable-next-line no-var
@@ -72,9 +25,19 @@ export async function bootstrapStorage(): Promise<void> {
         : null;
 
     if (webStorage) {
-      // Probe read/write — Cursor/browser embeds can throw SecurityError.
       webStorage.getItem('nucleo-app-variant');
-      configureStorage(webStorage);
+      const durableWeb: DurableKeyValueStorage = {
+        getItem: (k) => webStorage.getItem(k),
+        setItem: (k, v) => webStorage.setItem(k, v),
+        removeItem: (k) => webStorage.removeItem(k),
+        setItemDurable: async (k, v) => {
+          webStorage.setItem(k, v);
+        },
+        removeItemDurable: async (k) => {
+          webStorage.removeItem(k);
+        },
+      };
+      configureStorage(durableWeb);
       if (!webStorage.getItem('nucleo-app-variant')) {
         webStorage.setItem('nucleo-app-variant', 'comprension');
       }
@@ -84,15 +47,15 @@ export async function bootstrapStorage(): Promise<void> {
     console.warn('Browser localStorage unavailable; using in-memory shim.', error);
   }
 
-  await localStorageShim.init();
-  configureStorage(localStorageShim);
+  await adapter.init();
+  configureStorage(adapter);
   try {
-    globalThis.localStorage = localStorageShim as unknown as Storage;
+    globalThis.localStorage = adapter as unknown as Storage;
   } catch {
     // Some runtimes expose a read-only Window.localStorage getter.
   }
 
-  if (!localStorageShim.getItem('nucleo-app-variant')) {
-    localStorageShim.setItem('nucleo-app-variant', 'comprension');
+  if (!adapter.getItem('nucleo-app-variant')) {
+    await adapter.setItemDurable('nucleo-app-variant', 'comprension');
   }
 }

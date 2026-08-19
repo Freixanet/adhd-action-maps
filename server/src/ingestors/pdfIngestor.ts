@@ -1,129 +1,105 @@
-import type { IngestResult, SourceChunk } from "../../../shared/types/chunk";
-import { buildChapterMeta, chunkText, md5Short, rawHashOf } from "./chunkUtils";
-import { IngestError, type Ingestor, type IngestorInput } from "./types";
+/**
+ * S08 PDF native ingestor — validation + page-native extraction + honest coverage.
+ * Does not fall back to OCR/Gemini. Never invents bbox.
+ */
 
-type PdfTextResult = {
-  text?: string;
-  total?: number;
-  pages?: Array<{ text?: string; num?: number }>;
-};
+import type { IngestResult } from '../../../shared/types/chunk';
+import { asSourceChunks, segmentPdfPages } from '../../../shared/pdf/segmentPdf';
+import { buildChapterMeta } from './chunkUtils';
+import { extractPdfNative, pdfErrorHttpStatus } from './pdfExtractNative';
+import { pdfInspectorMetadataStrings } from './pdfInspectorAdapter';
+import { IngestError, type Ingestor, type IngestorInput } from './types';
 
-type PdfInfoResult = {
-  info?: { Title?: string };
-  total?: number;
-};
-
-async function extractPdf(buffer: Buffer): Promise<{
-  text: string;
-  pages: string[];
-  title?: string;
-}> {
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: buffer });
-  try {
-    const textResult = (await parser.getText()) as PdfTextResult;
-    let info: PdfInfoResult | undefined;
-    try {
-      info = (await parser.getInfo()) as PdfInfoResult;
-    } catch {
-      info = undefined;
-    }
-
-    const pageTexts =
-      Array.isArray(textResult.pages) && textResult.pages.length
-        ? textResult.pages.map((p) => (p.text || "").trim())
-        : (textResult.text || "")
-            .split("\f")
-            .map((p) => p.trim());
-
-    const text =
-      pageTexts.filter(Boolean).join("\n\f\n").trim() ||
-      (textResult.text || "").trim();
-    return {
-      text,
-      pages: pageTexts.length ? pageTexts : text ? [text] : [],
-      title: info?.info?.Title,
-    };
-  } finally {
-    await parser.destroy().catch(() => undefined);
-  }
+function toIngestError(
+  code: string,
+  message: string
+): IngestError {
+  const mapped =
+    code === 'PDF_TOO_LARGE' || code === 'PDF_TOO_MANY_PAGES'
+      ? ('FILE_TOO_LARGE' as const)
+      : ('INGEST_FAILED' as const);
+  return new IngestError(message, mapped, pdfErrorHttpStatus(code as never));
 }
 
 /**
- * Local PDF text extraction with page hints when form-feed markers exist.
- * Legacy Gemini multimodal path remains for uploads when this path is unused.
+ * Local PDF text extraction with real page anchors (1…N).
+ * Scanned / empty / encrypted / corrupt → typed failure (no multimodal pretend success).
  */
 export const pdfIngestor: Ingestor = {
   canHandle(input) {
-    const mime = (input.mime || "").toLowerCase();
-    const ext = (input.ext || "").toLowerCase();
-    return mime === "application/pdf" || ext === "pdf";
+    const mime = (input.mime || '').toLowerCase();
+    const ext = (input.ext || '').toLowerCase();
+    return mime === 'application/pdf' || mime === 'application/x-pdf' || ext === 'pdf';
   },
 
   async ingest(input: IngestorInput): Promise<IngestResult> {
     if (!input.buffer?.length) {
-      throw new IngestError("PDF vacío.", "INGEST_FAILED", 422);
+      throw toIngestError('PDF_EMPTY', 'El archivo PDF está vacío.');
     }
 
-    let extracted: { text: string; pages: string[]; title?: string };
-    try {
-      extracted = await extractPdf(input.buffer);
-    } catch (err) {
-      throw new IngestError(
-        err instanceof Error ? err.message : "No se pudo extraer texto del PDF.",
-        "INGEST_FAILED",
-        422
+    const extracted = await extractPdfNative({
+      buffer: input.buffer,
+      declaredMime: input.mime,
+      fileName: input.fileName,
+      signal: input.signal,
+    });
+
+    if (extracted.ok === false) {
+      // Attach coverage summary in message when present; caller must not Gemini-fallback.
+      const err = toIngestError(extracted.code, extracted.message);
+      (err as IngestError & { pdfCode?: string; pdfCoverage?: unknown }).pdfCode =
+        extracted.code;
+      (err as IngestError & { pdfCoverage?: unknown }).pdfCoverage = extracted.coverage;
+      throw err;
+    }
+
+    const artifact = segmentPdfPages({
+      pages: extracted.pages,
+      rawHash: extracted.rawHash,
+      coverage: extracted.coverage,
+      title: extracted.title,
+      extractionDigest: extracted.extractionDigest,
+    });
+
+    if (!artifact.segments.length) {
+      throw toIngestError(
+        'PDF_INSUFFICIENT_TEXT',
+        'No quedó texto verificable tras segmentar el PDF.'
       );
     }
 
-    if (!extracted.text) {
-      throw new IngestError("No se pudo extraer texto del PDF.", "INGEST_FAILED", 422);
-    }
-
-    const pages = extracted.pages.filter(Boolean).length
-      ? extracted.pages
-      : [extracted.text];
-    const chunks: SourceChunk[] = [];
-    for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
-      const pageText = pages[pageIndex]!.trim();
-      if (!pageText) continue;
-      const pageChunks = chunkText(pageText, {
-        idPrefix: `pdf-p${pageIndex}`,
-        locFor: () => ({ page: pageIndex + 1 }),
-      });
-      for (const chunk of pageChunks) {
-        const hash = md5Short(`pdf:${pageIndex}:${chunk.loc.start}:${chunk.text}`);
-        chunks.push({
-          ...chunk,
-          id: `chunk_${hash}`,
-          hash,
-          loc: { ...chunk.loc, page: pageIndex + 1 },
-        });
-      }
-    }
-
-    if (!chunks.length) {
-      throw new IngestError("No se pudo extraer texto del PDF.", "INGEST_FAILED", 422);
-    }
+    const chunks = asSourceChunks(artifact.segments);
+    const pagesWithText = extracted.pages.filter((p) => p.hasText);
 
     return {
       chunks,
       chapters:
-        pages.filter(Boolean).length > 1
-          ? pages.map((_, i) =>
+        extracted.pages.length > 1
+          ? extracted.pages.map((p, i) =>
               buildChapterMeta(
-                `Página ${i + 1}`,
+                `Página ${p.page}`,
                 i,
-                chunks.filter((c) => c.loc.page === i + 1)
+                chunks.filter((c) => c.loc.page === p.page)
               )
             )
           : undefined,
       metadata: {
-        type: "pdf",
+        type: 'pdf',
         title:
-          extracted.title || input.fileName?.replace(/\.pdf$/i, "") || undefined,
+          extracted.title ||
+          input.fileName?.replace(/\.pdf$/i, '') ||
+          undefined,
+        pdfCoverage: extracted.coverage.status,
+        pdfPageCount: String(extracted.pages.length),
+        pdfTextualPages: String(pagesWithText.length),
+        pdfExtractionDigest: extracted.extractionDigest,
+        pdfLimitations: extracted.coverage.limitations.join(','),
+        pdfCoverageSummary: extracted.coverage.summary,
+        pdfSchemaVersion: extracted.schemaVersion,
+        pdfExtractorVersion: extracted.extractorVersion,
+        ...pdfInspectorMetadataStrings(extracted.inspector),
       },
-      rawHash: rawHashOf(input.buffer),
+      rawHash: extracted.rawHash,
     };
   },
 };

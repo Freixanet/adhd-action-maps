@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { color, radius } from '@shared/design-tokens';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   Pressable,
@@ -15,18 +16,18 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { Surface } from 'heroui-native';
+import type { HistoryEntry } from '@shared/history';
 import { RADII } from '@shared/uiTokens';
 import CompletionGlassButton from './CompletionGlassButton';
 import GenerationPhaseTrail from './GenerationPhaseTrail';
-import NucleoAssistantAvatar from './NucleoAssistantAvatar';
+import NucleoCover from './NucleoCover';
 import SessionErrorBanner from './SessionErrorBanner';
 import { stepHaptic, useAppSession } from '../context/AppSessionContext';
 import { useTheme } from '../context/ThemeContext';
 import { useGenerationSoftStage } from '../hooks/useGenerationSoftStage';
 import { useTypewriter } from '../hooks/useTypewriter';
 import {
-  pickReadyAssistantMessage,
+  pickReadyAssistantMessageFromMap,
   resolveGenerationPhaseIndex,
 } from '../logic/generationPhaseTrail';
 import { restoreComposerInputFocus } from '../logic/composerNativeMenuSession';
@@ -34,35 +35,60 @@ const ACK_DELAY_MS = 180;
 const PHASES_AFTER_ACK_MS = 320;
 const READY_CARD_DELAY_MS = 280;
 const REDUCED_FADE_MS = 150;
-const AVATAR_SIZE = 30;
-/** Matches assistant body text `leading-6` (24). */
-const ASSISTANT_LINE_HEIGHT = 24;
-/** Compact placeholder card above “Abrir Núcleo” (ContinueCard aesthetic). */
-const READY_PREVIEW_CARD_MIN_HEIGHT = 96;
+/** Cover preview above “Abrir Núcleo” — 16:9 placeholder. */
+const READY_COVER_ASPECT = 16 / 9;
+
+function UserChatBubble({
+  text,
+  maxWidth,
+  backgroundColor,
+  entering,
+}: {
+  text: string;
+  maxWidth: number;
+  backgroundColor: string;
+  entering?: React.ComponentProps<typeof Animated.View>['entering'];
+}) {
+  return (
+    <Animated.View entering={entering} className="w-full items-end">
+      <View
+        style={{
+          maxWidth,
+          backgroundColor,
+          borderRadius: radius.bubble,
+          borderBottomRightRadius: 6,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+        }}
+      >
+        <Text className="text-input leading-6 text-primary" maxFontSizeMultiplier={1.35}>
+          {text}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+}
 
 function AssistantTextRow({
   children,
   entering,
+  flushTop = false,
 }: {
   children: React.ReactNode;
   entering?: React.ComponentProps<typeof Animated.View>['entering'];
+  /** First content on the page — no top margin so it sits at the top edge. */
+  flushTop?: boolean;
 }) {
-  // Center the avatar on the first text line (not the top of the text box).
-  const avatarOffsetY = (ASSISTANT_LINE_HEIGHT - AVATAR_SIZE) / 2;
-
   return (
-    <Animated.View entering={entering} className="mt-4 w-full flex-row items-start gap-2.5">
-      <View style={{ marginTop: avatarOffsetY }}>
-        <NucleoAssistantAvatar size={AVATAR_SIZE} />
-      </View>
-      <View className="min-w-0 flex-1">{children}</View>
+    <Animated.View entering={entering} className={flushTop ? 'w-full' : 'mt-4 w-full'}>
+      {children}
     </Animated.View>
   );
 }
 
 export default function InlineGenerationThread() {
   const session = useAppSession();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const bubbleMaxWidth = windowWidth * 0.75;
 
@@ -72,6 +98,7 @@ export default function InlineGenerationThread() {
   const [readyMessageActive, setReadyMessageActive] = useState(false);
   const [openCardVisible, setOpenCardVisible] = useState(false);
   const [askAnswerActive, setAskAnswerActive] = useState(false);
+  const [coverWidth, setCoverWidth] = useState(0);
 
   const readyPreviewCardRef = useRef<View>(null);
   const hapticFiredRef = useRef(false);
@@ -99,6 +126,33 @@ export default function InlineGenerationThread() {
 
   const title = session.data?.title?.trim() || session.data?.coreIdea?.trim() || 'Tu Núcleo';
 
+  const coverEntry = useMemo((): HistoryEntry | null => {
+    if (!session.data) return null;
+    const dataTitle = session.data.title;
+    const existing =
+      session.historyStore.entries.find(
+        (entry) => entry.session?.data?.title === dataTitle
+      ) ??
+      session.historyStore.entries.find(
+        (entry) => entry.id === session.historyStore.activeId
+      );
+    if (existing) return existing;
+    return {
+      id: 'inline-ready-cover',
+      title: session.data.title || 'Núcleo',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      sourceType: 'text',
+      session: {
+        data: session.data,
+        currentStep: 0,
+      },
+    };
+  }, [session.data, session.historyStore.activeId, session.historyStore.entries]);
+
+  const coverHeight =
+    coverWidth > 0 ? Math.round(coverWidth / READY_COVER_ASPECT) : 0;
+
   const typewriterTickMs = isPreviewGen ? 32 : 11;
 
   const ackFull = snapshot?.conversationalMessage ?? '';
@@ -109,7 +163,7 @@ export default function InlineGenerationThread() {
     charsPerTick: 1,
   });
 
-  const readyFull = pickReadyAssistantMessage(session.data?.title ?? session.data?.coreIdea);
+  const readyFull = pickReadyAssistantMessageFromMap(session.data);
   const showReadyMessage = readyMessageActive && status === 'ready' && !isAsk;
   const { displayed: readyDisplayed, done: readyDone } = useTypewriter(
     readyFull,
@@ -270,36 +324,31 @@ export default function InlineGenerationThread() {
 
   if (!snapshot || status === 'idle') return null;
 
-  const userMessage = snapshot.text?.trim() || '';
-  const userBubbleBg = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
+  const userMessage = snapshot.text?.trim() || snapshot.pastedText?.trim() || '';
+  const userBubbleBg = isDark ? color.background.whiteFade10 : color.background.blackFade06;
+  const userBubble = userMessage ? (
+    <UserChatBubble
+      text={userMessage}
+      maxWidth={bubbleMaxWidth}
+      backgroundColor={userBubbleBg}
+      entering={reduceMotion ? undefined : FadeIn.duration(200)}
+    />
+  ) : null;
+
+  if (status === 'cancelled') {
+    return <View className="w-full flex-1">{userBubble}</View>;
+  }
 
   if (isAsk) {
     return (
-      <View className="w-full flex-1 px-1">
-        {userMessage ? (
-          <Animated.View
-            entering={reduceMotion ? undefined : FadeIn.duration(200)}
-            className="mt-4 w-full items-end"
-          >
-            <View
-              style={{
-                maxWidth: bubbleMaxWidth,
-                backgroundColor: userBubbleBg,
-                borderRadius: 18,
-                borderBottomRightRadius: 6,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-              }}
-            >
-              <Text className="text-[17px] leading-6 text-primary" maxFontSizeMultiplier={1.35}>
-                {userMessage}
-              </Text>
-            </View>
-          </Animated.View>
-        ) : null}
+      <View className="w-full flex-1">
+        {userBubble}
 
         {status === 'error' ? (
-          <AssistantTextRow entering={reduceMotion ? undefined : FadeIn.duration(200)}>
+          <AssistantTextRow
+            flushTop={!userMessage}
+            entering={reduceMotion ? undefined : FadeIn.duration(200)}
+          >
             <View className="w-full">
               <SessionErrorBanner inline className="mb-0" />
             </View>
@@ -307,18 +356,21 @@ export default function InlineGenerationThread() {
         ) : null}
 
         {(status === 'ready' || status === 'generating') && askAnswerFull ? (
-          <AssistantTextRow entering={reduceMotion ? undefined : FadeIn.duration(220)}>
+          <AssistantTextRow
+            flushTop={!userMessage}
+            entering={reduceMotion ? undefined : FadeIn.duration(220)}
+          >
             <View className="w-full">
               <View className="self-start rounded-full bg-white/8 px-2.5 py-1 mb-2">
-                <Text className="text-[11px] font-semibold uppercase tracking-widest text-secondary">
+                <Text className="text-meta font-semibold uppercase tracking-widest text-secondary">
                   Conocimiento general
                 </Text>
               </View>
-              <Text className="text-[17px] leading-6 text-primary" maxFontSizeMultiplier={1.35}>
+              <Text className="text-input leading-6 text-primary" maxFontSizeMultiplier={1.35}>
                 {askDisplayed}
               </Text>
               {status === 'ready' && session.inlineAskDisclaimer ? (
-                <Text className="mt-3 text-[14px] leading-5 text-secondary" maxFontSizeMultiplier={1.3}>
+                <Text className="mt-3 text-callout leading-5 text-secondary" maxFontSizeMultiplier={1.3}>
                   {session.inlineAskDisclaimer}
                 </Text>
               ) : null}
@@ -333,7 +385,7 @@ export default function InlineGenerationThread() {
                   accessibilityLabel={session.inlineAskCtaLabel}
                   className="mt-3 self-start rounded-full border border-white/12 bg-white/6 px-3 py-2 active:opacity-80"
                 >
-                  <Text className="text-[14px] font-medium text-body">
+                  <Text className="text-callout font-medium text-body">
                     {session.inlineAskCtaLabel}
                   </Text>
                 </Pressable>
@@ -343,8 +395,11 @@ export default function InlineGenerationThread() {
         ) : null}
 
         {status === 'generating' && !askAnswerFull ? (
-          <AssistantTextRow entering={reduceMotion ? undefined : FadeIn.duration(220)}>
-            <Text className="text-[17px] leading-6 text-secondary" maxFontSizeMultiplier={1.35}>
+          <AssistantTextRow
+            flushTop={!userMessage}
+            entering={reduceMotion ? undefined : FadeIn.duration(220)}
+          >
+            <Text className="text-input leading-6 text-secondary" maxFontSizeMultiplier={1.35}>
               …
             </Text>
           </AssistantTextRow>
@@ -354,22 +409,23 @@ export default function InlineGenerationThread() {
   }
 
   return (
-    <View className="w-full flex-1 px-1">
+    <View className="w-full flex-1">
       {/* Single assistant message slot — ready replaces ack; never both. */}
-      {(ackActive || showReadyMessage) && status !== 'error' ? (
+      {(ackActive || showReadyMessage) && status !== 'error' && status !== 'cancelled' ? (
         <AssistantTextRow
           key={showReadyMessage ? 'ready' : 'ack'}
+          flushTop
           entering={reduceMotion ? undefined : FadeIn.duration(220)}
         >
-          <Text className="text-[17px] leading-6 text-primary" maxFontSizeMultiplier={1.35}>
+          <Text className="text-input leading-6 text-primary" maxFontSizeMultiplier={1.35}>
             {showReadyMessage ? readyDisplayed : ackDisplayed}
           </Text>
         </AssistantTextRow>
       ) : null}
 
       {ackActive && status === 'error' ? (
-        <AssistantTextRow entering={reduceMotion ? undefined : FadeIn.duration(200)}>
-          <Text className="text-[17px] leading-6 text-primary" maxFontSizeMultiplier={1.35}>
+        <AssistantTextRow flushTop entering={reduceMotion ? undefined : FadeIn.duration(200)}>
+          <Text className="text-input leading-6 text-primary" maxFontSizeMultiplier={1.35}>
             {ackDisplayed}
           </Text>
           <View className="mt-3 w-full">
@@ -378,8 +434,20 @@ export default function InlineGenerationThread() {
         </AssistantTextRow>
       ) : null}
 
+      {status === 'ready' && session.sourceSyncPending ? (
+        <View className="mt-3 w-full">
+          <SessionErrorBanner inline className="mb-0" />
+        </View>
+      ) : null}
+
+      {status === 'generating' && session.sourceSyncPending && session.error ? (
+        <View className="mt-3 w-full">
+          <SessionErrorBanner inline className="mb-0" />
+        </View>
+      ) : null}
+
       {phasesVisible && status !== 'error' ? (
-        <Animated.View style={phasesStyle} className="mt-6 w-full pl-[40px]">
+        <Animated.View style={phasesStyle} className="mt-6 w-full">
           <GenerationPhaseTrail
             activeIndex={phaseIndex}
             reduceMotion={reduceMotion}
@@ -389,18 +457,35 @@ export default function InlineGenerationThread() {
       ) : null}
 
       {openCardVisible && status === 'ready' ? (
-        <View className="mt-8 w-full items-center pb-6" style={{ paddingLeft: AVATAR_SIZE + 10 }}>
+        <View className="mt-8 w-full items-center pb-6">
           <Animated.View style={[cardStyle, { width: '100%' }]}>
-            <View ref={readyPreviewCardRef} collapsable={false} style={styles.readyPreviewWrap}>
-              <Surface
-                variant="secondary"
-                animation="disable-all"
-                className="w-full overflow-hidden"
-                style={styles.readyPreviewShell}
+            <View
+              ref={readyPreviewCardRef}
+              collapsable={false}
+              style={styles.readyPreviewWrap}
+              onLayout={(event) => {
+                const next = Math.round(event.nativeEvent.layout.width);
+                if (next > 0 && next !== coverWidth) setCoverWidth(next);
+              }}
+            >
+              <View
+                style={[
+                  styles.readyPreviewShell,
+                  {
+                    backgroundColor: colors.background.accentSoft,
+                    height: coverHeight || undefined,
+                    minHeight: coverHeight || 160,
+                  },
+                ]}
               >
-                {/* Placeholder — content TBD */}
-                <View style={styles.readyPreviewBody} />
-              </Surface>
+                {coverEntry && coverWidth > 0 && coverHeight > 0 ? (
+                  <NucleoCover
+                    entry={coverEntry}
+                    width={coverWidth}
+                    height={coverHeight}
+                  />
+                ) : null}
+              </View>
             </View>
             <View className="mt-4 w-full">
               <CompletionGlassButton
@@ -424,9 +509,6 @@ const styles = StyleSheet.create({
   readyPreviewShell: {
     width: '100%',
     borderRadius: RADII.lg,
-    minHeight: READY_PREVIEW_CARD_MIN_HEIGHT,
-  },
-  readyPreviewBody: {
-    minHeight: READY_PREVIEW_CARD_MIN_HEIGHT,
+    overflow: 'hidden',
   },
 });

@@ -9,6 +9,7 @@ import {
   vec,
 } from '@shopify/react-native-skia';
 import { useTheme } from '../context/ThemeContext';
+import { type, engraved } from '@shared/design-tokens';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -31,23 +32,24 @@ export type EngravedNucleoTone = 'hero' | 'sidebar';
 function paletteForTheme(isDark: boolean): InsetPalette {
   if (isDark) {
     return {
-      gradient: ['#1e1e1e', '#2a2a2a', '#363636'],
-      innerShade: 'rgba(0, 0, 0, 0.32)',
-      innerHighlight: 'rgba(255, 255, 255, 0.16)',
+      gradient: engraved.metalDarkGradient as [string, string, string],
+      innerShade: engraved.innerShadeDark,
+      innerHighlight: engraved.innerHighlightDark,
     };
   }
   return {
-    gradient: ['#fbfbfb', '#fcfcfc', '#fefefe'],
-    innerShade: 'rgba(0, 0, 0, 0.07)',
-    innerHighlight: 'rgba(255, 255, 255, 0.72)',
+    gradient: engraved.metalLightGradient as [string, string, string],
+    innerShade: engraved.innerShadeLight,
+    innerHighlight: engraved.innerHighlightLight,
   };
 }
 
-function paletteForSidebar(): InsetPalette {
+function paletteForSidebar(isDark: boolean): InsetPalette {
+  const mid = isDark ? engraved.metalMidGradient[1] : engraved.metalLightGradient[1];
   return {
-    gradient: ['#e8e8e8', '#ffffff', '#f5f5f5'],
-    innerShade: 'rgba(0, 0, 0, 0.2)',
-    innerHighlight: 'rgba(255, 255, 255, 0.42)',
+    gradient: [engraved.metalMidGradient[0], mid, engraved.metalMidGradient[2]] as [string, string, string],
+    innerShade: engraved.innerShadeMid,
+    innerHighlight: engraved.innerHighlightMid,
   };
 }
 
@@ -107,7 +109,7 @@ function EngravedNucleoMark({
 }: EngravedNucleoMarkProps) {
   const { isDark } = useTheme();
   const palette =
-    tone === 'sidebar' ? paletteForSidebar() : paletteForTheme(isDark);
+    tone === 'sidebar' ? paletteForSidebar(isDark) : paletteForTheme(isDark);
   const { markHeight, letterGap, baselineY, scale } = useMemo(
     () => getMarkMetrics(fontSize, rowHeight),
     [fontSize, rowHeight]
@@ -120,7 +122,7 @@ function EngravedNucleoMark({
         : matchFont({
             fontFamily: Platform.select({ ios: 'Helvetica Neue', default: 'sans-serif' }),
             fontSize,
-            fontWeight: '200',
+            fontWeight: engraved.fontWeight as '200',
           }),
     [fontSize]
   );
@@ -155,8 +157,8 @@ function EngravedNucleoMark({
           style={{
             color: palette.gradient[1],
             fontSize,
-            fontWeight: '200',
-            letterSpacing: 0.6 * scale,
+            fontWeight: engraved.fontWeight as '200',
+            letterSpacing: engraved.letterSpacing * scale,
             lineHeight: fontSize * 1.1,
             fontFamily: Platform.select({
               ios: 'Helvetica Neue',

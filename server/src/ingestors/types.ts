@@ -8,6 +8,8 @@ export type IngestorInput = {
   url?: string;
   buffer?: Buffer;
   fileName?: string;
+  /** Optional cancel signal (S08 PDF extract and future long ingests). */
+  signal?: AbortSignal;
 };
 
 export class IngestError extends Error {

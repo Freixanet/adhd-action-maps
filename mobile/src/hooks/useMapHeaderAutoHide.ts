@@ -45,6 +45,7 @@ export function useMapHeaderAutoHide({
   const isGoingDown = useSharedValue(false);
   const mapMetaAnchorHeight = useSharedValue(0);
   const lastLoggedHeaderVisible = useSharedValue(true);
+  const compensatingFooterReveal = useSharedValue(false);
 
   const logScrollHeader = (scrollY: number, visible: boolean, threshold: number) => {
     debugTransitionLog('H4', 'useMapHeaderAutoHide:scroll', 'scroll header state', {
@@ -94,6 +95,19 @@ export function useMapHeaderAutoHide({
     onScroll: (event) => {
       const currentY = event.contentOffset.y;
       const maxScroll = Math.max(0, event.contentSize.height - event.layoutMeasurement.height);
+
+      if (compensatingFooterReveal.value) {
+        directionAnchorY.value = currentY;
+        isGoingDown.value = false;
+        lastScrollY.value = currentY;
+        if (scrollProgress) {
+          scrollProgress.value = maxScroll <= 0 ? 1 : Math.min(1, Math.max(0, currentY / maxScroll));
+        }
+        if (onScrollReport) {
+          runOnJS(onScrollReport)(currentY, event.contentSize.height);
+        }
+        return;
+      }
       // Without the map-meta anchor (Idea central has no title block), fall back to a
       // short scroll so the header gets out of the way early instead of at 120px.
       const threshold = mapMetaAnchorHeight.value > 0
@@ -157,10 +171,25 @@ export function useMapHeaderAutoHide({
     },
   });
 
+  const preserveBottomAfterFooterReveal = useCallback(
+    (footerHeight: number) => {
+      if (footerHeight <= 0) return;
+      compensatingFooterReveal.value = true;
+      const targetY = Math.max(0, lastScrollY.value + footerHeight);
+      scrollRef.current?.scrollTo({ y: targetY, animated: false });
+      headerVisible.value = true;
+      setTimeout(() => {
+        compensatingFooterReveal.value = false;
+      }, 180);
+    },
+    [compensatingFooterReveal, headerVisible, lastScrollY]
+  );
+
   return {
     scrollRef,
     headerVisible,
     handleMapMetaAnchorLayout,
     scrollHandler,
+    preserveBottomAfterFooterReveal,
   };
 }

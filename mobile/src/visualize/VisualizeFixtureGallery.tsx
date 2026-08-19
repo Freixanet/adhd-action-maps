@@ -8,8 +8,9 @@ import {
   FIXTURE_FLAT_TASKS,
   type PersistedVisualizationRun,
 } from '@shared/visualize';
-import { ACCENT, TEXT_BODY, TEXT_PRIMARY, TEXT_SECONDARY } from '@shared/uiTokens';
+import { ACCENT, TEXT_BODY, TEXT_PRIMARY, TEXT_SECONDARY, RADII } from '@shared/uiTokens';
 import VisualizeRunHost from './VisualizeRunHost';
+import { color, type, typography, radius } from '@shared/design-tokens';
 
 const CASES = [
   { id: 'causal', label: 'Causal chain', knowledge: FIXTURE_CAUSAL_KNOWLEDGE, tasks: FIXTURE_CAUSAL_TASKS },
@@ -76,13 +77,11 @@ const styles = StyleSheet.create({
   },
   heading: {
     color: TEXT_PRIMARY,
-    fontSize: 22,
-    fontWeight: '700',
+    ...typography('pageTitle'),
   },
   sub: {
     color: TEXT_SECONDARY,
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography('label'),
   },
   tabs: {
     flexDirection: 'row',
@@ -92,23 +91,22 @@ const styles = StyleSheet.create({
   tab: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: radius.nearPill,
+    backgroundColor: color.background.whiteFade06,
   },
   tabActive: {
-    backgroundColor: 'rgba(139,143,245,0.22)',
+    backgroundColor: color.background.accentFade22,
   },
   tabLabel: {
     color: TEXT_BODY,
-    fontSize: 13,
-    fontWeight: '600',
+    ...typography('labelSemibold'),
   },
   tabLabelActive: {
     color: ACCENT,
   },
   meta: {
     color: TEXT_SECONDARY,
-    fontSize: 12,
+    fontSize: type.caption.fontSize,
     marginBottom: 4,
   },
 });

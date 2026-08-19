@@ -2,9 +2,10 @@ import { FlatList, ScrollView, SectionList } from 'react-native';
 
 /** Hide system scrollbars app-wide (ScrollView / lists still scroll). */
 export function hideScrollIndicatorsGlobally() {
-  const patch = (Component: { defaultProps?: Record<string, unknown> }) => {
+  const patch = (Component: { defaultProps?: Record<string, unknown> } | null | undefined) => {
+    if (!Component) return;
     Component.defaultProps = {
-      ...Component.defaultProps,
+      ...(Component.defaultProps ?? {}),
       showsVerticalScrollIndicator: false,
       showsHorizontalScrollIndicator: false,
     };

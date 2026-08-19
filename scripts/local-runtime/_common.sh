@@ -5,9 +5,9 @@
 LOCAL_RUNTIME_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${LOCAL_RUNTIME_DIR}/../.." && pwd)"
 
-# Preview tree keeps mobile/ios for the installed Expo dev client; canonical has no ios/.
-# start-nucleo-local-runtime.sh rsyncs JS/shared/server from ROOT → PREVIEW before Metro.
+# Legacy Antigravity preview checkout (optional mirror only). Metro MUST serve ROOT/mobile.
 PREVIEW_ROOT="/Users/mfreixanet/antigravity/Untitled-mobile-preview"
+METRO_MOBILE_ROOT="${ROOT}/mobile"
 
 RUNTIME_DIR="${ROOT}/.local-runtime"
 LOG_DIR="${RUNTIME_DIR}/logs"
@@ -23,6 +23,35 @@ GUI_DOMAIN="gui/$(id -u)"
 
 detect_mac_ip() {
   ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true
+}
+
+# Returns the cwd of the process listening on TCP 8081, or empty.
+metro_listener_cwd() {
+  local pid
+  pid="$(lsof -tiTCP:8081 -sTCP:LISTEN 2>/dev/null | head -n1 || true)"
+  if [[ -z "${pid}" ]]; then
+    return 0
+  fi
+  lsof -a -p "${pid}" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n1
+}
+
+# Non-zero if Metro is up but not serving the canonical mobile tree.
+assert_metro_canonical_cwd() {
+  local cwd
+  cwd="$(metro_listener_cwd || true)"
+  if [[ -z "${cwd}" ]]; then
+    echo "metro cwd: <not listening>"
+    return 1
+  fi
+  echo "metro cwd: ${cwd}"
+  if [[ "${cwd}" != "${METRO_MOBILE_ROOT}" && "${cwd}" != "${METRO_MOBILE_ROOT}/" ]]; then
+    echo "ERROR: Metro is NOT serving the canonical app." >&2
+    echo "  expected: ${METRO_MOBILE_ROOT}" >&2
+    echo "  actual:   ${cwd}" >&2
+    echo "  Fix: ./scripts/local-runtime/install-nucleo-local-runtime.sh --fix-env" >&2
+    return 1
+  fi
+  return 0
 }
 
 read_env_api_url() {
@@ -52,13 +81,13 @@ upsert_env_api_url() {
   fi
 }
 
-# Sync canonical JS/server into preview (native ios/ stays only on preview).
+# Optional: keep legacy Antigravity preview checkout mirrored (native experiments).
+# Metro no longer reads this tree — it serves ROOT/mobile directly.
 sync_canonical_to_preview() {
   if [[ ! -d "${PREVIEW_ROOT}/mobile" ]]; then
-    echo "WARN: preview tree missing at ${PREVIEW_ROOT}; Metro/dev-client may fail (no ios/ in canonical)." >&2
     return 0
   fi
-  echo "Syncing ${ROOT} → ${PREVIEW_ROOT} (src/shared/server; keep preview ios/)..."
+  echo "Mirroring ${ROOT} → ${PREVIEW_ROOT} (optional; Metro serves canonical)..."
   mkdir -p "${PREVIEW_ROOT}/mobile/src" "${PREVIEW_ROOT}/shared" "${PREVIEW_ROOT}/server"
   rsync -a --delete \
     --exclude 'node_modules' --exclude '.expo' --exclude 'ios' --exclude 'android' --exclude 'orb-web' \
@@ -72,6 +101,12 @@ sync_canonical_to_preview() {
   for asset in thinking-orb-live.html thinking-orbs-gallery.html nucleo-orb.html; do
     if [[ -f "${ROOT}/mobile/assets/${asset}" ]]; then
       cp "${ROOT}/mobile/assets/${asset}" "${PREVIEW_ROOT}/mobile/assets/${asset}"
+    fi
+  done
+  # Keep preview Expo config files from drifting too far when someone opens that tree.
+  for cfg in package.json app.json app.config.js metro.config.js babel.config.js global.css index.ts tsconfig.json; do
+    if [[ -f "${ROOT}/mobile/${cfg}" ]]; then
+      cp "${ROOT}/mobile/${cfg}" "${PREVIEW_ROOT}/mobile/${cfg}"
     fi
   done
   if [[ -f "${ROOT}/server.ts" ]]; then
@@ -88,7 +123,7 @@ sync_canonical_to_preview() {
     upsert_env_api_url "${PREVIEW_ENV_FILE}" "${url}"
   fi
   touch "${PREVIEW_ROOT}/mobile/App.tsx" 2>/dev/null || true
-  echo "Sync done."
+  echo "Mirror done."
 }
 
 kill_port_listeners() {

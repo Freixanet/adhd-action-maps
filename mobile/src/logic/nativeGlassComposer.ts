@@ -11,9 +11,9 @@
 export const COMPOSER_GLASS_CONTAINER = true;
 
 /**
- * Feeds the corner radius to the native glass view so UIKit shapes the edge
- * (`cornerConfiguration`) instead of JS clipping it with `overflow: hidden`,
- * which keeps the lensing on the curves. `false` restores the JS clip.
+ * Feeds `borderRadius` to GlassView so UIKit's `cornerConfiguration` shapes
+ * the capsule. Do not JS-clip (`overflow: hidden`): that shears the lensed ends
+ * and the bar reads as a flat rectangle.
  */
 export const COMPOSER_NATIVE_CORNERS = true;
 
@@ -21,12 +21,11 @@ export const COMPOSER_NATIVE_CORNERS = true;
  * Drops the JS ornaments — scale pulse, sheen sweep, touch glow and the SVG
  * perimeter ring — and leans on UIKit's interactive glass instead.
  *
- * Off, and it should stay off: the glass view sits behind the content with
- * `pointerEvents="none"` so the field and buttons stay tappable, so UIKit never
- * receives the touch and `isInteractive` reacts to nothing. The JS ornaments are
- * what give the composer its response to touch.
+ * Stays on at rest and while focused so a press on the capsule has the same
+ * elastic response in both states. Content is hosted inside the glass view so
+ * the first tap still reaches the field.
  */
-export const COMPOSER_NATIVE_INTERACTIVE_ONLY = false;
+export const COMPOSER_NATIVE_INTERACTIVE_ONLY = true;
 
 /**
  * Puts the composer's content *inside* the native glass view instead of layering

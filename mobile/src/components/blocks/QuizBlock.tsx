@@ -9,19 +9,13 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import {
-  RADII,
-  SEM_ALERTA,
-  SEM_EJEMPLO,
-  TEXT_BODY,
-  TEXT_PRIMARY,
-  TEXT_SECONDARY,
-} from '@shared/uiTokens';
+import { RADII } from '@shared/uiTokens';
 import type { StepContentBlockQuiz } from '@shared/contracts';
 import GlassSurface from '../GlassSurface';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme, useThemeColors } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import BlockEnter from './BlockEnter';
+import { motion, typography } from '@shared/design-tokens';
 
 type Props = {
   block: StepContentBlockQuiz;
@@ -43,16 +37,17 @@ function QuizOptionRow({
   onPress: () => void;
   reduceMotion: boolean;
 }) {
+  const colors = useThemeColors();
   const scale = useSharedValue(1);
   const shake = useSharedValue(0);
 
   useEffect(() => {
     if (state !== 'wrong' || reduceMotion) return;
     shake.value = withSequence(
-      withTiming(-6, { duration: 40 }),
-      withTiming(6, { duration: 50 }),
-      withTiming(-4, { duration: 45 }),
-      withTiming(0, { duration: 40 })
+      withTiming(-6, { duration: motion.feedback40.duration }),
+      withTiming(6, { duration: motion.feedback.duration }),
+      withTiming(-4, { duration: motion.feedback45.duration }),
+      withTiming(0, { duration: motion.feedback40.duration })
     );
   }, [reduceMotion, shake, state]);
 
@@ -62,16 +57,16 @@ function QuizOptionRow({
 
   const borderColor =
     state === 'correct'
-      ? SEM_EJEMPLO
+      ? colors.text.success
       : state === 'wrong'
-        ? SEM_ALERTA
-        : 'rgba(255,255,255,0.12)';
+        ? colors.text.danger
+        : colors.border.default;
   const backgroundColor =
     state === 'correct'
-      ? 'rgba(111,191,143,0.16)'
+      ? colors.background.successFade16
       : state === 'wrong'
-        ? 'rgba(224,122,107,0.14)'
-        : 'rgba(255,255,255,0.04)';
+        ? colors.background.dangerFade14
+        : colors.background.whiteFade04;
 
   return (
     <Animated.View style={animatedStyle}>
@@ -93,7 +88,7 @@ function QuizOptionRow({
         <Text
           style={[
             styles.optionText,
-            state === 'missed' && styles.optionMissed,
+            { color: state === 'missed' ? colors.text.secondary : colors.text.body },
           ]}
           maxFontSizeMultiplier={1.35}
         >
@@ -105,7 +100,7 @@ function QuizOptionRow({
 }
 
 export default function QuizBlock({ block, index = 0 }: Props) {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
   const [selected, setSelected] = useState<number | null>(null);
   const feedbackProgress = useSharedValue(0);
@@ -129,13 +124,13 @@ export default function QuizBlock({ block, index = 0 }: Props) {
     }
     feedbackProgress.value = reduceMotion
       ? 1
-      : withTiming(1, { duration: 320, easing: Easing.out(Easing.cubic) });
+      : withTiming(1, { duration: motion.quizSettle.duration, easing: Easing.out(Easing.cubic) });
   };
 
   return (
     <BlockEnter delayMs={index * 60}>
       <View style={styles.wrap} accessibilityRole="summary">
-        <Text style={styles.question} maxFontSizeMultiplier={1.35}>
+        <Text style={[styles.question, { color: colors.text.primary }]} maxFontSizeMultiplier={1.35}>
           {block.question}
         </Text>
         <View style={styles.options}>
@@ -171,12 +166,12 @@ export default function QuizBlock({ block, index = 0 }: Props) {
                 <Text
                   style={[
                     styles.feedbackKicker,
-                    { color: isCorrect ? SEM_EJEMPLO : SEM_ALERTA },
+                    { color: isCorrect ? colors.text.success : colors.text.danger },
                   ]}
                 >
                   {isCorrect ? 'Acertado' : 'Casi'}
                 </Text>
-                <Text style={styles.feedbackText} maxFontSizeMultiplier={1.35}>
+                <Text style={[styles.feedbackText, { color: colors.text.body }]} maxFontSizeMultiplier={1.35}>
                   {block.feedback}
                 </Text>
               </View>
@@ -194,10 +189,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   question: {
-    color: TEXT_PRIMARY,
-    fontSize: 17,
-    fontWeight: '600',
-    lineHeight: 24,
+    ...typography('inputStrong'),
   },
   options: {
     gap: 8,
@@ -209,12 +201,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   optionText: {
-    color: TEXT_BODY,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  optionMissed: {
-    color: TEXT_SECONDARY,
+    ...typography('body'),
   },
   feedbackGlass: {
     borderRadius: RADII.sm,
@@ -227,14 +214,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   feedbackKicker: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    ...typography('metaBold'),
     textTransform: 'uppercase',
   },
   feedbackText: {
-    color: TEXT_BODY,
-    fontSize: 15,
-    lineHeight: 21,
+    ...typography('body'),
   },
 });

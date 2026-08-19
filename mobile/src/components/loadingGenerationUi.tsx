@@ -9,7 +9,8 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { ACCENT } from '@shared/uiTokens';
+import { motion, type } from '@shared/design-tokens';
+import { useTheme } from '../context/ThemeContext';
 
 function clampRatio(value: number): number {
   'worklet';
@@ -46,6 +47,7 @@ export function GenerationProgressBar({
   reduceMotion = false,
   style,
 }: GenerationProgressBarProps) {
+  const { isDark, colors } = useTheme();
   const clamped = Math.max(0, Math.min(100, progress));
   const fillRatio = useSharedValue(clamped / 100);
 
@@ -54,7 +56,7 @@ export function GenerationProgressBar({
     const target = clamped / 100;
     fillRatio.value = reduceMotion
       ? target
-      : withTiming(target, { duration: 400, easing: Easing.out(Easing.cubic) });
+      : withTiming(target, { duration: motion.sheetAlt.duration, easing: Easing.out(Easing.cubic) });
   }, [clamped, fillRatio, progressShared, reduceMotion]);
 
   const fillStyle = useAnimatedStyle(() => {
@@ -63,6 +65,8 @@ export function GenerationProgressBar({
       : fillRatio.value;
     return progressFillStyle(ratio);
   });
+
+  const trackColor = isDark ? colors.background.surfaceRaised : colors.background.surfaceSunken;
 
   return (
     <View
@@ -73,6 +77,7 @@ export function GenerationProgressBar({
           width: fullWidth ? undefined : width,
           height,
           borderRadius: height / 2,
+          backgroundColor: trackColor,
         },
         style,
       ]}
@@ -83,7 +88,7 @@ export function GenerationProgressBar({
           {
             height,
             borderRadius: height / 2,
-            backgroundColor: ACCENT,
+            backgroundColor: colors.action.primary,
           },
           fillStyle,
         ]}
@@ -94,7 +99,6 @@ export function GenerationProgressBar({
 
 const styles = StyleSheet.create({
   track: {
-    backgroundColor: '#2C2E37',
     overflow: 'hidden',
   },
   trackFullWidth: {
@@ -130,7 +134,7 @@ export function LoadingPhaseLabel({
 }: PhaseLabelProps) {
   const duration = reduceMotion ? 0 : 200;
   const alignClass = align === 'left' ? 'text-left' : 'text-center';
-  const toneClass = variant === 'meta' ? 'text-[14px] text-secondary' : 'text-[15px] text-body';
+  const toneClass = variant === 'meta' ? 'text-callout text-secondary' : 'text-body text-body';
 
   return (
     <Animated.Text

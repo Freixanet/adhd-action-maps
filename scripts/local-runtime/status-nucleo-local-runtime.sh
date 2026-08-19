@@ -16,13 +16,14 @@ PREVIEW_URL="$(read_env_api_url "${PREVIEW_ENV_FILE}" || true)"
 echo "=== Núcleo local runtime status ==="
 echo
 echo "Canonical ROOT: ${ROOT}"
-echo "Preview ROOT:   ${PREVIEW_ROOT}"
+echo "Metro should serve: ${METRO_MOBILE_ROOT}"
+echo "Preview mirror: ${PREVIEW_ROOT} (optional)"
 echo "Mac IP: ${MAC_IP:-<unknown>}"
 echo "Expected API URL: ${EXPECTED_URL:-<unknown>}"
 echo "Canonical mobile/.env: ${CURRENT_URL:-<missing>}"
 echo "Preview mobile/.env:   ${PREVIEW_URL:-<missing>}"
 
-if [[ -n "${EXPECTED_URL}" && ( "${CURRENT_URL}" != "${EXPECTED_URL}" || "${PREVIEW_URL}" != "${EXPECTED_URL}" ) ]]; then
+if [[ -n "${EXPECTED_URL}" && "${CURRENT_URL}" != "${EXPECTED_URL}" ]]; then
   echo "WARN: mobile/.env does not match current IP :3000. Re-run install with --fix-env."
 fi
 
@@ -35,6 +36,14 @@ echo "=== Listeners ==="
 lsof -nP -iTCP:3000 -sTCP:LISTEN 2>/dev/null || echo "Port 3000: not listening"
 lsof -nP -iTCP:8081 -sTCP:LISTEN 2>/dev/null || echo "Port 8081: not listening"
 lsof -nP -iTCP:3010 -sTCP:LISTEN 2>/dev/null || echo "Port 3010: free"
+
+echo
+echo "=== Metro source-of-truth ==="
+if assert_metro_canonical_cwd; then
+  echo "OK: Metro serves canonical mobile/"
+else
+  echo "FAIL: Metro is stale or pointing at a preview tree."
+fi
 
 echo
 echo "=== Health (localhost) ==="

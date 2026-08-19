@@ -1,32 +1,31 @@
 import React from 'react';
 import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { CTA_FILL, RADII } from '@shared/uiTokens';
+import { CTA_FILL, RADII, TEXT_PRIMARY } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 import NativeGlassButton from './NativeGlassButton';
 import { usePressScale } from '../hooks/usePressScale';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
-import {
-  shouldUseNativeGlassButton,
-  shouldUseNativeGlassFilledCta,
-} from '../logic/nativeGlassButtons';
+import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
 import { useTheme } from '../context/ThemeContext';
+import { color, type } from '@shared/design-tokens';
 
 /** Fixed height — Atrás and Siguiente must match without flex growth. */
 export const STEP_FOOTER_BUTTON_HEIGHT = 52;
-/** Below the 26 that would read as a pill at this height, so corners match the cards. */
 const FOOTER_BUTTON_RADIUS = RADII.md;
-const STEP_FOOTER_PRIMARY_TEXT = '#FFFFFF';
+const STEP_FOOTER_PRIMARY_TEXT = TEXT_PRIMARY;
 
 type StepFooterGlassButtonProps = {
   onPress: () => void;
   label: string;
+  /** `primary` = the single forward CTA (prominentGlass). `secondary` = glass. */
   variant?: 'primary' | 'secondary';
   icon?: React.ReactNode;
   iconPlacement?: 'leading' | 'trailing';
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
   disabled?: boolean;
+  systemImage?: string;
 };
 
 export default function StepFooterGlassButton({
@@ -38,6 +37,7 @@ export default function StepFooterGlassButton({
   style,
   accessibilityLabel,
   disabled = false,
+  systemImage,
 }: StepFooterGlassButtonProps) {
   const { isDark } = useTheme();
   const isPrimary = variant === 'primary';
@@ -49,11 +49,8 @@ export default function StepFooterGlassButton({
     <View style={styles.content}>
       {iconPlacement === 'leading' ? icon : null}
       <Text
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.85}
-        className={isPrimary ? 'text-[17px] font-semibold' : 'text-[17px] font-semibold text-body'}
-        style={isPrimary ? styles.primaryLabel : undefined}
+        className={isPrimary ? 'text-input font-semibold' : 'text-input font-semibold text-body'}
+        style={[isPrimary ? styles.primaryLabel : undefined, styles.flexibleLabel]}
       >
         {label}
       </Text>
@@ -61,9 +58,7 @@ export default function StepFooterGlassButton({
     </View>
   );
 
-  const native = isPrimary
-    ? shouldUseNativeGlassFilledCta(reduceTransparency)
-    : shouldUseNativeGlassButton(reduceTransparency);
+  const native = shouldUseNativeGlassButton(reduceTransparency);
 
   if (native) {
     return (
@@ -71,13 +66,12 @@ export default function StepFooterGlassButton({
         onPress={onPress}
         accessibilityLabel={accessibilityLabel ?? label}
         variant={isPrimary ? 'prominentGlass' : 'glass'}
+        title={label}
+        systemImage={systemImage}
         cornerRadius={FOOTER_BUTTON_RADIUS}
-        tintColor={isPrimary ? CTA_FILL : undefined}
         disabled={disabled}
         style={[styles.shell, style]}
-      >
-        {content}
-      </NativeGlassButton>
+      />
     );
   }
 
@@ -154,6 +148,10 @@ const styles = StyleSheet.create({
   },
   pressedOpacity: {
     opacity: 0.88,
+  },
+  flexibleLabel: {
+    flexShrink: 1,
+    textAlign: 'center',
   },
   disabled: {
     opacity: 0.55,
