@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Pressable } from 'react-native-gesture-handler';
 import { ArrowUp } from '../icons';
-import { usePressScale } from '../hooks/usePressScale';
+import { PRESS_HIT_SLOP, usePressScale } from '../hooks/usePressScale';
 import { useTheme } from '../context/ThemeContext';
 import { control, radius } from '@shared/design-tokens';
 import { COMPOSER_CONTROL_SIZE } from '../logic/composerText';
@@ -46,7 +46,7 @@ export default function ComposerSendButton({
   const glyph = isStop ? (
     <View style={[styles.stopGlyph, { backgroundColor: iconColor }]} />
   ) : (
-    <ArrowUp size={control.iconSm} color={iconColor} strokeWidth={2.25} />
+    <ArrowUp size={control.iconSm} color={iconColor} />
   );
 
   return (
@@ -55,6 +55,7 @@ export default function ComposerSendButton({
       onPressIn={onPressIn}
       onPressOut={onPressOut}
       disabled={effectivelyDisabled}
+      hitSlop={PRESS_HIT_SLOP}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: effectivelyDisabled }}

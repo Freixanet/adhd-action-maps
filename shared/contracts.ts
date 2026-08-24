@@ -14,14 +14,16 @@ export type NucleoGenerationMode =
   | 'classic'
   | 'study-doc-beta'
   | 'visualize-html-test'
-  | 'editorial-v1';
+  | 'editorial-v1'
+  | 'lumen-v1';
 
 /** Resolve client/server generationMode; unknown values fall back to classic. */
 export function resolveNucleoGenerationMode(value: unknown): NucleoGenerationMode {
   if (
     value === 'study-doc-beta' ||
     value === 'visualize-html-test' ||
-    value === 'editorial-v1'
+    value === 'editorial-v1' ||
+    value === 'lumen-v1'
   ) {
     return value;
   }
@@ -390,6 +392,8 @@ export type ActionMapData = {
    * First vertical: fixture / progressive planner; never a full-page raster.
    */
   editorialPlan?: EditorialPlan | null;
+  /** Lumen workspace canvas. Present on generationMode `lumen-v1`. */
+  lumenCanvas?: import('./lumen/types').Canvas | null;
   knowledgeSections?: KnowledgeSection[];
   /** Agrupación de pasos para mini-completado (SPEC §4); solo si steps.length >= 6. */
   readingSections?: ReadingSection[] | null;

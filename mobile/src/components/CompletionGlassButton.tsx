@@ -4,7 +4,7 @@ import Animated from 'react-native-reanimated';
 import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 import NativeGlassButton from './NativeGlassButton';
-import { usePressScale } from '../hooks/usePressScale';
+import { PRESS_HIT_SLOP, PRESS_RETENTION_OFFSET, usePressScale } from '../hooks/usePressScale';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
 import { useTheme } from '../context/ThemeContext';
@@ -98,11 +98,9 @@ export default function CompletionGlassButton({
       disabled={isButtonDisabled}
       accessibilityRole="button"
       accessibilityLabel={resolvedLabel}
-      style={({ pressed }) => [
-        styles.pressable,
-        pressed && !isButtonDisabled ? styles.pressedOpacity : null,
-        isButtonDisabled ? styles.disabled : null,
-      ]}
+      hitSlop={PRESS_HIT_SLOP}
+      pressRetentionOffset={PRESS_RETENTION_OFFSET}
+      style={[styles.pressable, isButtonDisabled ? styles.disabled : null]}
     >
       <Animated.View style={[styles.pressableInner, animatedStyle]}>
         {isAccent ? (
@@ -157,9 +155,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 14,
     minHeight: 52,
-  },
-  pressedOpacity: {
-    opacity: 0.88,
   },
   disabled: {
     opacity: 0.55,

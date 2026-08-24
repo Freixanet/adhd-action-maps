@@ -2,9 +2,9 @@ import { getStorage } from '@shared/storage';
 import { primitive } from '@shared/design-tokens';
 
 export const READING_FONT_OPTIONS = [
-  { id: 'sourceSans', label: 'Source Sans 3' },
   { id: 'sfPro', label: 'SF Pro' },
   { id: 'sfRounded', label: 'SF Pro Rounded' },
+  { id: 'sourceSans', label: 'Source Sans 3' },
 ] as const;
 
 export type ReadingFontPreference = (typeof READING_FONT_OPTIONS)[number]['id'];
@@ -15,14 +15,14 @@ export function resolveReadingFontPreference(value: unknown): ReadingFontPrefere
   const raw = typeof value === 'string' ? value : '';
   return READING_FONT_OPTIONS.some((option) => option.id === raw)
     ? (raw as ReadingFontPreference)
-    : 'sourceSans';
+    : 'sfPro';
 }
 
 export function getInitialReadingFontPreference(): ReadingFontPreference {
   try {
     return resolveReadingFontPreference(getStorage().getItem(STORAGE_KEY));
   } catch {
-    return 'sourceSans';
+    return 'sfPro';
   }
 }
 
@@ -35,13 +35,13 @@ export function saveReadingFontPreference(value: ReadingFontPreference): void {
 }
 
 export function readingFontFamily(id: ReadingFontPreference, platformOS: string): string {
-  if (platformOS !== 'ios') return primitive.fontFamily.reading;
+  if (platformOS !== 'ios') return primitive.fontFamily.android;
   if (id === 'sfRounded') return primitive.fontFamily.rounded;
-  if (id === 'sfPro') return primitive.fontFamily.systemUi;
-  return primitive.fontFamily.reading;
+  if (id === 'sourceSans') return primitive.fontFamily.reading;
+  return primitive.fontFamily.systemUi;
 }
 
 /** Rounded and the bundled Source Sans 3 face have no italic. Use SF Pro italic on iOS. */
 export function readingItalicFontFamily(platformOS: string): string {
-  return platformOS === 'ios' ? primitive.fontFamily.systemUi : primitive.fontFamily.reading;
+  return platformOS === 'ios' ? primitive.fontFamily.systemUi : primitive.fontFamily.android;
 }

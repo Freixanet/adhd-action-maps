@@ -12,7 +12,6 @@ import {
 import { initialWindowMetrics, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  FadeIn,
   FadeOut,
   runOnJS,
   useAnimatedStyle,
@@ -53,11 +52,12 @@ import { SIDEBAR_EDGE_INSET } from '../components/sidebarLayout';
 import NucleoVisualizeWebView from '../components/NucleoVisualizeWebView';
 import VisualizeRunHost from '../visualize/VisualizeRunHost';
 import { ensureVisualizeArtifact } from '@shared/visualizeCompiler';
-import { stepHaptic, useAppSession } from '../context/AppSessionContext';
+import { useAppSession } from '../context/AppSessionContext';
 import { resolvePdfDocumentUrl } from '../logic/resolvePdfDocumentUrl';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useViewAllScrollSpy } from '../hooks/useViewAllScrollSpy';
 import { formatReadingProgressLabel } from '@shared/nucleoPipeline';
+import { hapticToggle } from '../logic/haptics';
 // F3: re-spec pending — NucleoVisualSpec normalize unused while channel is off.
 // import { normalizeNucleoVisual } from '@shared/nucleoVisual';
 import type { SourceReference } from '../logic/contracts';
@@ -65,12 +65,31 @@ import { debugTransitionLog } from '../logic/debugTransitionLog';
 import { ACCENT, EDITORIAL_SHEET_BG } from '@shared/uiTokens';
 import { useThemeColors } from '../context/ThemeContext';
 import EditorialPlanHost from '../editorial/EditorialPlanHost';
-import { reading } from '@shared/design-tokens';
+import LumenCanvasHost from '../lumen/LumenCanvasHost';
+import LumenWorkspaceHeader from '../lumen/LumenWorkspaceHeader';
+import LumenKindBanner from '../lumen/LumenKindBanner';
+import LumenAskDock from '../lumen/LumenAskDock';
+import ComposerDock from '../components/ComposerDock';
+import { motion, reading, space } from '@shared/design-tokens';
+import { contentEntering } from '../motion/contentEnter';
 import type { HistoryEntry } from '@shared/history';
 
 const PREVIEW_TOP_INSET = initialWindowMetrics?.insets.top ?? 0;
 /** Ignore 1px float noise when comparing content vs viewport. */
 const SCROLL_OVERFLOW_EPSILON = 1;
+/** Suggestion chips appear when the last canvas content is in view (dock spacer ignored). */
+const ASK_SUGGESTIONS_END_THRESHOLD = 24;
+
+function isAskScrollAtEnd(
+  y: number,
+  contentH: number,
+  layoutH: number,
+  dockSpacer: number
+): boolean {
+  if (layoutH <= 0) return false;
+  if (contentH <= layoutH + 1) return true;
+  return y + layoutH >= contentH - dockSpacer - ASK_SUGGESTIONS_END_THRESHOLD;
+}
 /** Chrome toggle must be a still tap — anything draggier belongs to the page swipe. */
 const CHROME_TAP_MAX_DISTANCE = 8;
 const CHROME_TAP_MAX_DURATION_MS = 300;
@@ -227,6 +246,10 @@ export default function ResultScreen({
     [session.historyStore.activeId, session.historyStore.entries]
   );
   const safeInsets = useSafeAreaInsets();
+  const [askFocused, setAskFocused] = useState(false);
+  const [askDockHeight, setAskDockHeight] = useState(72);
+  const [askSuggestionsVisible, setAskSuggestionsVisible] = useState(false);
+  const askScrollMetricsRef = React.useRef({ y: 0, contentH: 0, layoutH: 0 });
   const handoffReportedRef = React.useRef(false);
   const rootLaidOutRef = React.useRef(false);
 
@@ -260,9 +283,19 @@ export default function ResultScreen({
     onContentSizeChange: onViewAllContentSizeChange,
   } = useScrollOnlyWhenNeeded();
 
+  const syncAskSuggestions = useCallback(() => {
+    const { y, contentH, layoutH } = askScrollMetricsRef.current;
+    setAskSuggestionsVisible(isAskScrollAtEnd(y, contentH, layoutH, askDockHeight));
+  }, [askDockHeight]);
+
+  useEffect(() => {
+    syncAskSuggestions();
+  }, [syncAskSuggestions]);
+
   const isIntroStep =
     !session.viewAll && !session.isComplete && session.currentStep === 0;
-  const hideProgressLine = isIntroStep || session.isComplete;
+  const isLumenCanvas = Boolean(data?.lumenCanvas);
+  const hideProgressLine = isLumenCanvas || isIntroStep || session.isComplete;
 
   // Do not include currentStep — chrome hide should persist across step changes.
   const mapHeaderResetKey = `${session.viewAll}:${session.isComplete}`;
@@ -396,7 +429,7 @@ export default function ResultScreen({
     transform: [{ scale: completionCheckScale.value }],
   }));
 
-  const isStepMode = !session.isComplete && !session.viewAll;
+  const isStepMode = !isLumenCanvas && !session.isComplete && !session.viewAll;
   const swipeEnabled = isStepMode && !session.historyOpen && !session.isStreamGenerating;
 
   const navDir = useSharedValue(1);
@@ -421,6 +454,14 @@ export default function ResultScreen({
     if (!session.canReverseContinueTransition()) return;
     session.startReverseContinueTransition();
   }, [previewMode, session]);
+
+  const openAsk = useCallback(() => {
+    if (!session.isPro) {
+      session.openPaywall();
+      return;
+    }
+    session.setChatOpen(true);
+  }, [session]);
 
   const handleRootLayout = useCallback(
     (event: import('react-native').LayoutChangeEvent) => {
@@ -451,7 +492,7 @@ export default function ResultScreen({
   const backHomeGesture = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!previewMode)
+        .enabled(!previewMode && !isLumenCanvas)
         .activeOffsetX(24)
         .failOffsetY([-24, 24])
         .onTouchesDown((event, stateManager) => {
@@ -467,7 +508,7 @@ export default function ResultScreen({
             runOnJS(tryReverseContinue)();
           }
         }),
-    [previewMode, tryReverseContinue]
+    [isLumenCanvas, previewMode, tryReverseContinue]
   );
 
   const swipeGesture = useMemo(
@@ -527,8 +568,9 @@ export default function ResultScreen({
 
   const toggleStepFooterChrome = useCallback(() => {
     if (!isStepMode) return;
-    headerVisible.value = !headerVisible.value;
-    stepHaptic();
+    const next = !headerVisible.value;
+    headerVisible.value = next;
+    hapticToggle(next);
   }, [headerVisible, isStepMode]);
 
   const handleStepFooterRevealLayout = useCallback(
@@ -553,9 +595,10 @@ export default function ResultScreen({
   const isStudyDocBeta = data.generationMode === 'study-doc-beta';
   const isVisualizeHtmlTest = data.generationMode === 'visualize-html-test';
   const isEditorialV1 = data.generationMode === 'editorial-v1' && Boolean(data.editorialPlan);
+  const isLumenHost = Boolean(data.lumenCanvas);
   // Editorial owns the whole reading surface — never application / classic steps.
   const showApplicationPlan =
-    !isEditorialV1 && Boolean(data.application && data.intent === 'apply');
+    !isEditorialV1 && !isLumenHost && Boolean(data.application && data.intent === 'apply');
   const visualizeArtifact = isVisualizeHtmlTest
     ? ensureVisualizeArtifact(data.visualizeArtifact, {
         coreIdea: data.coreIdea,
@@ -731,16 +774,6 @@ export default function ResultScreen({
   };
 
   const renderCompletionActions = () => {
-    const openAsk = () => {
-      if (!session.isPro) {
-        session.openPaywall();
-        stepHaptic();
-        return;
-      }
-      session.setChatOpen(true);
-      stepHaptic();
-    };
-
     return (
       <View className="mt-10 gap-3" style={styles.completionActions}>
         <View className="flex-row gap-3 w-full items-center">
@@ -750,11 +783,9 @@ export default function ResultScreen({
               onPress={() => session.setEssentialsReview(true)}
             />
           </View>
-          {DEV ? (
-            <View style={styles.completionActionSlot}>
-              <CompletionGlassButton label="Preguntar" onPress={openAsk} />
-            </View>
-          ) : null}
+          <View style={styles.completionActionSlot}>
+            <CompletionGlassButton label="Preguntar" onPress={openAsk} />
+          </View>
         </View>
         <View style={styles.completionActionFullWidthSlot}>
           <CompletionGlassButton
@@ -800,13 +831,13 @@ export default function ResultScreen({
     <View className="py-6">
       <View className="flex-row items-center gap-2 mb-4">
         <Animated.View style={completionCheckStyle}>
-          <CheckCircle2 size={16} color={ACCENT} />
+          <CheckCircle2 size={16} color={ACCENT} filled />
         </Animated.View>
         <Text className="text-xs font-bold uppercase tracking-widest text-secondary">Núcleo completado</Text>
       </View>
       {ceremonyTitleReady ? (
         <Animated.Text
-          entering={FadeIn.duration(reduceMotion ? 150 : 250)}
+          entering={reduceMotion ? undefined : contentEntering()}
           className="text-3xl font-extrabold text-primary"
         >
           {data.completionCard?.title || 'Has terminado esta lectura'}
@@ -838,7 +869,7 @@ export default function ResultScreen({
       })}
       <View className={VIEW_ALL_COMPLETION_SECTION}>
         <View className="flex-row items-center gap-2 mb-4">
-          <CheckCircle2 size={16} color={ACCENT} />
+          <CheckCircle2 size={16} color={ACCENT} filled />
           <Text className="text-xs font-bold uppercase tracking-widest text-secondary">Núcleo completado</Text>
         </View>
         <Text className="text-3xl font-extrabold text-primary">
@@ -853,7 +884,7 @@ export default function ResultScreen({
   const renderViewAllCompletion = () => (
     <View className={VIEW_ALL_COMPLETION_SECTION}>
       <View className="flex-row items-center gap-2 mb-4">
-        <CheckCircle2 size={16} color={ACCENT} />
+        <CheckCircle2 size={16} color={ACCENT} filled />
         <Text className="text-xs font-bold uppercase tracking-widest text-secondary">Núcleo completado</Text>
       </View>
       <Text className="text-3xl font-extrabold text-primary">
@@ -886,6 +917,8 @@ export default function ResultScreen({
           entry={activeHistoryEntry}
           title={data.title}
           subtitle={data.coreIdea}
+          modelUsed={data.modelUsed}
+          showDevModel={session.devToolsEnabled}
           onExplore={() => session.goToStep(1)}
         />
       );
@@ -947,6 +980,7 @@ export default function ResultScreen({
   ) : (
     <GestureDetector gesture={backHomeGesture}>
       <View className="flex-1 relative overflow-hidden bg-base">
+      {isLumenHost ? null : (
       <ReadingProgressBar
         viewAll={session.viewAll}
         stepProgress={session.stepProgress}
@@ -955,6 +989,7 @@ export default function ResultScreen({
         topInset={safeInsets.top}
         onToggleSidebar={() => session.toggleHistoryDrawer()}
       />
+      )}
 
       <ResultNoticesZone
         hideProgressLine={hideProgressLine}
@@ -1009,6 +1044,71 @@ export default function ResultScreen({
               title="Editar contexto"
             />
           </Animated.ScrollView>
+        ) : isLumenHost && data.lumenCanvas ? (
+          <>
+            <LumenWorkspaceHeader
+              title={data.lumenCanvas.title}
+              topInset={safeInsets.top}
+            />
+            <Animated.ScrollView
+              ref={scrollRef}
+              className="flex-1"
+              contentContainerStyle={{
+                paddingBottom: space.section.gap + space.stack.xl + space.stack.xl + askDockHeight,
+              }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              scrollEventThrottle={16}
+              onLayout={(event) => {
+                askScrollMetricsRef.current.layoutH = event.nativeEvent.layout.height;
+                syncAskSuggestions();
+              }}
+              onContentSizeChange={(_w, h) => {
+                askScrollMetricsRef.current.contentH = h;
+                syncAskSuggestions();
+              }}
+              onScroll={(event) => {
+                const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+                askScrollMetricsRef.current = {
+                  y: contentOffset.y,
+                  contentH: contentSize.height,
+                  layoutH: layoutMeasurement.height,
+                };
+                syncAskSuggestions();
+              }}
+            >
+              <LumenKindBanner kind={data.lumenCanvas.kind} />
+              <View
+                style={{
+                  paddingHorizontal: SIDEBAR_EDGE_INSET,
+                  paddingTop: space.section.gap,
+                  paddingBottom: space.section.gap,
+                }}
+              >
+                <LumenCanvasHost
+                  canvas={data.lumenCanvas}
+                  onTabChange={() => {
+                    askScrollMetricsRef.current.y = 0;
+                    syncAskSuggestions();
+                    scrollRef.current?.scrollTo({ y: 0, animated: false });
+                  }}
+                />
+              </View>
+            </Animated.ScrollView>
+            {previewMode || !session.historyStore.activeId ? null : (
+              <ComposerDock hold={askFocused} onHeightChange={setAskDockHeight}>
+                <LumenAskDock
+                  prompts={data.lumenCanvas.prompts}
+                  mapId={session.historyStore.activeId}
+                  mapData={data}
+                  isPro={session.isPro}
+                  onPaywall={session.openPaywall}
+                  onFocusChange={setAskFocused}
+                  showSuggestions={askSuggestionsVisible}
+                />
+              </ComposerDock>
+            )}
+          </>
         ) : isStepMode ? (
           <GestureDetector gesture={stepGesture}>
             <Animated.View className="flex-1 bg-base">
@@ -1021,14 +1121,14 @@ export default function ResultScreen({
                   key={contentModeKey}
                   style={styles.adaptiveHost}
                   entering={
-                    suppressStepTransitions || session.isStreamGenerating
+                    suppressStepTransitions || session.isStreamGenerating || reduceMotion
                       ? undefined
-                      : FadeIn.duration(reduceMotion ? 150 : 220)
+                      : contentEntering()
                   }
                   exiting={
-                    suppressStepTransitions
+                    suppressStepTransitions || reduceMotion
                       ? undefined
-                      : FadeOut.duration(reduceMotion ? 150 : 180)
+                      : FadeOut.duration(motion.exit.duration)
                   }
                 >
                   {renderAdaptiveStepPage(session.currentStep)}
@@ -1067,14 +1167,14 @@ export default function ResultScreen({
                 <Animated.View
                   key={contentModeKey}
                   entering={
-                    suppressStepTransitions || session.isStreamGenerating
+                    suppressStepTransitions || session.isStreamGenerating || reduceMotion
                       ? undefined
-                      : FadeIn.duration(reduceMotion ? 150 : 220)
+                      : contentEntering()
                   }
                   exiting={
-                    suppressStepTransitions || session.viewAll
+                    suppressStepTransitions || session.viewAll || reduceMotion
                       ? undefined
-                      : FadeOut.duration(reduceMotion ? 150 : 180)
+                      : FadeOut.duration(motion.exit.duration)
                   }
                 >
                   {renderModeBody()}
@@ -1084,13 +1184,15 @@ export default function ResultScreen({
           </Animated.ScrollView>
         )}
 
-        <StepFooterNav
-          chromeVisibleShared={headerVisible}
-          onRevealLayout={handleStepFooterRevealLayout}
-        />
+        {!isLumenHost ? (
+          <StepFooterNav
+            chromeVisibleShared={headerVisible}
+            onRevealLayout={handleStepFooterRevealLayout}
+          />
+        ) : null}
       </View>
 
-      {!previewMode && session.historyStore.activeId ? (
+      {!previewMode && session.historyStore.activeId && !isLumenHost ? (
         <MapChatSheet
           visible={session.chatOpen}
           onClose={() => session.setChatOpen(false)}

@@ -169,3 +169,58 @@ s09: not_started
 | S02–S07 | DONE | No reabrir |
 | S08 | REOPENED | Bundle limpio OK; falta QA E productiva |
 | S09 | READY | **not_started** |
+
+## Product audit execution (2026-08-20)
+
+Código del plan de enganche/diseño/suscripción (sin tocar el plan `.md`):
+
+- IAP: `react-native-purchases` + `expo-notifications` en mobile; Pro servidor vía `REVENUECAT_SECRET_API_KEY` (`server/revenueCatEntitlement.ts`); Preguntar visible con gate Pro.
+- Home: Continuar + títulos en Jump Back; portadas de `generatedCover`/editorial (sin pinturas genéricas forzadas).
+- Entrega: quitado `ApplicationContextBar`; contrato no-ai-slop + anti-saturación.
+- Hábito: reminder local incompleto 18:00; deep links `nucleo://map/` e `import`; contrato Share Extension en `mobile/docs/SHARE_EXTENSION.md` (target nativo pendiente de prebuild).
+- Feedback: haptic Medium al enviar; toast «Copiado»; Reduce Motion en fade del hero.
+- Telemetría: `shared/productTelemetry.ts`; crash reporting opcional `EXPO_PUBLIC_SENTRY_DSN`.
+
+Pendiente humano: keys ASC/RevenueCat, rebuild dev client, target Share Extension en Xcode.
+
+## Reading format (2026-08-20)
+
+| Item | Estado |
+|---|---|
+| `selectNucleoFormat` desde discourse/género | DONE |
+| Compositor: visual primero, accordion, relaciones XOR | DONE |
+| Prompt unidades v1.5 (frases cortas, ejemplos) | DONE |
+| Kinds nuevos / timeline / selector de formato | NO |
+| QA visual de un Núcleo nuevo en device | PENDIENTE (generar de nuevo) |
+
+## Canvas Lumen (`lumen-v1`, 2026-08-20)
+
+| Item | Estado |
+|---|---|
+| Parser JSON + `ActionMapData.lumenCanvas` | DONE |
+| Illuminate con cadena Gemini 3.7 Flash | DONE |
+| Transform JSON/NDJSON salta Entender/Aplicar | DONE |
+| Preguntar usa el contrato corto del canvas | DONE |
+| Canvases RN (glass + tokens) en ResultScreen | DONE |
+| Cliente `generationMode: lumen-v1` | DONE |
+| Ingest Núcleo (PDF/web SSRF/YouTube) | conservado |
+| xAI / Grok 4.6 | no hasta que Flash no convenza |
+| QA visual en device | PENDIENTE |
+
+### Corrección 2026-08-20 (último Núcleo ≠ Lumen)
+
+El mapa `2ac6086e-…` salió `kind: guide` por Gemini 3.5 Flash Lite (cadena HIGH de 3.7 Flash agotó tiempo/cuota). Un artículo con protocolo al final debe ser `explain`.
+
+| Cambio | Estado |
+|---|---|
+| Ruta de kind: artículo → explain; guide solo procedimiento corto | DONE |
+| Illuminate: Flash LOW → Flash MINIMAL → Lite MINIMAL (sin HIGH) | DONE |
+| Fuente lineal: stitch de chunks, sin `[[chunk_]]` | DONE |
+| Host: banda de kind + título display, como workspace Lumen | SUPERSEDED |
+| Host: primera pintura = kicker + hook + tabs + insights opacos | SUPERSEDED |
+| Workspace Lumen: header título, banner, min, gancho, profundidad anillos, AskDock | DONE |
+| Parse: JSON truncado / kind `Explain` / explain incompleto ya no es LUMEN_PARSE | DONE |
+| Parse: comas finales, valores sin comillas y JSON de Lite roto (dump `gen-mt26kmgj`) | DONE |
+| Cadena Illuminate: solo aceptar una ruta si `tryParseLumenJson` cuaja | DONE |
+
+

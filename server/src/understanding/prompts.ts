@@ -60,6 +60,12 @@ export const UNITS_SYSTEM_PROMPT = [
   'Responde SOLO JSON con claves: units, closure.',
   'unit.role: thesis|concept|cause|mechanism|relation|evidence_described|example|counterargument|caution|limitation|synthesis',
   'Procedural sources in Entender: explica el procedimiento; no lo conviertas en checklist de aplicación.',
+  'Materia para la pantalla (el compilador arma el formato; no describas el layout):',
+  '- explanation: 2 a 4 frases cortas. La primera frase es el punto. No un ensayo.',
+  '- examples: 1 a 3 hechos concretos de la fuente. Mejor un ejemplo nítido que más prosa.',
+  '- cautions: matices reales, una frase cada uno.',
+  '- relations: en fuentes comparativas, causales o argumentativas, declara las aristas; el compilador las muestra.',
+  'No inventes cifras ni un formato de UI.',
   'Idioma de salida: español.',
   NO_AI_SLOP_WRITING_CONTRACT,
 ].join('\n');

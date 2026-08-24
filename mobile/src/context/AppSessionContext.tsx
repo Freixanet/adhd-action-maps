@@ -8,8 +8,20 @@ import {
   readAsStringAsync,
 } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import * as Haptics from 'expo-haptics';
+import {
+  hapticCommit,
+  hapticDrawer,
+  hapticError,
+  hapticSuccess,
+  hapticToggle,
+  hapticWarning,
+} from '../logic/haptics';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { trackProductEvent } from '@shared/productTelemetry';
+import {
+  cancelIncompleteReminder,
+  scheduleIncompleteReminder,
+} from '../logic/incompleteReminder';
 import type {
   ActionMapData,
   AskRequest,
@@ -145,8 +157,6 @@ import {
   type StagedReplanProposal,
 } from '@shared/application';
 import type { EvidenceArtifact } from '@shared/evidence/types';
-import { stepHaptic } from '../logic/stepHaptic';
-
 import {
   buildStableCollectionPartBody,
   mintStableCollectionPartIdentities,
@@ -154,6 +164,7 @@ import {
 } from '@shared/collectionPartExecution';
 import {
   activateHistoryOwner,
+  createChatEntry,
   createCollection,
   createEntry,
   deleteEntry,
@@ -169,10 +180,13 @@ import {
   updateActiveSession,
   updateEntryCategory,
   updateEntrySourceMeta,
+  updateEntryGeneratedCover,
   markCompletionCeremonyShown,
   type HistoryEntry,
   type HistoryStore,
 } from '../logic/history';
+import { isChatHistoryEntry, chatExchanges } from '@shared/historyKind';
+import { visibleAskAnswer } from '../logic/visibleAskAnswer';
 import {
   analyzeTransformSource,
   promptCollectionSplit,
@@ -188,7 +202,7 @@ import {
   getInitialModelPreference,
   saveModelPreference,
   type ModelPreference,
-} from '../logic/modelPreference';
+} from '@shared/modelPreference';
 import {
   getInitialDepthPreference,
   saveDepthPreference,
@@ -215,6 +229,14 @@ import {
 } from '../logic/composerDraft';
 import { shouldCollapsePastedText } from '../logic/composerText';
 import { DEMO_NUCLEO_DATA, DEMO_NUCLEO_ID } from '../data/demoNucleo';
+import { attachLumenCanvas, lumenCanvasToMap } from '@shared/lumen/toMap';
+import { LUMEN_SAMPLE_CANVAS } from '@shared/lumen/samples';
+import {
+  LUMEN_CUMPLE_CANVAS,
+  LUMEN_EV_CANVAS,
+  LUMEN_GALLETAS_CANVAS,
+} from '@shared/lumen/homeSampleCanvases';
+import type { Canvas } from '@shared/lumen/types';
 import type { EditorialPlan } from '@shared/editorial';
 import {
   buildEditorialDemoMap,
@@ -244,6 +266,8 @@ import { apiUrl } from '../logic/apiBase';
 import { buildLlmRequestHeaders } from '../logic/apiHeaders';
 import { isCloudSyncConfigured, supabase } from '../logic/supabase';
 import { fetchWithTimeout } from '../logic/network';
+import { ensureNucleoCover } from '../logic/ensureNucleoCover';
+import type { GeneratedCoverRecord } from '@shared/generatedCover';
 import {
   CONTINUE_IMMEDIATE_BACK_MS,
   buildContinueChipLabel,
@@ -252,7 +276,7 @@ import {
 } from '../logic/continueTransition';
 import { useRevenueCatPro } from '../hooks/useRevenueCatPro';
 import { debugTransitionLog } from '../logic/debugTransitionLog';
-import { clearComposerNativeMenuSession } from '../logic/composerNativeMenuSession';
+import { clearComposerNativeMenuSession, restoreComposerInputFocus } from '../logic/composerNativeMenuSession';
 import {
   buildResumeSummary,
   restoreResumeUiState,
@@ -269,6 +293,81 @@ import {
   type PendingProgressSyncItem,
 } from '@shared/pendingProgressSync';
 
+const LUMEN_HOME_CANVASES: Record<string, { title: string; canvas: Canvas }> = {
+  'nucleo-formato-ejemplo': { title: 'Relatividad especial', canvas: LUMEN_SAMPLE_CANVAS },
+  'nucleo-lumen-galletas': { title: 'Galletas extra chewy', canvas: LUMEN_GALLETAS_CANVAS },
+  'nucleo-lumen-ev': { title: 'Model 3 vs Ioniq 6', canvas: LUMEN_EV_CANVAS },
+  'nucleo-lumen-cumple': { title: 'Cumple de 8 años', canvas: LUMEN_CUMPLE_CANVAS },
+};
+
+function lumenHomeMap(id: string): ActionMapData | null {
+  const spec = LUMEN_HOME_CANVASES[id];
+  const canvas = spec?.canvas;
+  if (!spec || !canvas?.title || !canvas.kind) return null;
+  if (typeof lumenCanvasToMap === 'function') {
+    try {
+      const mapped = lumenCanvasToMap(canvas, { modelUsed: 'lumen-sample.v2' });
+      if (mapped?.lumenCanvas) return mapped;
+    } catch {
+      /* fall through to the stub so the chip still opens */
+    }
+  }
+  return {
+    title: spec.title,
+    intent: 'understand',
+    outputLanguage: 'es',
+    mapVersion: 2,
+    generationMode: 'lumen-v1',
+    lumenCanvas: canvas,
+    sourceMetadata: { kind: 'text', label: spec.title, detected: [], limitations: [] },
+    coverage: { summary: canvas.hook, notes: [] },
+    coreIdea: canvas.hook,
+    coreSupport: canvas.hook,
+    tldr: [{ title: spec.title, desc: canvas.hook }],
+    steps: [
+      {
+        id: 'lumen',
+        shortNav: spec.title,
+        title: spec.title,
+        time: '~4 min',
+        content: [{ type: 'prose', text: canvas.hook }],
+      },
+    ],
+    completionCard: { title: spec.title, summary: canvas.hook, takeaways: [] },
+  };
+}
+
+function insertLumenHomeSample(store: HistoryStore, id: string): HistoryStore {
+  if (!store?.entries || store.entries.some((entry) => entry.id === id)) return store;
+  const spec = LUMEN_HOME_CANVASES[id];
+  const map = lumenHomeMap(id);
+  if (!spec || !map) return store;
+  const now = Date.now();
+  return {
+    ...store,
+    entries: [
+      {
+        id,
+        title: spec.title,
+        createdAt: now,
+        updatedAt: now,
+        sourceType: 'text',
+        pinned: true,
+        pinnedAt: now,
+        intent: 'understand',
+        status: 'unread',
+        session: {
+          data: map,
+          currentStep: 0,
+          isComplete: false,
+          viewAll: false,
+        },
+      },
+      ...store.entries,
+    ],
+  };
+}
+
 export type AppPhase = 'input' | 'loading' | 'result';
 
 export type InlineGenerationStatus =
@@ -284,6 +383,11 @@ import {
   type InlineUserTurnSnapshot,
 } from '../logic/inlineUserBubble';
 import { classifyComposerSubmit } from '../logic/classifyComposerSubmit';
+import {
+  DEFAULT_HOME_SURFACE,
+  homeSurfacePlaceholder,
+  type HomeSurface,
+} from '@shared/homeSurfaceModel';
 
 export type { InlineUserTurnSnapshot } from '../logic/inlineUserBubble';
 
@@ -384,6 +488,7 @@ const MAX_SYNCED_ENTRIES = 30;
 /** The loading bar animates to 100% (400ms fill) before inline ready / legacy overlay swap. */
 const INTRO_TRANSITION_BAR_MS = 520;
 const OFFLINE_TRANSFORM_MESSAGE = 'Sin conexión. Comprueba tu red y vuelve a intentarlo.';
+const SERVER_UNREACHABLE_MESSAGE = 'No se pudo contactar el servidor. Inténtalo de nuevo.';
 const GENERIC_TRANSFORM_ERROR = 'No se pudo procesar la fuente.';
 const EXPANDED_INPUTS_DISABLED_MESSAGE =
   'Libros y fotos llegan en 2 días, ahora PDF y links';
@@ -411,7 +516,15 @@ async function sleepMs(ms: number): Promise<void> {
 
 async function isDeviceOffline(): Promise<boolean> {
   const state = await NetInfo.fetch();
-  return state.isConnected === false || state.isInternetReachable === false;
+  // Do not use isInternetReachable: iOS reports false on working Wi-Fi / LAN.
+  return state.isConnected === false;
+}
+
+function messageAfterFailedRequest(err: unknown, offline: boolean, fallback: string): string {
+  if (offline) return OFFLINE_TRANSFORM_MESSAGE;
+  if (isTransientNetworkError(err)) return SERVER_UNREACHABLE_MESSAGE;
+  const message = err instanceof Error ? err.message : fallback;
+  return message.trim() || fallback;
 }
 
 function mergeHistory(localEntries: HistoryEntry[], cloudEntries: HistoryEntry[]): HistoryEntry[] {
@@ -551,8 +664,6 @@ const ApplicationReplanConfirmDialog = React.lazy(
   () => import('../components/ApplicationReplanConfirmDialog')
 );
 
-export { stepHaptic } from '../logic/stepHaptic';
-
 type AppSessionContextValue = {
   phase: AppPhase;
   setPhase: (phase: AppPhase) => void;
@@ -596,6 +707,7 @@ type AppSessionContextValue = {
   setError: (error: string | null) => void;
   data: ActionMapData | null;
   historyStore: HistoryStore;
+  applyGeneratedCover: (id: string, cover: GeneratedCoverRecord) => void;
   currentStep: number;
   isComplete: boolean;
   viewAll: boolean;
@@ -635,6 +747,8 @@ type AppSessionContextValue = {
   setDepthPreference: (value: DepthPreference) => void;
   generationMode: NucleoGenerationMode;
   setGenerationMode: (value: NucleoGenerationMode) => void;
+  homeSurface: HomeSurface;
+  setHomeSurface: (value: HomeSurface) => void;
   totalSteps: number;
   canSubmit: boolean;
   hideTextInput: boolean;
@@ -703,6 +817,8 @@ type AppSessionContextValue = {
   previewLoadingScreen?: () => void;
   /** DEV tools: open live ResultScreen with fresh demo Núcleo data. */
   previewNucleo?: () => void;
+  /** DEV: sent Chat bubble + Thinking orb, no assistant answer. */
+  previewChatThinking?: () => void;
   handleNewMap: () => void;
   handleSelectHistory: (id: string) => void;
   beginContinueTransition: (id: string, chipRect: ContinueChipRect, chipLabel: string) => void;
@@ -741,16 +857,23 @@ type AppSessionContextValue = {
   transformIncomplete: boolean;
   dismissTransformIncomplete: () => void;
   persistComposerDraft: () => void;
+  beginComposerEdit: (text: string) => void;
   handleSignOut: () => Promise<void>;
   handleDeleteAccount: () => Promise<void>;
   inlineGenerationStatus: InlineGenerationStatus;
   inlineUserTurn: InlineUserTurnSnapshot | null;
   /** Full ask answer once the /api/ask response arrives (typed out in the thread). */
   inlineAskAnswer: string | null;
+  /** Completed Q&A pairs above the current ask turn. */
+  inlineAskPriorTurns: Array<{ question: string; answer: string }>;
+  /** History id of the open chat, if any. */
+  activeChatId: string | null;
   /** Unverified-knowledge disclaimer shown under the ask answer. */
   inlineAskDisclaimer: string | null;
   /** CTA label under the ask answer (e.g. Añadir fuente para verificar). */
   inlineAskCtaLabel: string | null;
+  /** Model route for the current ask answer (DEV inspect). */
+  inlineAskModelUsed: string | null;
   cancelInlineAutoOpen: () => void;
   registerInlineAutoOpenCancel: (handler: (() => void) | null) => void;
   openInlineResult: (chipRect: ContinueChipRect) => void;
@@ -760,7 +883,10 @@ const AppSessionContext = createContext<AppSessionContextValue | null>(null);
 
 export function AppSessionProvider({ children }: { children: React.ReactNode }) {
   const initialHistory = useMemo(() => loadHistory(), []);
-  const initialActive = useMemo(() => getActiveEntry(initialHistory), [initialHistory]);
+  const initialActive = useMemo(() => {
+    const entry = getActiveEntry(initialHistory);
+    return entry && !isChatHistoryEntry(entry) ? entry : null;
+  }, [initialHistory]);
   const initialActiveData = useMemo(
     () => {
       const normalized = initialActive
@@ -853,7 +979,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const setDevToolsEnabled = useCallback((enabled: boolean) => {
     setDevToolsEnabledState(enabled);
     saveDevToolsEnabled(enabled);
-    stepHaptic();
+    hapticToggle(enabled);
   }, []);
 
   const canUseDevTools = useCallback(
@@ -867,14 +993,14 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     historyOpenRef.current = true;
     clearComposerNativeMenuSession();
     Keyboard.dismiss();
-    stepHaptic();
+    hapticDrawer(true);
     setHistoryOpenState(true);
   }, []);
 
   const closeHistoryDrawer = useCallback(() => {
     if (!historyOpenRef.current) return;
     historyOpenRef.current = false;
-    stepHaptic();
+    hapticDrawer(false);
     setHistoryOpenState(false);
   }, []);
 
@@ -897,7 +1023,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [cloudUserEmail, setCloudUserEmail] = useState<string | null>(null);
   const [cloudUserDisplayName, setCloudUserDisplayName] = useState<string | null>(null);
   const [cloudUserAvatarUrl, setCloudUserAvatarUrl] = useState<string | null>(null);
-  const { revenueCatPro, paywallOpen, setPaywallOpen, openPaywall } = useRevenueCatPro(cloudUserEmail);
+  const { revenueCatPro, paywallOpen, setPaywallOpen, openPaywall } = useRevenueCatPro(cloudUserId);
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [modelPreference, setModelPreferenceState] = useState<ModelPreference>(() =>
@@ -906,7 +1032,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [depthPreference, setDepthPreferenceState] = useState<DepthPreference>(() =>
     getInitialDepthPreference()
   );
-  const [generationMode] = useState<NucleoGenerationMode>('classic');
+  const [generationMode] = useState<NucleoGenerationMode>('lumen-v1');
+  const [homeSurface, setHomeSurfaceState] = useState<HomeSurface>(DEFAULT_HOME_SURFACE);
   const [essentialsReview, setEssentialsReview] = useState(false);
   const [isStreamGenerating, setIsStreamGenerating] = useState(false);
   const [isAnalyzingSource, setIsAnalyzingSource] = useState(false);
@@ -921,8 +1048,13 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const [inlineGenerationStatus, setInlineGenerationStatus] = useState<InlineGenerationStatus>('idle');
   const [inlineUserTurn, setInlineUserTurn] = useState<InlineUserTurnSnapshot | null>(null);
   const [inlineAskAnswer, setInlineAskAnswer] = useState<string | null>(null);
+  const [inlineAskPriorTurns, setInlineAskPriorTurns] = useState<
+    Array<{ question: string; answer: string }>
+  >([]);
+  const [inlineAskChatId, setInlineAskChatId] = useState<string | null>(null);
   const [inlineAskDisclaimer, setInlineAskDisclaimer] = useState<string | null>(null);
   const [inlineAskCtaLabel, setInlineAskCtaLabel] = useState<string | null>(null);
+  const [inlineAskModelUsed, setInlineAskModelUsed] = useState<string | null>(null);
   const [devPreviewGenerationActive, setDevPreviewGenerationActive] = useState(false);
 
   const streamProgressCapRef = useRef(0);
@@ -941,6 +1073,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   /** Keep binary attachment so 501 can restore the composer chip. */
   const lastSubmittedFileRef = useRef<UploadedFile | null>(null);
   const askRetryQuestionRef = useRef<string | null>(null);
+  const askRewoundRef = useRef(false);
+  /** Question the user chose to edit; rewind only happens on send. */
+  const pendingAskEditRef = useRef<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const transformRunRef = useRef(createTransformRunController());
@@ -1050,11 +1185,16 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setInlineGenerationStatus('idle');
     setInlineUserTurn(null);
     setInlineAskAnswer(null);
+    setInlineAskPriorTurns([]);
+    setInlineAskChatId(null);
     setInlineAskDisclaimer(null);
     setInlineAskCtaLabel(null);
+    setInlineAskModelUsed(null);
     inlineResultEntryIdRef.current = null;
     inlineRetryPayloadRef.current = null;
     askRetryQuestionRef.current = null;
+    pendingAskEditRef.current = null;
+    askRewoundRef.current = false;
   }, [clearInlineAutoOpen, clearInlineReadyTimeout]);
 
   useEffect(() => {
@@ -1136,6 +1276,13 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setHistoryStore(updatedStore);
   }, []);
 
+  const applyGeneratedCover = useCallback(
+    (id: string, cover: GeneratedCoverRecord) => {
+      commitHistoryStore(updateEntryGeneratedCover(historyStoreRef.current, id, cover));
+    },
+    [commitHistoryStore]
+  );
+
   const pendingAuthRef = useRef(false);
   const cloudSignedIn = Boolean(cloudUserId);
   const isPro = useMemo(
@@ -1160,9 +1307,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     ? 'Añade una indicación sobre el video (opcional)…'
     : uploadedFile
       ? 'Añade una indicación (opcional)…'
-      : 'Pega caos, recibe un Núcleo';
+      : homeSurfacePlaceholder(homeSurface);
 
-  const hasAnyNucleo = historyStore.entries.length > 0;
+  const hasAnyNucleo = historyStore.entries.some((entry) => !isChatHistoryEntry(entry));
 
   const continueEntry = useMemo(
     () => selectPrimaryResumeEntry(historyStore.entries),
@@ -1225,6 +1372,27 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     saveComposerDraft({ inputText, uploadedFile, pastedText });
   }, [inputText, pastedText, uploadedFile]);
 
+  const beginComposerEdit = useCallback((text: string) => {
+    const next = text.trim();
+    if (!next) return;
+
+    if (
+      inlineGenerationStatusRef.current === 'generating' ||
+      inlineGenerationStatusRef.current === 'partial'
+    ) {
+      transformCancelledRef.current = true;
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      setInlineGenerationStatus(inlineAskAnswer?.trim() ? 'ready' : 'cancelled');
+    }
+
+    pendingAskEditRef.current = next;
+    setPastedText(null);
+    setInputText(next);
+    inputTextRef.current = next;
+    requestAnimationFrame(() => restoreComposerInputFocus());
+  }, [inlineAskAnswer]);
+
   const handleComposerTextChange = useCallback((text: string) => {
     const prev = inputTextRef.current;
     if (shouldCollapsePastedText(prev, text)) {
@@ -1232,6 +1400,9 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setInputText('');
       inputTextRef.current = '';
       return;
+    }
+    if (pendingAskEditRef.current && !text.trim()) {
+      pendingAskEditRef.current = null;
     }
     setInputText(text);
     inputTextRef.current = text;
@@ -1265,18 +1436,109 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const setModelPreference = useCallback((value: ModelPreference) => {
     setModelPreferenceState(value);
     saveModelPreference(value);
-    stepHaptic();
   }, []);
 
   const setDepthPreference = useCallback((value: DepthPreference) => {
     setDepthPreferenceState(value);
     saveDepthPreference(value);
-    stepHaptic();
   }, []);
 
   const setGenerationMode = useCallback((_value: NucleoGenerationMode) => {
     /* Selector removed — generation is locked to classic (interactive blocks). */
   }, []);
+
+  const setHomeSurface = useCallback((value: HomeSurface) => {
+    setHomeSurfaceState(value);
+  }, []);
+
+  useEffect(() => {
+    if (uploadedFile || pastedText?.trim()) {
+      setHomeSurfaceState('nucleo');
+    }
+  }, [uploadedFile, pastedText]);
+
+  const replaceAskChatExchanges = useCallback(
+    (chatId: string, exchanges: Array<{ question: string; answer: string }>) => {
+      const current = historyStoreRef.current;
+      let changed = false;
+      const entries = current.entries.map((entry) => {
+        if (entry.id !== chatId || entry.kind !== 'chat' || !entry.chat) return entry;
+        changed = true;
+        const first = exchanges[0];
+        const last = exchanges[exchanges.length - 1];
+        return {
+          ...entry,
+          updatedAt: Date.now(),
+          chat: {
+            ...entry.chat,
+            question: first?.question ?? '',
+            answer: last?.answer ?? '',
+            exchanges,
+          },
+        };
+      });
+      if (changed) commitHistoryStore({ ...current, entries });
+    },
+    [commitHistoryStore]
+  );
+
+  const persistAskChat = useCallback(
+    (input: {
+      question: string;
+      answer: string;
+      title?: string | null;
+      modelUsed?: string | null;
+      chatId?: string | null;
+    }): string | null => {
+      const current = historyStoreRef.current;
+      const question = input.question.trim();
+      const answer = visibleAskAnswer(input.answer);
+      if (!question || !answer) return input.chatId ?? null;
+
+      if (input.chatId) {
+        let changed = false;
+        const entries = current.entries.map((entry) => {
+          if (entry.id !== input.chatId || entry.kind !== 'chat' || !entry.chat) return entry;
+          changed = true;
+          const previous =
+            Array.isArray(entry.chat.exchanges) && entry.chat.exchanges.length > 0
+              ? entry.chat.exchanges.filter(
+                  (item) => item.question.trim().length > 0 && item.answer.trim().length > 0
+                )
+              : entry.chat.question.trim() && entry.chat.answer.trim()
+                ? [{ question: entry.chat.question, answer: entry.chat.answer }]
+                : [];
+          const exchanges = [...previous, { question, answer }];
+          const first = exchanges[0];
+          const last = exchanges[exchanges.length - 1];
+          return {
+            ...entry,
+            updatedAt: Date.now(),
+            chat: {
+              question: first.question,
+              answer: last.answer,
+              exchanges,
+              ...(input.modelUsed?.trim()
+                ? { modelUsed: input.modelUsed.trim() }
+                : entry.chat.modelUsed
+                  ? { modelUsed: entry.chat.modelUsed }
+                  : {}),
+            },
+          };
+        });
+        if (changed) {
+          commitHistoryStore({ ...current, entries });
+          return input.chatId;
+        }
+      }
+
+      const created = createChatEntry(current, input);
+      if (created === current) return input.chatId ?? null;
+      commitHistoryStore(created);
+      return created.entries[0]?.id ?? null;
+    },
+    [commitHistoryStore]
+  );
 
   const saveStepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1291,6 +1553,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const pendingPersistRef = useRef<PendingPersist | null>(null);
 
   const syncCloudEntry = useCallback((entry: HistoryEntry) => {
+    if (isChatHistoryEntry(entry)) return;
     if (!supabase || !cloudSignedIn) return;
 
     const envelope = getHistoryOwnershipEnvelope();
@@ -1689,7 +1952,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const passLayer0 = useCallback(() => {
     setLayer0Passed(true);
     persistSessionState(currentStep, isComplete, viewAll, { layer0Passed: true });
-    stepHaptic();
+    hapticSuccess();
   }, [currentStep, isComplete, persistSessionState, viewAll]);
 
   const toggleLayer0Action = useCallback(
@@ -2031,7 +2294,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     if (fromViewAll) setViewAll(false);
     persistSessionState(safeIdx, false, nextViewAll);
     setResumeBannerVisible(false);
-    stepHaptic();
   }, [persistSessionState, totalSteps, viewAll]);
 
   const syncReadingStep = useCallback((step: number) => {
@@ -2048,7 +2310,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setViewAll(nextViewAll);
     setIsComplete(false);
     persistSessionState(currentStep, false, nextViewAll);
-    stepHaptic();
+    hapticToggle(nextViewAll);
   }, [currentStep, persistSessionState, viewAll]);
 
   const dismissTransformIncomplete = useCallback(() => {
@@ -2057,7 +2319,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
 
   const failTransform = useCallback(
     (message: string, partialShown: boolean, sourceKind: TransformSourceKind, offline = false) => {
-      console.error('Transform failed:', { message, sourceKind, offline });
+      console.warn('Transform failed:', { message, sourceKind, offline });
+      trackProductEvent('transform_error', { offline, partialShown });
       clearInlineReadyTimeout();
       clearInlineAutoOpen();
 
@@ -2073,7 +2336,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setInlineGenerationStatus('idle');
         setPhase('input');
         setBetaQuotaOpen(true);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        hapticWarning();
         return;
       }
 
@@ -2103,7 +2366,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setPhase('input');
       }
 
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      hapticError();
     },
     [clearInlineAutoOpen, clearInlineGeneration, clearInlineReadyTimeout]
   );
@@ -2138,7 +2401,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const handleAttachmentError = useCallback((err: unknown) => {
     const message = err instanceof Error ? err.message : 'No se pudo adjuntar el archivo.';
     setError(message);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    hapticError();
   }, []);
 
   const handlePickImage = useCallback(async () => {
@@ -2149,7 +2412,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       intentPinnedRef.current = null;
       setUploadedFile(file);
       setError(null);
-      stepHaptic();
     } catch (err) {
       handleAttachmentError(err);
     }
@@ -2163,7 +2425,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       intentPinnedRef.current = null;
       setUploadedFile(file);
       setError(null);
-      stepHaptic();
     } catch (err) {
       handleAttachmentError(err);
     }
@@ -2185,7 +2446,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       }
 
       setError(null);
-      stepHaptic();
     } catch (err) {
       handleAttachmentError(err);
     }
@@ -2201,7 +2461,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setUploadedFile(file);
         setInputText('');
         setError(null);
-        stepHaptic();
       } catch (err) {
         handleAttachmentError(err);
       }
@@ -2226,12 +2485,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       : (pastedText?.trim() ?? inputText.trim());
     if (!question) return;
 
-    if (await isDeviceOffline()) {
-      setError(OFFLINE_TRANSFORM_MESSAGE);
-      setPhase('input');
-      return;
-    }
-
     setError(null);
     setTransformIncomplete(false);
     setAttachMenuOpen(false);
@@ -2243,30 +2496,137 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       : undefined;
     const headers = await buildLlmRequestHeaders(accessToken);
 
-    if (!isAskRetry) {
-      clearInlineGeneration();
-      clearInlineAutoOpen();
-      clearInlineReadyTimeout();
-      setInlineAskAnswer(null);
-      setInlineAskDisclaimer(null);
-      setInlineAskCtaLabel(null);
-      setInlineUserTurn(
-        buildInlineUserTurnSnapshot({
-          inputText: question,
-          pastedText: null,
-          uploadedFile: null,
-          conversationalMessage: '',
-          kind: 'ask',
-        })
+    const pendingEdit = pendingAskEditRef.current?.trim() || '';
+    pendingAskEditRef.current = null;
+
+    let remainingPriors = Array.isArray(inlineAskPriorTurns) ? inlineAskPriorTurns : [];
+    const currentQuestion =
+      inlineUserTurn?.kind === 'ask'
+        ? inlineUserTurn.text?.trim() || inlineUserTurn.pastedText?.trim() || ''
+        : '';
+    let rewound = false;
+    if (pendingEdit) {
+      rewound = true;
+      if (currentQuestion !== pendingEdit) {
+        const idx = remainingPriors
+          .map((turn) => turn.question.trim())
+          .lastIndexOf(pendingEdit);
+        remainingPriors = idx >= 0 ? remainingPriors.slice(0, idx) : remainingPriors;
+      }
+      setInlineAskPriorTurns(remainingPriors);
+      if (inlineAskChatId) replaceAskChatExchanges(inlineAskChatId, remainingPriors);
+    } else {
+      rewound = askRewoundRef.current;
+    }
+    askRewoundRef.current = false;
+
+    const continuing =
+      !isAskRetry &&
+      Boolean(inlineAskChatId) &&
+      (
+        (
+          inlineUserTurn?.kind === 'ask' &&
+          Boolean(inlineAskAnswer?.trim()) &&
+          inlineGenerationStatusRef.current === 'ready'
+        ) ||
+        rewound
       );
-      setInputText('');
-      inputTextRef.current = '';
-      setPastedText(null);
-      setUploadedFile(null);
+
+    const historyForRequest: NonNullable<AskRequest['history']> = [];
+    if (continuing) {
+      for (const turn of remainingPriors) {
+        historyForRequest.push(
+          { role: 'user', text: turn.question },
+          { role: 'assistant', text: turn.answer }
+        );
+      }
+      if (!rewound && inlineUserTurn) {
+        const prevQuestion =
+          inlineUserTurn.text?.trim() || inlineUserTurn.pastedText?.trim() || '';
+        const prevAnswer = inlineAskAnswer?.trim() ?? '';
+        if (prevQuestion && prevAnswer) {
+          historyForRequest.push(
+            { role: 'user', text: prevQuestion },
+            { role: 'assistant', text: prevAnswer }
+          );
+        }
+      }
+    }
+    const threadChatId = continuing ? inlineAskChatId : null;
+
+    if (!isAskRetry) {
+      if (rewound) {
+        setInlineAskAnswer(null);
+        setInlineAskDisclaimer(null);
+        setInlineAskCtaLabel(null);
+        setInlineAskModelUsed(null);
+        setInlineUserTurn(
+          buildInlineUserTurnSnapshot({
+            inputText: question,
+            pastedText: null,
+            uploadedFile: null,
+            conversationalMessage: '',
+            kind: 'ask',
+          })
+        );
+        setInputText('');
+        inputTextRef.current = '';
+        setPastedText(null);
+        setUploadedFile(null);
+      } else if (continuing && inlineUserTurn) {
+        const prevQuestion =
+          inlineUserTurn.text?.trim() || inlineUserTurn.pastedText?.trim() || '';
+        const prevAnswer = inlineAskAnswer?.trim() ?? '';
+        if (prevQuestion && prevAnswer) {
+          setInlineAskPriorTurns((prev) => [
+            ...(Array.isArray(prev) ? prev : []),
+            { question: prevQuestion, answer: prevAnswer },
+          ]);
+        }
+        setInlineAskAnswer(null);
+        setInlineAskDisclaimer(null);
+        setInlineAskCtaLabel(null);
+        setInlineAskModelUsed(null);
+        setInlineUserTurn(
+          buildInlineUserTurnSnapshot({
+            inputText: question,
+            pastedText: null,
+            uploadedFile: null,
+            conversationalMessage: '',
+            kind: 'ask',
+          })
+        );
+        setInputText('');
+        inputTextRef.current = '';
+        setPastedText(null);
+        setUploadedFile(null);
+      } else {
+        clearInlineGeneration();
+        clearInlineAutoOpen();
+        clearInlineReadyTimeout();
+        setInlineAskAnswer(null);
+        setInlineAskDisclaimer(null);
+        setInlineAskCtaLabel(null);
+        setInlineAskModelUsed(null);
+        setInlineUserTurn(
+          buildInlineUserTurnSnapshot({
+            inputText: question,
+            pastedText: null,
+            uploadedFile: null,
+            conversationalMessage: '',
+            kind: 'ask',
+          })
+        );
+        setInputText('');
+        inputTextRef.current = '';
+        setPastedText(null);
+        setUploadedFile(null);
+      }
     } else {
       setInlineAskAnswer(null);
       setInlineAskDisclaimer(null);
       setInlineAskCtaLabel(null);
+      setInlineAskModelUsed(null);
     }
 
     askRetryQuestionRef.current = question;
@@ -2280,6 +2640,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       question,
       depth: depthPreference,
       userDisplayName: cloudUserDisplayName ?? undefined,
+      preferredModel: modelPreference,
+      ...(historyForRequest.length ? { history: historyForRequest } : {}),
     };
 
     try {
@@ -2307,29 +2669,38 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         throw new Error(parsed?.error || 'No se pudo responder a esta pregunta.');
       }
 
-      const answer = parsed.answer?.trim();
+      const answer = visibleAskAnswer(parsed.answer ?? '');
       if (!answer) {
         throw new Error('No se pudo responder a esta pregunta.');
       }
 
       if ((inlineGenerationStatusRef.current !== 'generating' && inlineGenerationStatusRef.current !== 'partial')) return;
       setInlineAskAnswer(answer);
-      setInlineAskDisclaimer(
-        parsed.disclaimer?.trim() || 'Conocimiento general, sin fuente verificada'
-      );
-      setInlineAskCtaLabel(parsed.cta?.label?.trim() || 'Añadir fuente para verificarlo');
+      setInlineAskDisclaimer(null);
+      setInlineAskCtaLabel(null);
+      setInlineAskModelUsed(parsed.modelUsed?.trim() || null);
+      const savedId = persistAskChat({
+        question,
+        answer,
+        title: parsed.title,
+        modelUsed: parsed.modelUsed,
+        chatId: threadChatId,
+      });
+      if (savedId) setInlineAskChatId(savedId);
       setInlineGenerationStatus('ready');
       setPhase('input');
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      hapticSuccess();
     } catch (err) {
       if (transformCancelledRef.current || (err instanceof Error && err.name === 'AbortError')) {
         return;
       }
-      const message = err instanceof Error ? err.message : 'No se pudo responder a esta pregunta.';
-      setError(message);
+      const offline = await isDeviceOffline();
+      setError(
+        messageAfterFailedRequest(err, offline, 'No se pudo responder a esta pregunta.')
+      );
       setInlineGenerationStatus('error');
       setPhase('input');
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      hapticError();
     } finally {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
@@ -2343,9 +2714,15 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     clearInlineReadyTimeout,
     cloudUserDisplayName,
     depthPreference,
-    inlineUserTurn?.kind,
+    inlineAskAnswer,
+    inlineAskChatId,
+    inlineAskPriorTurns,
+    inlineUserTurn,
     inputText,
+    modelPreference,
     pastedText,
+    persistAskChat,
+    replaceAskChatExchanges,
   ]);
 
   const handleTransform = useCallback(async () => {
@@ -2404,7 +2781,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           type: 'pdf',
           fileData: uploadedFile.fileData,
           mimeType: uploadedFile.mimeType || 'application/pdf',
-          preferredModel: 'auto',
+          preferredModel: modelPreference,
           intent,
           depth: depthPreference,
           generationMode,
@@ -2431,7 +2808,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
             (uploadedFile.isEpub
               ? 'application/epub+zip'
               : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
-          preferredModel: 'auto',
+          preferredModel: modelPreference,
           intent,
           depth: depthPreference,
           generationMode,
@@ -2448,7 +2825,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           type: 'video',
           fileData: uploadedFile.fileData,
           mimeType: uploadedFile.mimeType || 'video/mp4',
-          preferredModel: 'auto',
+          preferredModel: modelPreference,
           intent,
           depth: depthPreference,
           generationMode,
@@ -2463,7 +2840,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           type: 'image',
           fileData: uploadedFile.fileData,
           mimeType: uploadedFile.mimeType || 'image/jpeg',
-          preferredModel: 'auto',
+          preferredModel: modelPreference,
           intent,
           depth: depthPreference,
           generationMode,
@@ -2477,7 +2854,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         body = {
           text: urlDetection.url,
           type: 'youtube',
-          preferredModel: 'auto',
+          preferredModel: modelPreference,
           intent,
           depth: depthPreference,
           generationMode,
@@ -2490,7 +2867,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         body = {
           text: urlDetection.url,
           type: 'link',
-          preferredModel: 'auto',
+          preferredModel: modelPreference,
           intent,
           depth: depthPreference,
           generationMode,
@@ -2515,7 +2892,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         body = {
           text: validation.canonical,
           type: 'text',
-          preferredModel: 'auto',
+          preferredModel: modelPreference,
           intent,
           depth: depthPreference,
           generationMode,
@@ -2591,21 +2968,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     };
 
     // First await — interleaved taps during NetInfo leave only the latest run active.
-    if (await isDeviceOffline()) {
-      if (runStillActive()) {
-        transformRunRef.current.cancel();
-        setError(OFFLINE_TRANSFORM_MESSAGE);
-        setPhase('input');
-        setInlineGenerationStatus(
-          inlineGenerationStatusRef.current === 'generating' ||
-            inlineGenerationStatusRef.current === 'partial'
-            ? 'cancelled'
-            : inlineGenerationStatusRef.current
-        );
-      }
-      transformRunRef.current.clearIf(runId);
-      return;
-    }
+    await NetInfo.fetch();
     if (!runStillActive()) return;
 
     setError(null);
@@ -3070,7 +3433,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
             `Se generaron ${generatedIds.length} de ${collectionPlan.parts.length} Núcleos. Fallaron: ${failedParts.slice(0, 3).join(', ')}${failedParts.length > 3 ? '…' : ''}.`
           );
         }
-        stepHaptic();
+        hapticSuccess();
         return;
       }
 
@@ -3098,6 +3461,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         // leave a completed Núcleo behind the infinite generating state. The thread
         // already owns the visual completion choreography, so publish readiness now.
         setInlineGenerationStatus('ready');
+        trackProductEvent('transform_success');
         streamTrace('app_status', {
           runId,
           mapId: activeMapId,
@@ -3180,6 +3544,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         const createdEntry = updatedStore.entries.find((item) => item.id === activeMapId);
         if (createdEntry) {
           syncCloudEntry(createdEntry);
+          void ensureNucleoCover(createdEntry, applyGeneratedCover);
         }
 
         setData(finalMap);
@@ -3310,7 +3675,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           hasShownPartial = true;
           partialShownRef.current = true;
           setPhase('result');
-          stepHaptic();
+          hapticSuccess();
           streamTrace('app_status', {
             runId,
             mapId: activeMapId,
@@ -3411,15 +3776,19 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
               })
             );
             setInlineAskAnswer(askResult.answer.trim());
-            setInlineAskDisclaimer(
-              askResult.disclaimer?.trim() || 'Conocimiento general, sin fuente verificada'
-            );
-            setInlineAskCtaLabel(
-              askResult.cta?.label?.trim() || 'Añadir fuente para verificarlo'
-            );
+            setInlineAskDisclaimer(null);
+            setInlineAskCtaLabel(null);
+            setInlineAskModelUsed(askResult.modelUsed?.trim() || null);
+            const savedId = persistAskChat({
+              question: bodyText || body.text || '',
+              answer: askResult.answer.trim(),
+              title: askResult.title,
+              modelUsed: askResult.modelUsed,
+            });
+            if (savedId) setInlineAskChatId(savedId);
             setInlineGenerationStatus('ready');
             setPhase('input');
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            hapticSuccess();
           },
           onError: (message) => {
             throw new Error(message);
@@ -3457,7 +3826,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           setTransformIncomplete(false);
           setInlineGenerationStatus('error');
           setPhase('input');
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          hapticError();
           return;
         }
         if (err.status === 413 || err.code === 'FILE_TOO_LARGE') {
@@ -3467,7 +3836,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           setTransformIncomplete(false);
           setInlineGenerationStatus('error');
           setPhase('input');
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          hapticError();
           return;
         }
       }
@@ -3476,7 +3845,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         err instanceof Error ? err.message : 'No se pudo procesar el contenido.';
       const offline = await isDeviceOffline();
       failTransform(
-        offline ? OFFLINE_TRANSFORM_MESSAGE : rawMessage,
+        messageAfterFailedRequest(err, offline, rawMessage),
         hasShownPartial,
         sourceKind,
         offline
@@ -3502,6 +3871,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     intent,
     modelPreference,
     pastedText,
+    persistAskChat,
     resetStreamGenerationUi,
     syncCloudEntry,
     uploadedFile,
@@ -4076,6 +4446,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       askRetryQuestionRef.current != null &&
       inlineUserTurn?.kind === 'ask';
 
+    if (!isAskRetry) {
+      trackProductEvent('transform_start');
+    }
+
     if (isAskRetry) {
       await handleAsk();
       return;
@@ -4127,13 +4501,14 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       inputText,
       pastedText,
       uploadedFile,
+      surface: homeSurface,
     });
     if (kind === 'ask') {
       await handleAsk();
       return;
     }
     await handleTransform();
-  }, [handleAsk, handleOrderedPersistRetry, handleTransform, inlineUserTurn?.kind, inputText, isStreamGenerating, pastedText, pendingEvidenceSyncByMapId, pendingSyncByMapId, uploadedFile]);
+  }, [handleAsk, handleOrderedPersistRetry, handleTransform, homeSurface, inlineUserTurn?.kind, inputText, isStreamGenerating, pastedText, pendingEvidenceSyncByMapId, pendingSyncByMapId, uploadedFile]);
 
   const handleNewMap = useCallback(() => {
     flushPendingSessionPersist();
@@ -4215,7 +4590,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setError(null);
       setTransformIncomplete(false);
       persistSessionState(0, wasComplete, wasComplete, { layer0Passed: false });
-      stepHaptic();
       return;
     }
 
@@ -4234,7 +4608,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setPhase('result');
     setError(null);
     setTransformIncomplete(false);
-    stepHaptic();
   }, [commitHistoryStore, flushPendingSessionPersist, persistSessionState]);
 
   const handleSignOut = useCallback(async () => {
@@ -4770,13 +5143,59 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     if (__DEV__ && !plan) {
       console.warn('[previewNucleo] editorial plan missing after normalize');
     }
-    stepHaptic();
   }, [
     canUseDevTools,
     clearDevPreviewTimers,
     clearInlineGeneration,
     commitHistoryStore,
     flushPendingSessionPersist,
+    resetStreamGenerationUi,
+  ]);
+
+  const previewChatThinking = useCallback(() => {
+    if (!canUseDevTools()) return;
+
+    clearDevPreviewTimers();
+    clearInlineAutoOpen();
+    clearInlineReadyTimeout();
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    resetStreamGenerationUi();
+    setError(null);
+    setTransformIncomplete(false);
+    setPhase('input');
+    setIsStreamGenerating(false);
+    setIsAnalyzingSource(false);
+    setCollectionGenerationProgress(null);
+    setDevPreviewGenerationActive(false);
+    setData(null);
+    inlineResultEntryIdRef.current = null;
+    setHomeSurfaceState('chat');
+    setInlineAskPriorTurns([]);
+    setInlineAskChatId(null);
+    setInlineAskAnswer(null);
+    setInlineAskDisclaimer(null);
+    setInlineAskCtaLabel(null);
+    setInlineAskModelUsed(null);
+    setInlineUserTurn(
+      buildInlineUserTurnSnapshot({
+        inputText: '¿Cómo se usa Thinking en Chat?',
+        pastedText: null,
+        uploadedFile: null,
+        conversationalMessage: '',
+        kind: 'ask',
+      })
+    );
+    setInlineGenerationStatus('generating');
+    setInputText('');
+    inputTextRef.current = '';
+    setPastedText(null);
+    setUploadedFile(null);
+  }, [
+    canUseDevTools,
+    clearDevPreviewTimers,
+    clearInlineAutoOpen,
+    clearInlineReadyTimeout,
     resetStreamGenerationUi,
   ]);
 
@@ -4839,7 +5258,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setTransformIncomplete(false);
     setEditorialDemoPlan(plan);
     setPhase('result');
-    stepHaptic();
   }, [
     clearDevPreviewTimers,
     clearInlineGeneration,
@@ -4854,27 +5272,101 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     setData(null);
     setHistoryOpen(false);
     setChatOpen(false);
-    stepHaptic();
   }, []);
 
   const handleSelectHistory = useCallback(
     (id: string) => {
       flushPendingSessionPersist();
-      const currentStore = historyStoreRef.current;
+      let currentStore = insertLumenHomeSample(historyStoreRef.current, id);
+      if (currentStore !== historyStoreRef.current) {
+        try {
+          commitHistoryStore(currentStore);
+        } catch {
+          /* Open the canvas even if history persist fails. */
+        }
+      }
       const entry = currentStore.entries.find((e) => e.id === id);
-      if (!entry) return;
+      const catalogMap = lumenHomeMap(id);
+      if (!entry && !catalogMap) return;
 
-      const normalizedRaw = normalizeMapData(entry.session.data);
-      if (!normalizedRaw) return;
+      if (entry && isChatHistoryEntry(entry) && entry.chat) {
+        setEditorialDemoPlan(null);
+        setData(null);
+        setHistoryOpen(false);
+        setChatOpen(false);
+        setEssentialsReview(false);
+        continueTransitionEnteredAtRef.current = null;
+        continueChipRectRef.current = null;
+        continueChipLabelRef.current = '';
+        continueEntryIdRef.current = null;
+        setContinueTransition(null);
+        setContinueTransitionHandoff(false);
+        setError(null);
+        setTransformIncomplete(false);
+        setResumeBannerVisible(false);
+        const exchanges =
+          typeof chatExchanges === 'function'
+            ? chatExchanges(entry.chat)
+            : Array.isArray(entry.chat.exchanges) && entry.chat.exchanges.length > 0
+              ? entry.chat.exchanges
+              : [{ question: entry.chat.question, answer: entry.chat.answer }];
+        const normalizedExchanges = exchanges.map((item) => ({
+          question: item.question,
+          answer: visibleAskAnswer(item.answer),
+        }));
+        const last = normalizedExchanges[normalizedExchanges.length - 1] ?? {
+          question: entry.chat.question,
+          answer: visibleAskAnswer(entry.chat.answer),
+        };
+        setInlineAskChatId(entry.id);
+        setInlineAskPriorTurns(normalizedExchanges.slice(0, -1));
+        setInlineUserTurn(
+          buildInlineUserTurnSnapshot({
+            inputText: last.question,
+            pastedText: null,
+            uploadedFile: null,
+            conversationalMessage: '',
+            kind: 'ask',
+            revealInstant: true,
+          })
+        );
+        setInlineAskAnswer(visibleAskAnswer(last.answer));
+        setInlineAskDisclaimer(null);
+        setInlineAskCtaLabel(null);
+        setInlineAskModelUsed(entry.chat.modelUsed ?? null);
+        setInlineGenerationStatus('ready');
+        setPhase('input');
+        setHomeSurfaceState('chat');
+        return;
+      }
+
+      setHomeSurfaceState('nucleo');
+      const baseMap =
+        (entry ? normalizeMapData(entry.session.data) : null) ??
+        (catalogMap ? normalizeMapData(catalogMap) ?? catalogMap : null);
+      if (!baseMap) return;
+      const normalizedRaw = attachLumenCanvas(catalogMap ?? entry?.session.data, baseMap);
       const normalized = preferUnderstandingWhenApplicationNeedsContext(normalizedRaw);
 
-      const updatedStore = setActiveId(currentStore, id);
-      commitHistoryStore(updatedStore);
+      const updatedStore = entry ? setActiveId(currentStore, id) : currentStore;
+      try {
+        commitHistoryStore(updatedStore);
+      } catch {
+        /* Keep the in-memory canvas open. */
+      }
 
       setEditorialDemoPlan(null);
       setData(normalized);
       setIntentState(normalized.intent ?? 'understand');
-      const restored = restoreResumeUiState(normalized, entry.session);
+      const restored = restoreResumeUiState(
+        normalized,
+        entry?.session ?? {
+          data: normalized,
+          currentStep: 0,
+          isComplete: false,
+          viewAll: false,
+        }
+      );
       setCurrentStep(restored.currentStep);
       setIsComplete(restored.isComplete);
       setViewAll(restored.viewAll || restored.isComplete);
@@ -4893,7 +5385,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setError(null);
       setTransformIncomplete(false);
       setResumeBannerVisible(!restored.isComplete);
-      stepHaptic();
     },
     [commitHistoryStore, flushPendingSessionPersist]
   );
@@ -4901,9 +5392,12 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
   const beginContinueTransition = useCallback(
     (id: string, chipRect: ContinueChipRect, chipLabel: string) => {
       flushPendingSessionPersist();
-      const currentStore = historyStoreRef.current;
+      const currentStore = insertLumenHomeSample(historyStoreRef.current, id);
+      if (currentStore !== historyStoreRef.current) {
+        commitHistoryStore(currentStore);
+      }
       const entry = currentStore.entries.find((e) => e.id === id);
-      if (!entry) return;
+      if (!entry || isChatHistoryEntry(entry)) return;
 
       const normalizedRaw = normalizeMapData(entry.session.data);
       if (!normalizedRaw) return;
@@ -5232,8 +5726,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         setError(null);
         setPhase('input');
       }
-
-      stepHaptic();
     },
     [commitHistoryStore, cloudSignedIn, savePendingDeletes]
   );
@@ -5247,8 +5739,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     if (updatedEntry) {
       syncCloudEntry(updatedEntry);
     }
-
-    stepHaptic();
   }, [syncCloudEntry, commitHistoryStore]);
 
   const handleUpdateEntryCategory = useCallback(
@@ -5265,7 +5755,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       if (historyStoreRef.current.activeId === id) {
         setData((current) => (current ? { ...current, category } : current));
       }
-      stepHaptic();
     },
     [syncCloudEntry, commitHistoryStore]
   );
@@ -5336,7 +5825,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     }
     // Local session + history first (overlays). Cloud uses execution RPC only.
     patchActiveApplication(started);
-    stepHaptic();
+    hapticCommit();
 
     const authSnap = activeAuthRef.current.getSnapshot();
     const meta = getActiveMapMeta();
@@ -5454,7 +5943,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           setStagedReplan(null);
           stagedReplanRef.current = null;
           setError(null);
-          stepHaptic();
+          hapticSuccess();
         }
         return;
       }
@@ -5494,7 +5983,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         stagedReplanRef.current = null;
         setApplicationContextEditorOpen(false);
         setError(null);
-        stepHaptic();
+        hapticSuccess();
         return;
       }
 
@@ -5517,7 +6006,6 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
           sourceVersionId: meta.sourceVersionId,
           contentHash: cloud.staged.proposedArtifact.contentHash,
         });
-        stepHaptic();
         return;
       }
 
@@ -5621,7 +6109,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       stagedReplanRef.current = null;
       setStagedReplan(null);
       setError(null);
-      stepHaptic();
+      hapticSuccess();
       return;
     }
 
@@ -5803,7 +6291,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       if (nextState === 'active') onActive();
     });
     const unsubNet = NetInfo.addEventListener((state) => {
-      if (state.isConnected === false || state.isInternetReachable === false) return;
+      if (state.isConnected === false) return;
       onActive();
     });
     return () => {
@@ -5811,6 +6299,20 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       unsubNet();
     };
   }, [handleOrderedPersistRetry, handlePersistApplicationSync]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'background' && state !== 'inactive') return;
+      const entry =
+        historyStoreRef.current.entries.find(
+          (item) => item.id === historyStoreRef.current.activeId
+        ) ?? null;
+      if (!entry || entry.session?.isComplete) return;
+      if (entry.kind === 'chat') return;
+      void scheduleIncompleteReminder({ entryId: entry.id, title: entry.title });
+    });
+    return () => sub.remove();
+  }, []);
 
   const handlePinHistory = useCallback((id: string) => {
     const currentStore = historyStoreRef.current;
@@ -5822,13 +6324,17 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       syncCloudEntry(updatedEntry);
     }
 
-    stepHaptic();
+    hapticToggle(Boolean(updatedEntry?.pinned));
   }, [syncCloudEntry, commitHistoryStore]);
 
   const handleCompleteMap = useCallback(() => {
     setIsComplete(true);
     setEssentialsReview(false);
     persistSessionState(currentStep, true, viewAll);
+    const activeId = historyStoreRef.current.activeId;
+    if (activeId) {
+      void cancelIncompleteReminder(activeId);
+    }
   }, [currentStep, persistSessionState, viewAll]);
 
   const triggerCompletionCeremonyIfNeeded = useCallback((): boolean => {
@@ -5838,7 +6344,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     const entry = historyStoreRef.current.entries.find((item) => item.id === activeId);
     if (!entry || entry.completionCeremonyShown) return false;
 
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    hapticSuccess();
+    void cancelIncompleteReminder(activeId);
 
     const updatedStore = markCompletionCeremonyShown(historyStoreRef.current, activeId);
     commitHistoryStore(updatedStore);
@@ -5928,12 +6435,10 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
         UTI: 'com.adobe.pdf',
         dialogTitle: filename,
       });
-
-      stepHaptic();
     } catch (err) {
       console.error('Error al generar o compartir el PDF:', err);
       setError(err instanceof Error ? err.message : 'No se pudo generar la ficha PDF.');
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      hapticError();
     } finally {
       isPdfGeneratingRef.current = false;
       setIsPdfGenerating(false);
@@ -6086,6 +6591,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setError,
       data,
       historyStore,
+      applyGeneratedCover,
       currentStep,
       isComplete,
       viewAll,
@@ -6124,6 +6630,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setDepthPreference,
       generationMode,
       setGenerationMode,
+      homeSurface,
+      setHomeSurface,
       totalSteps,
       canSubmit,
       hideTextInput,
@@ -6173,6 +6681,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       previewPreMapChat,
       previewLoadingScreen,
       previewNucleo,
+      previewChatThinking,
       devPreviewGenerationActive,
       ...(__DEV__
         ? {
@@ -6218,13 +6727,17 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       transformIncomplete,
       dismissTransformIncomplete,
       persistComposerDraft,
+      beginComposerEdit,
       handleSignOut,
       handleDeleteAccount,
       inlineGenerationStatus,
       inlineUserTurn,
       inlineAskAnswer,
+      inlineAskPriorTurns,
+      activeChatId: inlineAskChatId,
       inlineAskDisclaimer,
       inlineAskCtaLabel,
+      inlineAskModelUsed,
       cancelInlineAutoOpen,
       registerInlineAutoOpenCancel,
       openInlineResult,
@@ -6257,6 +6770,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       error,
       data,
       historyStore,
+      applyGeneratedCover,
       currentStep,
       isComplete,
       viewAll,
@@ -6289,6 +6803,8 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       setDepthPreference,
       generationMode,
       setGenerationMode,
+      homeSurface,
+      setHomeSurface,
       totalSteps,
       canSubmit,
       hideTextInput,
@@ -6342,6 +6858,7 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       devPreviewGenerationActive,
       previewLoadingScreen,
       previewNucleo,
+      previewChatThinking,
       handleNewMap,
       handleSelectHistory,
       beginContinueTransition,
@@ -6378,13 +6895,17 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
       transformIncomplete,
       dismissTransformIncomplete,
       persistComposerDraft,
+      beginComposerEdit,
       handleSignOut,
       handleDeleteAccount,
       inlineGenerationStatus,
       inlineUserTurn,
       inlineAskAnswer,
+      inlineAskPriorTurns,
+      inlineAskChatId,
       inlineAskDisclaimer,
       inlineAskCtaLabel,
+      inlineAskModelUsed,
       cancelInlineAutoOpen,
       registerInlineAutoOpenCancel,
       openInlineResult,

@@ -6,21 +6,56 @@ import type { ThinkingOrbState } from '@shared/resolveThinkingOrbState';
 import { color } from '@shared/design-tokens';
 
 type ThinkingOrbWebViewProps = {
-  state: ThinkingOrbState;
+  state: ThinkingOrbState | 'breathing';
   /** thinking-orbs only ships 20 and 64. */
   size?: 20 | 64;
   speed?: number;
   paused?: boolean;
   theme?: 'dark' | 'light' | 'auto';
+  /** Show a caption next to the canvas (package aria-label, or `labelState`). */
+  showLabel?: boolean;
+  /** If set, caption uses this state's package label instead of `state`. */
+  labelState?: ThinkingOrbState | 'breathing';
   style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
+  /** Fires once when the live HTML has loaded (or failed). */
+  onReady?: () => void;
 };
 
+let cachedHtmlUri: string | null = null;
+let htmlUriLoad: Promise<string | null> | null = null;
+
+function loadThinkingOrbHtmlUri(): Promise<string | null> {
+  if (cachedHtmlUri) return Promise.resolve(cachedHtmlUri);
+  if (!htmlUriLoad) {
+    htmlUriLoad = (async () => {
+      try {
+        const asset = Asset.fromModule(require('../../assets/thinking-orb-live.html'));
+        await asset.downloadAsync();
+        cachedHtmlUri = asset.localUri ?? asset.uri;
+        return cachedHtmlUri;
+      } catch {
+        htmlUriLoad = null;
+        return null;
+      }
+    })();
+  }
+  return htmlUriLoad;
+}
+
+/** Warm the live HTML so chat/Núcleo orbs do not wait on Asset.fromModule. */
+export function preloadThinkingOrbHtml(): void {
+  void loadThinkingOrbHtmlUri();
+}
+
 function buildConfigScript(config: {
-  state: ThinkingOrbState;
+  state: ThinkingOrbState | 'breathing';
   size: 20 | 64;
   speed: number;
   paused: boolean;
   theme: 'dark' | 'light' | 'auto';
+  showLabel: boolean;
+  labelState?: ThinkingOrbState | 'breathing';
 }): string {
   return `
     window.__THINKING_ORB__ = ${JSON.stringify(config)};
@@ -46,28 +81,38 @@ export default function ThinkingOrbWebView({
   paused = false,
   theme = 'dark',
   style,
+  accessibilityLabel,
+  showLabel = false,
+  labelState,
+  onReady,
 }: ThinkingOrbWebViewProps) {
   const webRef = useRef<WebViewType>(null);
-  const [htmlUri, setHtmlUri] = useState<string | null>(null);
+  const onReadyRef = useRef(onReady);
+  const didNotifyReady = useRef(false);
+  const [htmlUri, setHtmlUri] = useState<string | null>(() => cachedHtmlUri);
   const [ready, setReady] = useState(false);
 
+  onReadyRef.current = onReady;
+
+  const notifyReady = () => {
+    if (didNotifyReady.current) return;
+    didNotifyReady.current = true;
+    onReadyRef.current?.();
+  };
+
   const config = useMemo(
-    () => ({ state, size, speed, paused, theme }),
-    [paused, size, speed, state, theme]
+    () => ({ state, size, speed, paused, theme, showLabel, ...(labelState ? { labelState } : {}) }),
+    [labelState, paused, showLabel, size, speed, state, theme]
   );
   const configScript = useMemo(() => buildConfigScript(config), [config]);
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const asset = Asset.fromModule(require('../../assets/thinking-orb-live.html'));
-        await asset.downloadAsync();
-        if (!cancelled) setHtmlUri(asset.localUri ?? asset.uri);
-      } catch {
-        if (!cancelled) setHtmlUri(null);
-      }
-    })();
+    void loadThinkingOrbHtmlUri().then((uri) => {
+      if (cancelled) return;
+      setHtmlUri(uri);
+      if (!uri) notifyReady();
+    });
     return () => {
       cancelled = true;
     };
@@ -79,6 +124,12 @@ export default function ThinkingOrbWebView({
   }, [configScript, ready]);
 
   const shellSize = size === 20 ? 28 : 72;
+  const shellWidth = showLabel ? (size === 20 ? 168 : 240) : shellSize;
+
+  const markLoaded = () => {
+    setReady(true);
+    notifyReady();
+  };
 
   const common = {
     ref: webRef,
@@ -98,20 +149,20 @@ export default function ThinkingOrbWebView({
     backgroundColor: color.background.transparent,
     injectedJavaScriptBeforeContentLoaded: configScript,
     injectedJavaScript: configScript,
-    onLoadEnd: () => setReady(true),
+    onLoadEnd: markLoaded,
   };
 
   if (!htmlUri) {
-    return <View style={[{ width: shellSize, height: shellSize }, style]} />;
+    return <View style={[{ width: shellWidth, height: shellSize }, style]} />;
   }
 
   return (
     <View
-      style={[{ width: shellSize, height: shellSize, overflow: 'hidden' }, style]}
+      style={[{ width: shellWidth, height: shellSize, overflow: 'hidden' }, style]}
       pointerEvents="none"
       collapsable={false}
       accessibilityRole="image"
-      accessibilityLabel={`Generando · ${state}`}
+      accessibilityLabel={accessibilityLabel ?? `Generando · ${state}`}
     >
       {Platform.OS === 'ios' ? (
         <WebView
@@ -130,11 +181,11 @@ export default function ThinkingOrbWebView({
 
 const styles = StyleSheet.create({
   webview: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
   },
   webviewContainer: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
   },
 });

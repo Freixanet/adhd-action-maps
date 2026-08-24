@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Image,
   Keyboard,
@@ -12,27 +12,31 @@ import {
 } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, MenuTwoLines, File, FileText, BookOpen, Video } from '../icons';
+import { X, MenuTwoLines, SquarePen, File, FileText, BookOpen, Video } from '../icons';
 import InlineGenerationThread from '../components/InlineGenerationThread';
+import { preloadThinkingOrbHtml } from '../components/ThinkingOrbWebView';
 import AttachMenu from '../components/AttachMenu';
+import HyperspacePreview from '../components/HyperspaceView';
 import ComposerDismissScroll from '../components/ComposerDismissScroll';
 import ComposerSendButton from '../components/ComposerSendButton';
 import ComposerSurface from '../components/ComposerSurface';
 import ComposerSwipeDismiss from '../components/ComposerSwipeDismiss';
 import ComposerDock, {
+  COMPOSER_DOCK_GAP,
   useComposerKeyboardInset,
   useComposerKeyboardInputHeight,
   useComposerKeyboardLift,
   useComposerKeyboardTextFrameStyle,
 } from '../components/ComposerDock';
-import ApplicationContextBar from '../components/ApplicationContextBar';
 import FloatingGlassButton from '../components/FloatingGlassButton';
+import HomeSurfaceSegment from '../components/HomeSurfaceSegment';
+import type { HomeSurface } from '@shared/homeSurfaceModel';
 import JumpBackInSection from '../components/JumpBackInSection';
 import GlassSurface from '../components/GlassSurface';
 import NativeGlassButton from '../components/NativeGlassButton';
 import ModelChip from '../components/ModelChip';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
-import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
+import { shouldUseNativeGlassButton, NATIVE_MENU_TWO_LINES } from '../logic/nativeGlassButtons';
 import SessionErrorBanner from '../components/SessionErrorBanner';
 import {
   MAIN_CONTENT_GUTTER,
@@ -40,8 +44,9 @@ import {
   SIDEBAR_TOGGLE_BUTTON_SIZE,
 } from '../components/sidebarLayout';
 import { ComposerKeyboardProvider } from '../context/ComposerKeyboardContext';
-import { useTheme } from '../context/ThemeContext';
+import { useHomeSheetGestureLock } from '../context/HomeSheetGestureLock';
 import { useAppSession } from '../context/AppSessionContext';
+import { useTheme } from '../context/ThemeContext';
 import { KeyboardDismissBackdrop } from '../logic/keyboardDismiss';
 import {
   markComposerNativeMenuEnded,
@@ -51,22 +56,27 @@ import {
 } from '../logic/composerNativeMenuSession';
 import {
   COMPOSER_CONTROL_SIZE,
-  COMPOSER_LINE_HEIGHT,
   COMPOSER_FOCUSED_INPUT_HEIGHT,
+  COMPOSER_LINE_HEIGHT,
+  COMPOSER_PLUS_ICON_SIZE,
   COMPOSER_REST_INPUT_HEIGHT,
+  COMPOSER_REST_TEXT_PAD_BOTTOM,
+  COMPOSER_REST_TEXT_PAD_TOP,
   formatPastedTextChipLabel,
 } from '../logic/composerText';
 import { resolveAttachmentImagePreviewUri, type UploadedFile } from '../logic/attachments';
-import { selectLatestCreatedNucleos } from '@shared/homeFeed';
-import { control, space, type } from '@shared/design-tokens';
+import { space, type } from '@shared/design-tokens';
 import { useTypography } from '../context/TypographyContext';
+import { hapticCommit } from '../logic/haptics';
 const DEV = false;
 const HERO_FADE_MS = 150;
 /** Same offset as the old header `pt-2.5` — toggle floats, no header bar. */
 const SIDEBAR_TOGGLE_TOP = 10; // design-token-ignore: matches prior header pt-2.5
-/** Left of the 24pt plus inside the 38pt hit target, plus icon inner padding. */
+/** Extra space under the Chat/Núcleo bar before the greeting (was 56). */
+const HOME_REST_BELOW_CHROME = space.stack.xl * 3 + space.stack.lg;
+/** Left of the plus inside the 38pt hit target, plus icon inner padding. */
 const COMPOSER_PLUS_GLYPH_INSET =
-  (COMPOSER_CONTROL_SIZE - control.iconLg) / 2 + space.stack.xs;
+  (COMPOSER_CONTROL_SIZE - COMPOSER_PLUS_ICON_SIZE) / 2 + space.stack.xs;
 const COMPOSER_TEXT_BESIDE_CONTROL = COMPOSER_CONTROL_SIZE + space.stack.xs;
 /** Square image chip — large enough that radius.composer does not read as a circle. */
 const ATTACHMENT_IMAGE_SIZE = 112;
@@ -87,16 +97,20 @@ export default function InputScreen() {
   const session = useAppSession();
   const { isDark, colors } = useTheme();
   const { font } = useTypography();
-  const { reduceTransparency } = useGlassAccessibility();
+  const { reduceTransparency, reduceMotion } = useGlassAccessibility();
   const nativeGlassButtons = shouldUseNativeGlassButton(reduceTransparency);
   const canSend = session.canSubmit && session.phase !== 'loading';
-  const inlineActive = session.inlineGenerationStatus !== 'idle';
-  const isAskTurn = session.inlineUserTurn?.kind === 'ask';
+  const askThreadOpen =
+    session.inlineUserTurn?.kind === 'ask' ||
+    (session.inlineAskPriorTurns?.length ?? 0) > 0 ||
+    Boolean(session.activeChatId);
+  const inlineActive = session.inlineGenerationStatus !== 'idle' || askThreadOpen;
   const askComposerOpen =
-    isAskTurn &&
+    askThreadOpen &&
     (session.inlineGenerationStatus === 'ready' ||
       session.inlineGenerationStatus === 'error' ||
-      session.inlineGenerationStatus === 'cancelled');
+      session.inlineGenerationStatus === 'cancelled' ||
+      session.inlineGenerationStatus === 'idle');
   const isGenerating =
     session.inlineGenerationStatus === 'generating' ||
     session.inlineGenerationStatus === 'partial' ||
@@ -105,16 +119,20 @@ export default function InputScreen() {
     session.phase === 'loading';
   const composerDisabled =
     inlineActive && !askComposerOpen && session.inlineGenerationStatus !== 'cancelled';
-  // Keep the dock readable while generating so the stop control stays clear.
+  // Núcleo ready: dim the dock so “Abrir Núcleo” stays the action. Ask chats stay live.
   const composerDimmed =
-    inlineActive && !isGenerating && session.inlineGenerationStatus !== 'cancelled';
+    inlineActive &&
+    !isGenerating &&
+    !askComposerOpen &&
+    session.inlineGenerationStatus !== 'cancelled';
   const navIconColor = colors.icon.primary;
   const mutedIcon = colors.icon.muted;
   const [composerHeight, setComposerHeight] = useState(64);
   const [composerFocused, setComposerFocused] = useState(false);
+  const [hyperspacePreviewOpen, setHyperspacePreviewOpen] = useState(false);
   const composerInputRef = useRef<TextInput>(null);
   const heroOpacity = useSharedValue(1);
-  const keyboardLiftStyle = useComposerKeyboardLift();
+  const keyboardLiftStyle = useComposerKeyboardLift(COMPOSER_DOCK_GAP, composerFocused);
   const composerKeyboardInsetStyle = useComposerKeyboardInset(space.stack.lg, composerFocused);
   const composerInputGrowStyle = useComposerKeyboardInputHeight(
     COMPOSER_REST_INPUT_HEIGHT,
@@ -125,8 +143,8 @@ export default function InputScreen() {
     {
       paddingLeft: COMPOSER_TEXT_BESIDE_CONTROL,
       paddingRight: COMPOSER_TEXT_BESIDE_CONTROL,
-      paddingTop: space.stack.sm,
-      paddingBottom: space.stack.sm,
+      paddingTop: COMPOSER_REST_TEXT_PAD_TOP,
+      paddingBottom: COMPOSER_REST_TEXT_PAD_BOTTOM,
     },
     {
       paddingLeft: COMPOSER_PLUS_GLYPH_INSET,
@@ -143,9 +161,9 @@ export default function InputScreen() {
 
   useEffect(() => {
     heroOpacity.value = withTiming(inlineActive || composerFocused ? 0 : 1, {
-      duration: HERO_FADE_MS,
+      duration: reduceMotion ? 0 : HERO_FADE_MS,
     });
-  }, [composerFocused, heroOpacity, inlineActive]);
+  }, [composerFocused, heroOpacity, inlineActive, reduceMotion]);
 
   useEffect(() => {
     registerComposerInputFocus(() => {
@@ -154,6 +172,10 @@ export default function InputScreen() {
     return () => {
       registerComposerInputFocus(null);
     };
+  }, []);
+
+  useEffect(() => {
+    preloadThinkingOrbHtml();
   }, []);
 
   const heroFadeStyle = useAnimatedStyle(() => ({
@@ -168,11 +190,7 @@ export default function InputScreen() {
   const showHomeRestContent = !inlineActive;
   const homeFirstName =
     session.cloudUserDisplayName?.trim().split(/\s+/)[0] || null;
-  const jumpBackEntries = useMemo(
-    () => (showHomeRestContent ? selectLatestCreatedNucleos(session.historyStore.entries, 5) : []),
-    [session.historyStore.entries, showHomeRestContent]
-  );
-  const showJumpBackIn = jumpBackEntries.length > 0;
+  const showJumpBackIn = showHomeRestContent;
 
   const handleSelectHistory = session.handleSelectHistory;
   const handleSelectJumpBack = useCallback(
@@ -180,6 +198,15 @@ export default function InputScreen() {
       handleSelectHistory(id);
     },
     [handleSelectHistory]
+  );
+
+  const handleHomeSurfaceChange = useCallback(
+    (next: HomeSurface) => {
+      if (next === session.homeSurface) return;
+      if (inlineActive) session.handleNewMap();
+      session.setHomeSurface(next);
+    },
+    [inlineActive, session]
   );
 
   const dismissComposerFromOutside = useCallback(() => {
@@ -202,17 +229,17 @@ export default function InputScreen() {
         ? (intent: Parameters<NonNullable<typeof session.handleLoadQaMultipagePdf>>[0]) =>
             void session.handleLoadQaMultipagePdf(intent)
         : undefined,
-    onPreviewGeneration:
-      session.devToolsEnabled || __DEV__ ? () => session.previewInlineGeneration?.() : undefined,
-    onPreviewPreMapChat:
-      session.devToolsEnabled || __DEV__ ? () => session.previewPreMapChat?.() : undefined,
-    onPreviewLoadingScreen:
-      session.devToolsEnabled || __DEV__ ? () => session.previewLoadingScreen?.() : undefined,
-    onPreviewNucleo: session.devToolsEnabled || __DEV__ ? () => session.previewNucleo?.() : undefined,
+    onPreviewChatThinking:
+      session.devToolsEnabled || __DEV__ ? () => session.previewChatThinking?.() : undefined,
+    onPreviewHyperspace:
+      session.devToolsEnabled || __DEV__ ? () => setHyperspacePreviewOpen(true) : undefined,
     onEditorialDemo:
       session.devToolsEnabled || __DEV__
         ? (fixtureId: 'procrastination' | 'attention') => session.openEditorialDemo(fixtureId)
         : undefined,
+    modelPreference: session.modelPreference,
+    onSelectModel:
+      session.devToolsEnabled || __DEV__ ? session.setModelPreference : undefined,
     disabled: session.phase === 'loading' || composerDisabled,
     darkSurface: isDark,
   } as const;
@@ -223,7 +250,8 @@ export default function InputScreen() {
     }
   };
 
-  const menusBlockScroll = session.historyOpen;
+  const sheetGestureLock = useHomeSheetGestureLock();
+  const menusBlockScroll = session.historyOpen || Boolean(sheetGestureLock?.locked);
 
   return (
     <ComposerKeyboardProvider>
@@ -248,6 +276,7 @@ export default function InputScreen() {
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
               keyboardShouldPersistTaps="always"
               scrollEnabled={!menusBlockScroll}
+              directionalLockEnabled
               alwaysBounceVertical={Platform.OS === 'ios'}
               showsVerticalScrollIndicator={false}
               showsHorizontalScrollIndicator={false}
@@ -262,7 +291,7 @@ export default function InputScreen() {
                   SIDEBAR_TOGGLE_TOP +
                   SIDEBAR_TOGGLE_BUTTON_SIZE +
                   space.stack.md +
-                  (inlineActive ? 12 : showHomeRestContent ? 56 : 0),
+                  (inlineActive ? 12 : showHomeRestContent ? HOME_REST_BELOW_CHROME : 0),
                 paddingBottom: scrollBottomPad,
               }}
             >
@@ -272,9 +301,18 @@ export default function InputScreen() {
                 </View>
               ) : null}
               {inlineActive ? (
-                <View className="w-full flex-1" style={{ paddingHorizontal: SIDEBAR_EDGE_INSET }}>
-                  <InlineGenerationThread />
-                </View>
+                <KeyboardDismissBackdrop
+                  className="w-full flex-1"
+                  onPress={dismissComposerFromOutside}
+                >
+                  <View
+                    className="w-full flex-1"
+                    style={{ paddingHorizontal: SIDEBAR_EDGE_INSET }}
+                    pointerEvents={composerFocused ? 'none' : 'auto'}
+                  >
+                    <InlineGenerationThread />
+                  </View>
+                </KeyboardDismissBackdrop>
               ) : (
                 <KeyboardDismissBackdrop
                   className="w-full flex-1"
@@ -376,7 +414,10 @@ export default function InputScreen() {
                       </View>
                     ) : null}
                     {showJumpBackIn ? (
-                      <JumpBackInSection items={jumpBackEntries} onSelect={handleSelectJumpBack} />
+                      <JumpBackInSection
+                        onSelect={handleSelectJumpBack}
+                        spacing="lead"
+                      />
                     ) : null}
                   </Animated.View>
                 </KeyboardDismissBackdrop>
@@ -392,8 +433,7 @@ export default function InputScreen() {
             />
           ) : null}
 
-          <ComposerDock onHeightChange={setComposerHeight}>
-            <ApplicationContextBar />
+          <ComposerDock hold={composerFocused} onHeightChange={setComposerHeight}>
             <ComposerDismissScroll>
               <ComposerSwipeDismiss
                 enabled={composerFocused && !composerDisabled}
@@ -496,19 +536,27 @@ export default function InputScreen() {
                                 setComposerFocused(true);
                               }}
                               onBlur={() => {
-                                setComposerFocused(false);
-                                session.persistComposerDraft();
+                                // iOS can resign first responder for a beat while typing.
+                                requestAnimationFrame(() => {
+                                  if (composerInputRef.current?.isFocused()) {
+                                    setComposerFocused(true);
+                                    return;
+                                  }
+                                  setComposerFocused(false);
+                                  session.persistComposerDraft();
+                                });
                               }}
                               editable={!composerDisabled}
                               placeholder={session.composerPlaceholder}
                               placeholderTextColor={colors.text.secondary}
                               multiline
+                              scrollEnabled={composerFocused}
                               showSoftInputOnFocus
-                              textAlignVertical={composerFocused ? 'top' : 'center'}
+                              textAlignVertical="top"
                               style={[
                                 styles.composerInput,
                                 {
-                                  fontSize: type.sectionTitle.fontSize,
+                                  fontSize: type.input.fontSize,
                                   lineHeight: COMPOSER_LINE_HEIGHT,
                                   fontFamily: font.family,
                                   color: colors.text.primary,
@@ -540,9 +588,11 @@ export default function InputScreen() {
                             onPress={() => {
                               Keyboard.dismiss();
                               if (isGenerating) {
+                                hapticCommit();
                                 session.handleCancelLoading();
                                 return;
                               }
+                              hapticCommit();
                               void session.handleComposerSubmit();
                             }}
                             disabled={!canSend}
@@ -556,28 +606,71 @@ export default function InputScreen() {
             </ComposerDismissScroll>
           </ComposerDock>
 
-          <View pointerEvents="box-none" style={styles.sidebarToggleWrap}>
+          <View pointerEvents="box-none" style={styles.homeTopBar}>
             <FloatingGlassButton
               onPress={() => session.toggleHistoryDrawer()}
               accessibilityLabel={session.historyOpen ? 'Cerrar navegacion' : 'Abrir navegacion'}
               shape="circle"
               size={SIDEBAR_TOGGLE_BUTTON_SIZE}
+              systemImage={NATIVE_MENU_TWO_LINES}
+              symbolPointSize={20}
             >
               <MenuTwoLines size={20} color={navIconColor} />
             </FloatingGlassButton>
+            <View pointerEvents="box-none" style={styles.homeSurfaceCenter}>
+              <HomeSurfaceSegment
+                value={session.homeSurface}
+                onChange={handleHomeSurfaceChange}
+                disabled={isGenerating}
+              />
+            </View>
+            <View pointerEvents="box-none" style={styles.homeTopBarSide}>
+              {askThreadOpen ? (
+                <FloatingGlassButton
+                  onPress={() => session.handleNewMap()}
+                  accessibilityLabel="Nuevo chat"
+                  shape="circle"
+                  size={SIDEBAR_TOGGLE_BUTTON_SIZE}
+                  systemImage="square.and.pencil"
+                  symbolPointSize={17}
+                >
+                  <SquarePen size={20} color={navIconColor} />
+                </FloatingGlassButton>
+              ) : null}
+            </View>
           </View>
         </View>
       </SafeAreaView>
+      <HyperspacePreview
+        visible={hyperspacePreviewOpen}
+        onClose={() => setHyperspacePreviewOpen(false)}
+      />
     </ComposerKeyboardProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  sidebarToggleWrap: {
+  homeTopBar: {
     position: 'absolute',
     top: SIDEBAR_TOGGLE_TOP, // design-token-ignore: matches prior header pt-2.5
-    left: SIDEBAR_EDGE_INSET,
+    left: 0,
+    right: 0,
     zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SIDEBAR_EDGE_INSET,
+    height: SIDEBAR_TOGGLE_BUTTON_SIZE,
+    overflow: 'visible',
+  },
+  homeTopBarSide: {
+    width: SIDEBAR_TOGGLE_BUTTON_SIZE,
+    height: SIDEBAR_TOGGLE_BUTTON_SIZE,
+  },
+  homeSurfaceCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
   },
   composerDismissOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -667,6 +760,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     minWidth: 0,
     zIndex: 2,
+    overflow: 'visible',
   },
   composerInput: {
     width: '100%',
@@ -674,6 +768,7 @@ const styles = StyleSheet.create({
     margin: 0,
     padding: 0,
     includeFontPadding: false,
+    overflow: 'visible',
   },
   composerInputSpacer: {
     ...StyleSheet.absoluteFillObject,

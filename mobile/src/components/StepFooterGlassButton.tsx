@@ -4,7 +4,7 @@ import Animated from 'react-native-reanimated';
 import { CTA_FILL, RADII, TEXT_PRIMARY } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 import NativeGlassButton from './NativeGlassButton';
-import { usePressScale } from '../hooks/usePressScale';
+import { PRESS_HIT_SLOP, PRESS_RETENTION_OFFSET, usePressScale } from '../hooks/usePressScale';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
 import { useTheme } from '../context/ThemeContext';
@@ -81,14 +81,15 @@ export default function StepFooterGlassButton({
       onPressIn={onPressIn}
       onPressOut={onPressOut}
       disabled={disabled}
+      hitSlop={PRESS_HIT_SLOP}
+      pressRetentionOffset={PRESS_RETENTION_OFFSET}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
-      style={({ pressed }) => [
+      style={[
         styles.pressable,
         style,
         disabled ? styles.disabled : null,
-        pressed && !disabled ? styles.pressedOpacity : null,
       ]}
     >
       <Animated.View style={[styles.pressableInner, animatedStyle]}>
@@ -145,9 +146,6 @@ const styles = StyleSheet.create({
   secondaryShell: {
     borderRadius: FOOTER_BUTTON_RADIUS,
     overflow: 'hidden',
-  },
-  pressedOpacity: {
-    opacity: 0.88,
   },
   flexibleLabel: {
     flexShrink: 1,

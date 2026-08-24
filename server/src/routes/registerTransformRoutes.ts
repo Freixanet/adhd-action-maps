@@ -6,6 +6,8 @@
 
 import type { Express, Request, Response, NextFunction } from 'express';
 import type { ActionMapData, TransformRequest } from '../../../shared/contracts';
+import { resolveNucleoGenerationMode } from '../../../shared/contracts';
+import type { RunLumenIlluminate } from '../lumen/illuminate';
 import type { IngestResult } from '../../../shared/types/chunk';
 import type { PastedTextSourceMeta } from '../../../shared/pastedText';
 import { parsePastedTextOperationIds } from '../../../shared/pastedText';
@@ -87,6 +89,10 @@ function contentHashFromMeta(
   if (ingest?.rawHash) return ingest.rawHash;
   const maybe = (body as { contentHash?: unknown }).contentHash;
   return typeof maybe === 'string' && maybe.trim() ? maybe.trim() : undefined;
+}
+
+function isLumenProductMode(body: TransformRequest): boolean {
+  return resolveNucleoGenerationMode(body.generationMode) === 'lumen-v1';
 }
 
 function withPdfCoverage(
@@ -391,8 +397,10 @@ export type TransformRouteDeps = {
   generateAskAnswer: (
     text: string,
     depth?: TransformRequest['depth'],
-    userDisplayName?: string
-  ) => Promise<string>;
+    userDisplayName?: string,
+    preferredModel?: string,
+    history?: Array<{ role: 'user' | 'assistant'; text: string }>
+  ) => Promise<string | { answer: string; title?: string; modelUsed?: string }>;
 
   buildTransformContext: (
     body: TransformRequest,
@@ -465,10 +473,13 @@ export type TransformRouteDeps = {
     userId?: string;
     isCancelled: () => boolean;
     onStage?: (label: string) => void;
-  }) => Promise<
+  }  ) => Promise<
     | { ok: true; map: ActionMapData; cacheHit: boolean; model: string }
     | { ok: false; status: number; error: string; code: string }
   >;
+
+  /** Product canvas path (lumen-v1). Skips Entender/Aplicar engines. */
+  runLumenIlluminate?: RunLumenIlluminate;
 
   runTransformStream: (
     context: TransformContextLike,
@@ -615,6 +626,7 @@ export async function handleTransformJsonRoute(
 ): Promise<void> {
   try {
     let body = req.body as TransformRequest;
+    const lumenProduct = isLumenProductMode(body);
     if (deps.isCsvTransformRequest(body)) {
       res.status(410).json({ error: 'CSV no soportado en beta' });
       return;
@@ -670,14 +682,26 @@ export async function handleTransformJsonRoute(
       return;
     }
     if (ingestOutcome.kind === 'ask') {
-      ingestKind = 'ask';
-      const answer = await deps.generateAskAnswer(
-        body.text || '',
-        body.depth,
-        body.userDisplayName
-      );
-      res.json(askResultShell(answer));
-      return;
+      if (lumenProduct) {
+        ingestKind = 'passthrough';
+      } else {
+        ingestKind = 'ask';
+        const ask = await deps.generateAskAnswer(
+          body.text || '',
+          body.depth,
+          body.userDisplayName,
+          body.preferredModel
+        );
+        const answer = typeof ask === 'string' ? ask : ask.answer;
+        const modelUsed = typeof ask === 'string' ? undefined : ask.modelUsed;
+        const title = typeof ask === 'string' ? undefined : ask.title;
+        res.json({
+          ...askResultShell(answer),
+          ...(modelUsed ? { modelUsed } : {}),
+          ...(title ? { title } : {}),
+        });
+        return;
+      }
     }
     if (ingestOutcome.kind === 'passthrough') {
       ingestKind = 'passthrough';
@@ -712,6 +736,43 @@ export async function handleTransformJsonRoute(
 
     if (deps.isCancelled(req, res)) {
       res.status(499).json({ error: 'Creación cancelada', code: 'CANCELLED' });
+      return;
+    }
+
+    if (lumenProduct) {
+      if (!deps.runLumenIlluminate) {
+        res.status(500).json({
+          error: 'Motor de interfaz no configurado',
+          code: 'LUMEN_UNAVAILABLE',
+        });
+        return;
+      }
+      const lumenResult = await deps.runLumenIlluminate({
+        body,
+        ingest: transformIngest,
+        isCancelled: () => deps.isCancelled(req, res),
+      });
+      if (deps.isCancelled(req, res)) {
+        res.status(499).json({ error: 'Creación cancelada', code: 'CANCELLED' });
+        return;
+      }
+      if (lumenResult.ok === false) {
+        res.status(lumenResult.status).json({
+          error: lumenResult.error,
+          code: lumenResult.code,
+        });
+        return;
+      }
+      res.setHeader('X-Gemini-Model-Used', lumenResult.model);
+      const cited = deps.attachCitations(lumenResult.map, transformIngest);
+      const payload = boundSourceMeta
+        ? {
+            ...withPdfCoverage(cited, boundSourceMeta),
+            sourceMeta: boundSourceMeta,
+            ...(boundPdfPersistRetry ? { pdfPersistRetry: boundPdfPersistRetry } : {}),
+          }
+        : cited;
+      res.json(payload);
       return;
     }
 
@@ -925,6 +986,7 @@ export async function handleTransformStreamRoute(
   let preflightStopHeartbeat: (() => void) | null = null;
   try {
     let body = req.body as TransformRequest;
+    const lumenProduct = isLumenProductMode(body);
     if (deps.isCsvTransformRequest(body)) {
       res.status(410).json({ error: 'CSV no soportado en beta' });
       return;
@@ -1040,14 +1102,26 @@ export async function handleTransformStreamRoute(
       return;
     }
     if (ingestOutcome.kind === 'ask') {
-      ingestKind = 'ask';
-      const answer = await deps.generateAskAnswer(
-        body.text || '',
-        body.depth,
-        body.userDisplayName
-      );
-      res.json(askResultShell(answer));
-      return;
+      if (lumenProduct) {
+        ingestKind = 'passthrough';
+      } else {
+        ingestKind = 'ask';
+        const ask = await deps.generateAskAnswer(
+          body.text || '',
+          body.depth,
+          body.userDisplayName,
+          body.preferredModel
+        );
+        const answer = typeof ask === 'string' ? ask : ask.answer;
+        const modelUsed = typeof ask === 'string' ? undefined : ask.modelUsed;
+        const title = typeof ask === 'string' ? undefined : ask.title;
+        res.json({
+          ...askResultShell(answer),
+          ...(modelUsed ? { modelUsed } : {}),
+          ...(title ? { title } : {}),
+        });
+        return;
+      }
     }
     if (ingestOutcome.kind === 'passthrough') {
       ingestKind = 'passthrough';
@@ -1123,6 +1197,100 @@ export async function handleTransformStreamRoute(
     const runIds = generationIdsResolved;
     const store = resultStore!;
     store.ensureRunning(runIds);
+
+    if (lumenProduct) {
+      if (!deps.runLumenIlluminate) {
+        store.markFailed({
+          ...runIds,
+          error: 'Motor de interfaz no configurado',
+          code: 'LUMEN_UNAVAILABLE',
+        });
+        if (!preflightStreamStarted) {
+          res.status(500).json({
+            error: 'Motor de interfaz no configurado',
+            code: 'LUMEN_UNAVAILABLE',
+          });
+          return;
+        }
+        if (!res.writableEnded) {
+          res.write(
+            `${JSON.stringify({
+              type: 'error',
+              error: 'Motor de interfaz no configurado',
+              code: 'LUMEN_UNAVAILABLE',
+            })}\n`
+          );
+          res.end();
+        }
+        return;
+      }
+      if (!preflightStreamStarted) {
+        res.status(200);
+        res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('X-Accel-Buffering', 'no');
+        if (typeof (res as Response & { flushHeaders?: () => void }).flushHeaders === 'function') {
+          (res as Response & { flushHeaders: () => void }).flushHeaders();
+        }
+        emitRunEvent(res, runIds);
+      }
+      const stopHeartbeat =
+        preflightStopHeartbeat ?? startGlobalStreamHeartbeat(res, runIds);
+      preflightStopHeartbeat = null;
+      try {
+        res.write(`${JSON.stringify({ type: 'stage', stageLabel: 'Componiendo la interfaz…' })}\n`);
+        const lumenResult = await deps.runLumenIlluminate({
+          body,
+          ingest: transformIngest,
+          isCancelled: () => deps.isCancelled(req, res),
+          onStage: (label) => {
+            if (!res.writableEnded) {
+              res.write(`${JSON.stringify({ type: 'stage', stageLabel: label })}\n`);
+            }
+          },
+        });
+        if (deps.isCancelled(req, res)) {
+          store.markCancelled(runIds);
+          if (!res.writableEnded) {
+            deps.writeStreamError?.(res, 'Creación cancelada');
+            if (!res.writableEnded) res.end();
+          }
+          return;
+        }
+        if (lumenResult.ok === false) {
+          store.markFailed({
+            ...runIds,
+            error: lumenResult.error,
+            code: lumenResult.code,
+          });
+          if (!res.writableEnded) {
+            res.write(
+              `${JSON.stringify({
+                type: 'error',
+                error: lumenResult.error,
+                code: lumenResult.code,
+              })}\n`
+            );
+            res.end();
+          }
+          return;
+        }
+        const cited = deps.attachCitations(lumenResult.map, transformIngest);
+        const map = boundSourceMeta ? withPdfCoverage(cited, boundSourceMeta) : cited;
+        persistAndWriteDone(res, store, {
+          mapId: runIds.mapId,
+          generationRunId: runIds.generationRunId,
+          map,
+          model: lumenResult.model,
+          sourceMeta: boundSourceMeta ?? undefined,
+          pdfPersistRetry: boundPdfPersistRetry ?? undefined,
+        });
+        res.end();
+        return;
+      } finally {
+        stopHeartbeat();
+      }
+    }
 
     const intent = resolveMapIntent(body);
     const applyGate = canRunApplicationEngine({

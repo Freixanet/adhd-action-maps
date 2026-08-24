@@ -14,6 +14,17 @@ type NucleoUIMenuAnchorProps = {
   title?: string;
   themeVariant?: 'dark' | 'light' | string;
   actions: NucleoUIMenuAction[];
+  /** Long-press UIButton.menu (icons). Default tap. */
+  openOnLongPress?: boolean;
+  /** iMessage-style lift preview + haptic via UIContextMenuInteraction. */
+  liftPreview?: boolean;
+  previewCornerRadius?: number;
+  previewTailRadius?: number;
+  sourceText?: string;
+  sourceColor?: string;
+  sourceFontSize?: number;
+  sourceLineHeight?: number;
+  sourceFontFamily?: string;
   onSelect?: (event: { nativeEvent: { id: string } }) => void;
   onPresent?: (event: {
     nativeEvent: { delayed: boolean; keyboardHeight: number; title: string };

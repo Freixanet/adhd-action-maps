@@ -5,8 +5,26 @@
 const fs = require('fs');
 const path = require('path');
 
+function removeNodeModulesSharedTrap(projectRoot, sharedRoot) {
+  // Leftover `node_modules/@shared → ../../shared`. npm install follows it and
+  // deletes the real shared/ tree. Unlink the alias only — never rm -rf.
+  const alias = path.join(projectRoot, 'node_modules', '@shared');
+  try {
+    if (!fs.lstatSync(alias).isSymbolicLink()) return;
+    const real = fs.realpathSync(alias);
+    if (real === sharedRoot || real.startsWith(sharedRoot + path.sep)) {
+      fs.unlinkSync(alias);
+    }
+  } catch {
+    // absent or already gone
+  }
+}
+
 function ensureSharedSymlink(projectRoot, sharedRoot) {
-  const linkPath = path.join(projectRoot, 'node_modules', '@shared');
+  // Keep this link *outside* node_modules. `npm install` in mobile/ previously
+  // followed `node_modules/@shared` and deleted the real `shared/` tree.
+  removeNodeModulesSharedTrap(projectRoot, sharedRoot);
+  const linkPath = path.join(projectRoot, '.metro-shared');
   const desiredTarget = path.relative(path.dirname(linkPath), sharedRoot);
   try {
     const st = fs.lstatSync(linkPath);
@@ -26,17 +44,15 @@ function ensureSharedSymlink(projectRoot, sharedRoot) {
 }
 
 /**
- * Resolve `@shared/foo` via the project-local symlink path
- * `mobile/node_modules/@shared/foo…`.
+ * Resolve `@shared/foo` to the real file under `<repo>/shared`.
  *
- * Metro's TreeFS `getSha1` returns null for the realpath under `<repo>/shared`
- * (outside projectRoot) even when the file is watched. The symlink path under
- * projectRoot carries a computed SHA-1 and is what Expo export needs.
+ * Metro watches `shared/` via `watchFolders`. `.metro-shared` is gitignored, so
+ * TreeFS never hashes the symlink path and `getSha1` fails. Return the realpath
+ * so relative imports inside shared/ stay on the watched tree.
  */
 function resolveSharedFile(projectRoot, sharedRoot, sourceExts, subpath, platform) {
   ensureSharedSymlink(projectRoot, sharedRoot);
-  const linkRoot = path.join(projectRoot, 'node_modules', '@shared');
-  const base = path.resolve(linkRoot, subpath);
+  const base = path.resolve(sharedRoot, subpath);
 
   // Reject path escape outside the shared tree.
   const realShared = fs.realpathSync(sharedRoot);
@@ -51,8 +67,7 @@ function resolveSharedFile(projectRoot, sharedRoot, sourceExts, subpath, platfor
       if (!(real === realShared || real.startsWith(realShared + path.sep))) {
         return null;
       }
-      // Return the logical path under node_modules/@shared (not realpath).
-      return { type: 'sourceFile', filePath: candidate };
+      return { type: 'sourceFile', filePath: real };
     } catch {
       return null;
     }
@@ -81,6 +96,7 @@ function dedupeAssetExts(assetExts, extra) {
 
 module.exports = {
   ensureSharedSymlink,
+  removeNodeModulesSharedTrap,
   resolveSharedFile,
   dedupeAssetExts,
 };

@@ -2,7 +2,6 @@ import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
-import { stepHaptic } from '../context/AppSessionContext';
 import { type } from '@shared/design-tokens';
 import { useThemeColors } from '../context/ThemeContext';
 
@@ -36,7 +35,6 @@ export default function BetaQuotaSheet({ visible, onClose, onLogin }: BetaQuotaS
 
               <Pressable
                 onPress={() => {
-                  stepHaptic();
                   onLogin();
                 }}
                 accessibilityRole="button"
@@ -48,7 +46,6 @@ export default function BetaQuotaSheet({ visible, onClose, onLogin }: BetaQuotaS
 
               <Pressable
                 onPress={() => {
-                  stepHaptic();
                   onClose();
                 }}
                 accessibilityRole="button"

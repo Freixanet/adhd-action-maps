@@ -7,7 +7,7 @@ export type GenerationPhaseStep = {
   orb: ThinkingOrbState;
 };
 
-/** Perplexity-style trail — S04 Entender stage copy (human, no technical jargon). */
+/** Soft phase labels shown while a Núcleo is generating. */
 export const GENERATION_PHASE_STEPS: GenerationPhaseStep[] = [
   { id: 'searching', label: 'Analizando la fuente…', orb: 'searching' },
   { id: 'working', label: 'Comprendiendo la estructura…', orb: 'working' },

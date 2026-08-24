@@ -7,9 +7,6 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import FloatingGlassButton from './FloatingGlassButton';
-import { MenuTwoLines } from '../icons';
-import { SIDEBAR_EDGE_INSET, SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
 import { useTheme } from '../context/ThemeContext';
 import { motion } from '@shared/design-tokens';
 
@@ -34,7 +31,8 @@ function clampRatio(value: number): number {
 type ReadingProgressBarProps = {
   viewAll: boolean;
   stepProgress: number;
-  onToggleSidebar: () => void;
+  /** Kept so call sites compile; sidebar toggle is hidden on Núcleos for now. */
+  onToggleSidebar?: () => void;
   /** UI-thread scroll ratio for fluid view-all progress (0–1). */
   scrollProgressShared?: SharedValue<number>;
   /**
@@ -54,18 +52,15 @@ type ReadingProgressBarProps = {
 
 /**
  * Floating map chrome — not a header.
- * Sidebar button top-left; thin progress line at the top edge. Neither collapses.
+ * Thin progress line at the top edge. Sidebar toggle is off on Núcleos for now.
  */
 export default function ReadingProgressBar({
   viewAll,
   stepProgress,
-  onToggleSidebar,
   scrollProgressShared,
   hideProgressLine,
-  topInset = 0,
 }: ReadingProgressBarProps) {
   const { colors, isDark } = useTheme();
-  const navIconColor = colors.icon.muted;
   const stepProgressValue = useSharedValue(stepProgress / 100);
 
   useEffect(() => {
@@ -111,27 +106,6 @@ export default function ReadingProgressBar({
           </View>
         </View>
       ) : null}
-
-      <View
-        pointerEvents="box-none"
-        style={[
-          styles.buttonSlot,
-          {
-            top: topInset,
-            height: READING_PROGRESS_BAR_HEIGHT,
-            paddingHorizontal: SIDEBAR_EDGE_INSET,
-          },
-        ]}
-      >
-        <FloatingGlassButton
-          onPress={onToggleSidebar}
-          accessibilityLabel="Abrir navegación"
-          shape="circle"
-          size={SIDEBAR_HEADER_BUTTON_SIZE}
-        >
-          <MenuTwoLines size={17} color={navIconColor} />
-        </FloatingGlassButton>
-      </View>
     </View>
   );
 }
@@ -152,11 +126,5 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-  },
-  buttonSlot: {
-    position: 'absolute',
-    left: 0,
-    zIndex: 50,
-    justifyContent: 'center',
   },
 });

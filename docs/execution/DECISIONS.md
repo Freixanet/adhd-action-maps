@@ -447,3 +447,75 @@ legítimamente el digest de extracción, por lo que el extractor sube a
 `server/src/ingestors/pdfInspectorAdapter.ts`,
 `server/src/ingestors/pdfInspectorAdapter.test.ts`,
 `shared/pdf/coverage.ts`, `shared/pdf/versions.ts`.
+
+---
+
+## ADR-026 — Formato de lectura del Núcleo por trabajo de la fuente
+
+**Fecha:** 2026-08-20  
+**Estado:** accepted
+
+**Contexto:** El compilador clásico hacía 1 unidad = 1 página idéntica (prosa +
+callouts + tabla y otra vez las mismas aristas). Cada Núcleo se sentía el mismo
+documento paginado. El catálogo tipo Monogram (UI libre) sigue fuera de alcance
+sin spec de layout. La allowlist de bloques no cambia.
+
+**Decisión:** El compilador elige un `readingFormat` interno a partir de
+`classification.discourseStructure` (y género como desempate). Compone cada
+página para esa faena: visual útil primero (comparison, list, callout), prosa
+corta, densidad en accordion, relaciones en comparison **o** Conexión, nunca
+ambos. No es un selector de usuario. No se añaden kinds de bloque.
+
+**Alternativas rechazadas:** dejar el 1:1; activar editorial-v1 por fixtures;
+inventar kinds o timeline; dejar que el modelo describa el layout.
+
+**Consecuencias:** Nuevos Núcleos se ven distintos según la fuente. Mapas viejos
+siguen igual. Prompt de unidades pide frases cortas y ejemplos concretos.
+
+**Evidencia:** `shared/nucleoFormat/`, `shared/understanding/compile.ts`.
+
+---
+
+## ADR-027 — Generación de producto = canvas Lumen (`lumen-v1`)
+
+**Fecha:** 2026-08-20  
+**Estado:** accepted
+
+**Contexto:** El compositor de Núcleo seguía emitiendo mapas clásicos Entender/Aplicar
+(pasos paginados). El producto a probar es un canvas único (`explain | compare |
+recipe | plan | collection | guide`) generado por un JSON, con Preguntar sobre
+ese canvas. El modelo a probar primero es Gemini 3.7 Flash.
+
+**Decisión:** Las generaciones nuevas van por `generationMode: 'lumen-v1'`. El
+motor Lumen sustituye Entender/Aplicar en esa ruta. El ingest de Núcleo
+(PDF, web SSRF, YouTube transcript) se conserva; no se copia el fetch ingenuo
+de Lumen. Tema corto, URL o texto pegado se clasifican como en Lumen, sin
+selector extra. Mapas clásicos guardados siguen abriendo; no se generan más.
+
+**Alternativas rechazadas:** xAI/Grok 4.6 de entrada; mantener dual-write
+classic+lumen; añadir un picker de kind.
+
+**Consecuencias:** Preguntar usa el contrato corto del canvas. Home muestra el
+ejemplo de relatividad. Si Flash no convence, se cambia el proveedor, no el
+schema. Illuminate usa Gemini 3.7 Flash con thinking LOW (no HIGH): HIGH cae
+a Flash Lite y elige `guide` en artículos. Ante duda de kind, `explain`.
+
+**Evidencia:** `shared/lumen/`, `server/src/lumen/illuminate.ts`, `mobile/src/lumen/`.
+
+---
+
+## ADR-028 — Iconos híbridos SF Symbols + Hugeicons; fill y trazo ortogonales
+
+**Fecha:** 2026-08-24  
+**Estado:** accepted
+
+**Contexto:** iOS ya pinta SF Symbols vía `expo-symbols` y el resto Hugeicons. Un umbral `strokeWidth >= 2.15` cambiaba el glifo a `.fill`, acoplando grosor y relleno. A `size` nominal la masa visual no coincide: SF escala por punto óptico, Hugeicons por viewBox 24×24.
+
+**Decisión:** Conservar el híbrido. `filled` es una prop explícita. `strokeWidth` solo mapea a `SymbolWeight` (regular / medium / semibold). SF se dibuja a 1.1× del tamaño nominal dentro del componente. Tamaños de icono 16 / 20 / 24 (`control.iconSm|Md|Lg`). Énfasis de trazo: `control.iconEmphasis` (2.5). `play.fill` y el check de completar siguen sólidos por convención.
+
+**Alternativas:** Deshacer SF y quedar solo en Hugeicons; seguir parcheando tamaños y grosores en cada call site.
+
+**Consecuencias:** Subir el trazo ya no cambia contorno↔sólido. Los call sites que usaban 2.15/2.2 como proxy de fill pasan a `filled`. Los tamaños 12–15, 17, 18, 28, 32 siguen fuera de token hasta que el factor óptico cubra el desajuste.
+
+**Evidencia:** `shared/iconAppearance.ts`, `mobile/src/icons/index.tsx`.
+

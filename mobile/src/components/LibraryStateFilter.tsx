@@ -1,10 +1,10 @@
 import React from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LibraryStateFilter as LibraryStateFilterValue } from '@shared/progress';
 import { space } from '@shared/design-tokens';
-import { stepHaptic } from '../context/AppSessionContext';
-import { useThemeColors } from '../context/ThemeContext';
+import { useTheme } from '../context/ThemeContext';
 import { CheckCircle2 } from '../icons';
+import { SidebarOcclusionFade, SIDEBAR_OCCLUSION } from './SidebarGlassHeader';
 
 type LibraryStateFilterProps = {
   value: LibraryStateFilterValue;
@@ -26,7 +26,8 @@ export default function LibraryStateFilter({
   counts,
   onChange,
 }: LibraryStateFilterProps) {
-  const colors = useThemeColors();
+  const { isDark, colors } = useTheme();
+  const fadeColor = isDark ? colors.background.canvas : colors.background.surface;
 
   return (
     <View className="mb-5">
@@ -36,12 +37,13 @@ export default function LibraryStateFilter({
       >
         Estado
       </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingRight: 12 }}
-      >
+      <View style={styles.chipTrack} collapsable={false}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.chipContent}
+        >
         {FILTERS.map((filter) => {
           const selected = value === filter.value;
           const count = counts[filter.value];
@@ -51,7 +53,6 @@ export default function LibraryStateFilter({
               key={filter.value}
               onPress={() => {
                 if (selected) return;
-                stepHaptic();
                 onChange(filter.value);
               }}
               accessibilityRole="button"
@@ -71,12 +72,24 @@ export default function LibraryStateFilter({
                 {filter.label}
               </Text>
               {selected ? (
-                <CheckCircle2 size={16} color={colors.action.primary} strokeWidth={2} />
+                <CheckCircle2 size={16} color={colors.action.primary} filled />
               ) : null}
             </Pressable>
           );
         })}
-      </ScrollView>
+        </ScrollView>
+        <SidebarOcclusionFade edge="right" color={fadeColor} />
+      </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  chipTrack: {
+    marginRight: -space.screen.horizontal,
+    overflow: 'visible',
+  },
+  chipContent: {
+    paddingRight: SIDEBAR_OCCLUSION.edgeFade + space.stack.md,
+  },
+});

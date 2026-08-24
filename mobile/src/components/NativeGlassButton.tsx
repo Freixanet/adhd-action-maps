@@ -128,8 +128,9 @@ export default function NativeGlassButton({
 }
 
 const styles = StyleSheet.create({
-  // Callers set width/height (e.g. 38 send circle, 44 sidebar). Do not force
-  // minHeight 44 here — it stretches short circular buttons into ovals.
+  // Callers MUST set width and height (e.g. 38 send circle, 44 sidebar).
+  // Do not use this inside document/canvas flow — Yoga measures an unsized
+  // wrapper as 0 and the native UIButton paints over neighbouring copy.
   wrapper: {
     justifyContent: 'center',
     backgroundColor: 'transparent',

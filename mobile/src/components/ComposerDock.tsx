@@ -7,10 +7,16 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   type AnimatedStyle,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { StyleSheet, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { keyboardLiftPx, keyboardInputHeight, composerGrowProgress } from '../logic/composerKeyboardLift';
+import {
+  keyboardLiftPx,
+  keyboardInputHeight,
+  composerGrowProgress,
+  stickyKeyboardHeight,
+} from '../logic/composerKeyboardLift';
 
 export const COMPOSER_DOCK_GAP = 12;
 /** Horizontal inset of the dock column (Continue + composer glass share this). */
@@ -24,21 +30,10 @@ export const COMPOSER_CONTENT_PADDING_H = 20;
 type ComposerDockProps = {
   children: React.ReactNode;
   gap?: number;
+  /** Keep the last keyboard height while the field is focused (iOS can report 0). */
+  hold?: boolean;
   onHeightChange?: (height: number) => void;
 };
-
-/** Matches ComposerDock lift so scroll content moves up with the keyboard. */
-export function useComposerKeyboardLift(gap = COMPOSER_DOCK_GAP): AnimatedStyle<ViewStyle> {
-  const insets = useSafeAreaInsets();
-  const keyboard = useAnimatedKeyboard();
-  const insetBottom = insets.bottom;
-
-  return useAnimatedStyle(() => {
-    const closedBottom = Math.max(insetBottom, gap);
-    const bottom = keyboardLiftPx(keyboard.height.value, insetBottom, gap);
-    return { marginBottom: bottom - closedBottom };
-  }, [insetBottom, gap]);
-}
 
 function useComposerExpandedFlag(expanded: boolean) {
   const expandedSV = useSharedValue(expanded ? 1 : 0);
@@ -46,15 +41,54 @@ function useComposerExpandedFlag(expanded: boolean) {
   return expandedSV;
 }
 
+function useStickyKeyboard(hold: boolean): {
+  keyboard: ReturnType<typeof useAnimatedKeyboard>;
+  lastNonZero: SharedValue<number>;
+  holdSV: SharedValue<number>;
+} {
+  const keyboard = useAnimatedKeyboard();
+  const lastNonZero = useSharedValue(0);
+  const holdSV = useComposerExpandedFlag(hold);
+  return { keyboard, lastNonZero, holdSV };
+}
+
+function readStickyHeight(
+  reported: number,
+  hold: number,
+  lastNonZero: SharedValue<number>
+): number {
+  'worklet';
+  if (reported > 1) lastNonZero.value = reported;
+  return stickyKeyboardHeight(reported, hold === 1, lastNonZero.value);
+}
+
+/** Matches ComposerDock lift so scroll content moves up with the keyboard. */
+export function useComposerKeyboardLift(
+  gap = COMPOSER_DOCK_GAP,
+  hold = false
+): AnimatedStyle<ViewStyle> {
+  const insets = useSafeAreaInsets();
+  const { keyboard, lastNonZero, holdSV } = useStickyKeyboard(hold);
+  const insetBottom = insets.bottom;
+
+  return useAnimatedStyle(() => {
+    const height = readStickyHeight(keyboard.height.value, holdSV.value, lastNonZero);
+    const closedBottom = Math.max(insetBottom, gap);
+    const bottom = keyboardLiftPx(height, insetBottom, gap);
+    return { marginBottom: bottom - closedBottom };
+  }, [insetBottom, gap]);
+}
+
 /** Widens the rest pill to full dock width in step with the keyboard / focus. */
 export function useComposerKeyboardInset(
   restInset: number,
   expanded = false
 ): AnimatedStyle<ViewStyle> {
-  const keyboard = useAnimatedKeyboard();
-  const expandedSV = useComposerExpandedFlag(expanded);
+  const { keyboard, lastNonZero, holdSV } = useStickyKeyboard(expanded);
+  const expandedSV = holdSV;
   return useAnimatedStyle(() => {
-    const t = composerGrowProgress(keyboard.height.value, expandedSV.value === 1);
+    const height = readStickyHeight(keyboard.height.value, holdSV.value, lastNonZero);
+    const t = composerGrowProgress(height, expandedSV.value === 1);
     return {
       marginHorizontal: interpolate(t, [0, 1], [restInset, 0], Extrapolation.CLAMP),
     };
@@ -67,16 +101,12 @@ export function useComposerKeyboardInputHeight(
   focusedHeight: number,
   expanded = false
 ): AnimatedStyle<ViewStyle> {
-  const keyboard = useAnimatedKeyboard();
-  const expandedSV = useComposerExpandedFlag(expanded);
+  const { keyboard, lastNonZero, holdSV } = useStickyKeyboard(expanded);
+  const expandedSV = holdSV;
   return useAnimatedStyle(() => {
+    const height = readStickyHeight(keyboard.height.value, holdSV.value, lastNonZero);
     return {
-      height: keyboardInputHeight(
-        keyboard.height.value,
-        restHeight,
-        focusedHeight,
-        expandedSV.value === 1
-      ),
+      height: keyboardInputHeight(height, restHeight, focusedHeight, expandedSV.value === 1),
     };
   }, [restHeight, focusedHeight]);
 }
@@ -93,8 +123,8 @@ export function useComposerKeyboardTextFrameStyle(rest: {
   paddingBottom: number;
   paddingTop: number;
 }, expanded = false): AnimatedStyle<ViewStyle> {
-  const keyboard = useAnimatedKeyboard();
-  const expandedSV = useComposerExpandedFlag(expanded);
+  const { keyboard, lastNonZero, holdSV } = useStickyKeyboard(expanded);
+  const expandedSV = holdSV;
   const restLeft = rest.paddingLeft;
   const restRight = rest.paddingRight;
   const restBottom = rest.paddingBottom;
@@ -105,7 +135,8 @@ export function useComposerKeyboardTextFrameStyle(rest: {
   const focusedTop = focused.paddingTop;
 
   return useAnimatedStyle(() => {
-    const t = composerGrowProgress(keyboard.height.value, expandedSV.value === 1);
+    const height = readStickyHeight(keyboard.height.value, holdSV.value, lastNonZero);
+    const t = composerGrowProgress(height, expandedSV.value === 1);
     return {
       paddingLeft: interpolate(t, [0, 1], [restLeft, focusedLeft], Extrapolation.CLAMP),
       paddingRight: interpolate(t, [0, 1], [restRight, focusedRight], Extrapolation.CLAMP),
@@ -118,15 +149,17 @@ export function useComposerKeyboardTextFrameStyle(rest: {
 export default function ComposerDock({
   children,
   gap = COMPOSER_DOCK_GAP,
+  hold = false,
   onHeightChange,
 }: ComposerDockProps) {
   const insets = useSafeAreaInsets();
-  const keyboard = useAnimatedKeyboard();
+  const { keyboard, lastNonZero, holdSV } = useStickyKeyboard(hold);
   const insetBottom = insets.bottom;
 
   const animatedStyle = useAnimatedStyle(() => {
+    const height = readStickyHeight(keyboard.height.value, holdSV.value, lastNonZero);
     return {
-      bottom: keyboardLiftPx(keyboard.height.value, insetBottom, gap),
+      bottom: keyboardLiftPx(height, insetBottom, gap),
     };
   }, [insetBottom, gap]);
 

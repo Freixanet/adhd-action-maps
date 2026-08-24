@@ -2,7 +2,6 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { SourceReference } from '../logic/contracts';
 import { useSourceViewer } from '../context/SourceViewerContext';
-import { stepHaptic } from '../context/AppSessionContext';
 import { type } from '@shared/design-tokens';
 
 /**
@@ -24,7 +23,6 @@ export default function BlockReferences({ references }: { references?: SourceRef
             <Pressable
               key={`${chunkId}-${idx}`}
               onPress={() => {
-                stepHaptic();
                 openCitation(chunkId, reference);
               }}
               accessibilityRole="button"

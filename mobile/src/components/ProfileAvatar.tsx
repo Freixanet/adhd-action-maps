@@ -47,7 +47,6 @@ export default function ProfileAvatar({
       <UserRound
         size={20}
         color={signedIn ? ACCENT : isDark ? TEXT_BODY : color.text.muted}
-        strokeWidth={2.25}
       />
     );
   }

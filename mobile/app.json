@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.freixanet.nucleo"
+      "bundleIdentifier": "com.freixanet.nucleo",
+      "infoPlist": {
+        "CADisableMinimumFrameDurationOnPhone": true
+      }
     },
     "android": {
       "package": "com.freixanet.nucleo",
@@ -53,8 +56,21 @@
         }
       ],
       "expo-web-browser",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#5B60D4",
+          "sounds": [],
+          "defaultChannel": "incomplete"
+        }
+      ]
     ],
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#5B60D4"
+    },
     "extra": {
       "eas": {
         "projectId": "50a15b7b-c758-471b-ac20-c630111dcfa2"

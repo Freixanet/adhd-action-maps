@@ -1,6 +1,7 @@
 import React, { memo, useCallback } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
+  Easing,
   Extrapolation,
   interpolate,
   useAnimatedStyle,
@@ -16,17 +17,19 @@ import {
   type,
 } from '@shared/design-tokens';
 import type { HistoryEntry } from '@shared/history';
+import { isChatHistoryEntry } from '@shared/historyKind';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useTheme } from '../context/ThemeContext';
 import { useTypography } from '../context/TypographyContext';
-import { stepHaptic } from '../logic/stepHaptic';
 import NucleoCover from './NucleoCover';
 
 /** Square card side length bounds (width = height). */
 export const RECENT_NUCLEO_CARD_WIDTH_MIN = 200;
 export const RECENT_NUCLEO_CARD_WIDTH_MAX = 220;
-/** Cover / illustration band as a fraction of card height. */
+/** Cover / illustration band as a fraction of card height. Rest is title. */
 export const RECENT_NUCLEO_COVER_RATIO = 0.76;
+/** Illustration size relative to the art plane. */
+export const RECENT_NUCLEO_ART_SCALE = 1.12;
 
 type RecentNucleoCardProps = {
   entry: HistoryEntry;
@@ -37,8 +40,9 @@ type RecentNucleoCardProps = {
   scrollX?: SharedValue<number>;
 };
 
-const PRESS_DURATION = motion.homeCardPress.duration;
-const PRESS_SCALE = motion.homeCardPress.scale;
+const PRESS_DURATION = motion.press.duration;
+const PRESS_SCALE = motion.press.scale;
+const PRESS_EASE = Easing.bezier(0.23, 1, 0.32, 1);
 
 function RecentNucleoCard({
   entry,
@@ -52,7 +56,7 @@ function RecentNucleoCard({
   const { font } = useTypography();
   const { reduceMotion } = useGlassAccessibility();
   const size = width;
-  const textBand = Math.round(size * (1 - RECENT_NUCLEO_COVER_RATIO));
+  const coverHeight = Math.round(size * RECENT_NUCLEO_COVER_RATIO);
   const cardRadius = radius.card;
   const press = useSharedValue(0);
   const idleScroll = useSharedValue(0);
@@ -61,16 +65,15 @@ function RecentNucleoCard({
   const cardShadow = isDark ? shadow.homeCardDark : shadow.homeCardLight;
 
   const handlePress = useCallback(() => {
-    stepHaptic();
     onPress(entry.id);
   }, [entry.id, onPress]);
 
   const handlePressIn = useCallback(() => {
-    press.value = withTiming(1, { duration: PRESS_DURATION });
+    press.value = withTiming(1, { duration: PRESS_DURATION, easing: PRESS_EASE });
   }, [press]);
 
   const handlePressOut = useCallback(() => {
-    press.value = withTiming(0, { duration: PRESS_DURATION });
+    press.value = withTiming(0, { duration: PRESS_DURATION, easing: PRESS_EASE });
   }, [press]);
 
   const motionStyle = useAnimatedStyle(() => {
@@ -100,7 +103,9 @@ function RecentNucleoCard({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       accessibilityRole="button"
-      accessibilityLabel={`Abrir Núcleo: ${entry.title}`}
+      accessibilityLabel={
+        isChatHistoryEntry(entry) ? `Abrir chat: ${entry.title}` : `Abrir Núcleo: ${entry.title}`
+      }
     >
       <Animated.View
         style={[
@@ -121,36 +126,46 @@ function RecentNucleoCard({
               width: size,
               height: size,
               borderRadius: cardRadius,
-              backgroundColor: colors.background.accentSoft,
+              backgroundColor: colors.background.canvas,
             },
             Platform.OS === 'ios' ? styles.continuous : null,
           ]}
         >
-          <NucleoCover
-            entry={entry}
-            width={size}
-            height={size}
-            contentInsetBottom={textBand}
-            artOffsetY={-space.stack.lg}
-            artScale={1.12}
-          />
-          <View style={[styles.textPad, { height: textBand }]}>
+          <View style={{ width: size, height: coverHeight, overflow: 'hidden' }}>
+            <NucleoCover entry={entry} width={size} height={coverHeight} />
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.veil,
+                { backgroundColor: colors.background.scrim },
+                veilStyle,
+              ]}
+            />
+          </View>
+          <View
+            style={[
+              styles.titleBand,
+              {
+                height: size - coverHeight,
+                paddingHorizontal: space.stack.md,
+                paddingBottom: space.stack.sm,
+              },
+            ]}
+          >
             <Text
-              style={[styles.title, { color: colors.text.primary, fontFamily: font.family }]}
               numberOfLines={2}
-              maxFontSizeMultiplier={1.35}
+              style={{
+                fontFamily: font.family,
+                fontSize: type.continueTitle.fontSize,
+                lineHeight: type.continueTitle.lineHeight,
+                fontWeight: type.continueTitle.fontWeight,
+                letterSpacing: type.continueTitle.letterSpacing,
+                color: colors.text.primary,
+              }}
             >
               {entry.title}
             </Text>
           </View>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.veil,
-              { backgroundColor: colors.background.scrim },
-              veilStyle,
-            ]}
-          />
         </View>
       </Animated.View>
     </Pressable>
@@ -167,24 +182,11 @@ const styles = StyleSheet.create({
   continuous: {
     borderCurve: 'continuous',
   },
-  textPad: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 2,
-    justifyContent: 'center',
-    paddingHorizontal: space.stack.md,
-    paddingBottom: space.stack.sm,
-  },
   veil: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 10,
   },
-  title: {
-    fontSize: type.continueTitle.fontSize,
-    lineHeight: type.continueTitle.lineHeight,
-    fontWeight: type.continueTitle.fontWeight as '700',
-    letterSpacing: type.continueTitle.letterSpacing,
+  titleBand: {
+    justifyContent: 'flex-end',
   },
 });

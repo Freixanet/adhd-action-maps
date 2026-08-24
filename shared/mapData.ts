@@ -18,6 +18,7 @@ import {
 // F3: re-spec pending — NucleoVisualSpec channel off; keep module for future.
 // import { normalizeNucleoVisual } from './nucleoVisual';
 import { normalizeVisualizeArtifact } from './visualizeCompiler';
+import { attachLumenCanvas } from './lumen/toMap';
 import { normalizePersistedVisualizationRun } from './visualize';
 import { validateEditorialPlan, type EditorialPlan } from './editorial';
 import { normalizeStepContentBlocks } from './stepContentBlocks';
@@ -365,7 +366,7 @@ export function normalizeMapData(
   // On full maps, always ensure a usable fallback from coreIdea/tldr/steps.
   normalized.layer0 = allowPartial ? earlyLayer0 : ensureLayer0(normalized);
 
-  return normalized;
+  return attachLumenCanvas(raw, normalized);
 }
 
 export function isValidMap(data: unknown): data is ActionMapData {

@@ -52,7 +52,7 @@ Built for ADHD-friendly consumption: less wall-of-text, more executable structur
    ```env
    GEMINI_API_KEY=your_key_here
    # Optional:
-   GEMINI_MODEL=gemini-3.6-flash
+   GEMINI_MODEL=gemini-3.7-flash
    ```
 
 3. Start the backend from the repository root:

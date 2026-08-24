@@ -236,7 +236,7 @@ export function typography(role: TypeRole): {
   fontFamily: string;
   fontSize: number;
   lineHeight: number;
-  fontWeight: '200' | '400' | '500' | '600' | '700' | '800';
+  fontWeight: '200' | '400' | '500' | '600' | '700' | '800' | '900';
   letterSpacing: number;
   textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
 } {
@@ -245,7 +245,7 @@ export function typography(role: TypeRole): {
     fontFamily: font.family,
     fontSize: style.fontSize,
     lineHeight: style.lineHeight,
-    fontWeight: style.fontWeight as '200' | '400' | '500' | '600' | '700' | '800',
+    fontWeight: style.fontWeight as '200' | '400' | '500' | '600' | '700' | '800' | '900',
     letterSpacing: style.letterSpacing,
     ...('textTransform' in style ? { textTransform: (style as { textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize' }).textTransform } : {}),
   };

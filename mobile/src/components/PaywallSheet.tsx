@@ -20,9 +20,10 @@ import {
   restoreProPurchases,
   type ProOfferingPackage,
 } from '../logic/proPurchases';
-import { stepHaptic } from '../context/AppSessionContext';
+import { hapticError, hapticSuccess } from '../logic/haptics';
 import { useThemeColors } from '../context/ThemeContext';
-import { type } from '@shared/design-tokens';
+import { control } from '@shared/design-tokens';
+import { trackProductEvent } from '@shared/productTelemetry';
 
 const BENEFITS = [
   'Núcleos ilimitados',
@@ -45,6 +46,7 @@ export default function PaywallSheet({ visible, onClose }: PaywallSheetProps) {
 
   useEffect(() => {
     if (!visible) return;
+    trackProductEvent('paywall_view');
     let cancelled = false;
     setLoading(true);
     void fetchProOfferings()
@@ -82,18 +84,28 @@ export default function PaywallSheet({ visible, onClose }: PaywallSheetProps) {
       return;
     }
     setBusy(true);
+    trackProductEvent('paywall_purchase_start', {
+      packageType: selected.packageType,
+    });
     try {
       const ok = await purchaseProPackage(selected.id);
       if (ok) {
-        stepHaptic();
+        hapticSuccess();
+        trackProductEvent('paywall_purchase_success');
+        trackProductEvent('subscribe');
+        trackProductEvent('trial_start');
         onClose();
       } else {
         Alert.alert('Compra', 'La compra no activó Pro. Prueba Restaurar compra.');
+        hapticError();
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo completar la compra.';
-      if (!/cancel/i.test(message)) {
+      if (/cancel/i.test(message)) {
+        trackProductEvent('paywall_purchase_cancel');
+      } else {
         Alert.alert('Compra', message);
+        hapticError();
       }
     } finally {
       setBusy(false);
@@ -105,16 +117,19 @@ export default function PaywallSheet({ visible, onClose }: PaywallSheetProps) {
     try {
       const ok = await restoreProPurchases();
       if (ok) {
-        stepHaptic();
+        hapticSuccess();
+        trackProductEvent('restore_success');
         onClose();
       } else {
         Alert.alert('Restaurar', 'No encontramos una compra Pro en esta cuenta.');
+        hapticError();
       }
     } catch (err) {
       Alert.alert(
         'Restaurar',
         err instanceof Error ? err.message : 'No se pudo restaurar la compra.'
       );
+      hapticError();
     } finally {
       setBusy(false);
     }
@@ -146,7 +161,7 @@ export default function PaywallSheet({ visible, onClose }: PaywallSheetProps) {
               <View className="mt-5 gap-3">
                 {BENEFITS.map((benefit) => (
                   <View key={benefit} className="flex-row items-center gap-3">
-                    <Check size={18} color={colors.action.primary} strokeWidth={2.5} />
+                    <Check size={18} color={colors.action.primary} strokeWidth={control.iconEmphasis} />
                     <Text className="flex-1 text-body text-body">{benefit}</Text>
                   </View>
                 ))}
@@ -183,7 +198,6 @@ export default function PaywallSheet({ visible, onClose }: PaywallSheetProps) {
               <Pressable
                 onPress={() => {
                   void handlePurchase();
-                  stepHaptic();
                 }}
                 disabled={busy}
                 accessibilityRole="button"

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { hapticSegment } from '../logic/haptics';
 import { Plus } from '../icons';
 import { MenuView, type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
 import ComposerMenuTrigger from './ComposerMenuTrigger';
@@ -11,25 +12,30 @@ import {
   QA_MULTIPAGE_PDF_UNDERSTAND_LABEL,
 } from '../logic/intentPreselection';
 import { SIDEBAR_TOGGLE_BUTTON_SIZE } from './sidebarLayout';
-import { COMPOSER_CONTROL_SIZE } from '../logic/composerText';
-import { control } from '@shared/design-tokens';
+import { COMPOSER_CONTROL_SIZE, COMPOSER_PLUS_ICON_SIZE } from '../logic/composerText';
+import type { ModelPreference } from '@shared/modelPreference';
+
+/** DEV picker — local list so Metro Fast Refresh cannot keep the old 3.6/3.5 catalog. */
+const DEV_MODEL_OPTIONS: ReadonlyArray<{ id: ModelPreference; label: string }> = [
+  { id: 'auto', label: 'Automático' },
+  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
+  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite' },
+];
 
 type AttachMenuProps = {
   onPickCamera: () => void;
   onPickImage: () => void;
   onPickFile: () => void;
-  /** DEV-only: replay inline generation UI without a real transform. */
-  onPreviewGeneration?: () => void;
-  /** DEV-only: open the ready pre-map chat (Abrir Núcleo). */
-  onPreviewPreMapChat?: () => void;
-  /** DEV-only: open the collection loading screen preview. */
-  onPreviewLoadingScreen?: () => void;
-  /** DEV-only: open ResultScreen with the bundled demo Núcleo. */
-  onPreviewNucleo?: () => void;
+  /** DEV-only: sent Chat bubble + Thinking orb, no assistant answer. */
+  onPreviewChatThinking?: () => void;
+  /** DEV-only: play the hyperspace delivery shader full-screen. */
+  onPreviewHyperspace?: () => void;
   /** DEV-only: open editorial demo (procrastination / attention). */
   onEditorialDemo?: (fixtureId: 'procrastination' | 'attention') => void;
   /** DEV/QA: attach bundled multipage PDF and pin Entender or Aplicar. */
   onLoadQaMultipagePdf?: (intent: QaMultipagePdfIntent) => void;
+  modelPreference?: ModelPreference;
+  onSelectModel?: (value: ModelPreference) => void;
   disabled?: boolean;
   darkSurface?: boolean;
   /**
@@ -57,26 +63,30 @@ const ATTACH_ACTIONS: MenuAction[] = [
   },
 ];
 
+const MODEL_ACTION_PREFIX = 'model:';
+
+function modelActionId(id: ModelPreference): string {
+  return `${MODEL_ACTION_PREFIX}${id}`;
+}
+
+function parseModelActionId(eventId: string): ModelPreference | null {
+  if (!eventId.startsWith(MODEL_ACTION_PREFIX)) return null;
+  const raw = eventId.slice(MODEL_ACTION_PREFIX.length);
+  return DEV_MODEL_OPTIONS.some((option) => option.id === raw)
+    ? (raw as ModelPreference)
+    : null;
+}
+
 const DEV_ATTACH_ACTIONS: MenuAction[] = [
   {
-    id: 'preview-generation',
-    title: 'Preview generación',
-    image: Platform.select({ ios: 'play.rectangle', android: 'ic_media_play' }),
+    id: 'preview-chat-thinking',
+    title: 'Preview Thinking',
+    image: Platform.select({ ios: 'ellipsis.bubble', android: 'ic_menu_recent_history' }),
   },
   {
-    id: 'preview-pre-map-chat',
-    title: 'Chat previo al mapa',
-    image: Platform.select({ ios: 'bubble.left.and.bubble.right', android: 'ic_menu_recent_history' }),
-  },
-  {
-    id: 'preview-loading',
-    title: 'Preview colección',
-    image: Platform.select({ ios: 'square.stack.3d.up', android: 'ic_menu_sort_by_size' }),
-  },
-  {
-    id: 'preview-nucleo',
-    title: 'Preview Núcleo',
-    image: Platform.select({ ios: 'sparkles', android: 'ic_menu_view' }),
+    id: 'preview-hyperspace',
+    title: 'Preview hyperspace',
+    image: Platform.select({ ios: 'star.fill', android: 'ic_menu_view' }),
   },
   {
     id: 'editorial-demo-actuar',
@@ -109,12 +119,12 @@ export default function AttachMenu({
   onPickCamera,
   onPickImage,
   onPickFile,
-  onPreviewGeneration,
-  onPreviewPreMapChat,
-  onPreviewLoadingScreen,
-  onPreviewNucleo,
+  onPreviewChatThinking,
+  onPreviewHyperspace,
   onEditorialDemo,
   onLoadQaMultipagePdf,
+  modelPreference = 'auto',
+  onSelectModel,
   disabled = false,
   darkSurface = false,
   variant = 'composer',
@@ -126,16 +136,24 @@ export default function AttachMenu({
   const isFab = variant === 'fab';
 
   const showDevActions = Boolean(
-    onPreviewGeneration ||
-      onPreviewPreMapChat ||
-      onPreviewLoadingScreen ||
-      onPreviewNucleo ||
+    onPreviewChatThinking ||
+      onPreviewHyperspace ||
       onEditorialDemo ||
-      onLoadQaMultipagePdf
+      onLoadQaMultipagePdf ||
+      onSelectModel
   );
+  const modelActions: MenuAction[] = onSelectModel
+    ? DEV_MODEL_OPTIONS.map((option) => ({
+        id: modelActionId(option.id),
+        title: option.label,
+        state: option.id === modelPreference ? 'on' : 'off',
+        image: Platform.select({ ios: 'cpu', android: 'ic_menu_manage' }),
+      }))
+    : [];
   const actions = showDevActions
     ? [
         ...ATTACH_ACTIONS,
+        ...modelActions,
         ...DEV_ATTACH_ACTIONS.filter((action) => {
           if (
             action.id === 'qa-multipage-pdf-understand' ||
@@ -143,10 +161,8 @@ export default function AttachMenu({
           ) {
             return Boolean(onLoadQaMultipagePdf);
           }
-          if (action.id === 'preview-generation') return Boolean(onPreviewGeneration);
-          if (action.id === 'preview-pre-map-chat') return Boolean(onPreviewPreMapChat);
-          if (action.id === 'preview-loading') return Boolean(onPreviewLoadingScreen);
-          if (action.id === 'preview-nucleo') return Boolean(onPreviewNucleo);
+          if (action.id === 'preview-chat-thinking') return Boolean(onPreviewChatThinking);
+          if (action.id === 'preview-hyperspace') return Boolean(onPreviewHyperspace);
           if (
             action.id === 'editorial-demo-actuar' ||
             action.id === 'editorial-demo-atencion'
@@ -159,6 +175,12 @@ export default function AttachMenu({
     : ATTACH_ACTIONS;
 
   const handlePress = ({ nativeEvent }: NativeActionEvent) => {
+    const selectedModel = parseModelActionId(nativeEvent.event);
+    if (selectedModel) {
+      hapticSegment();
+      onSelectModel?.(selectedModel);
+      return;
+    }
     switch (nativeEvent.event) {
       case 'camera':
         onPickCamera();
@@ -169,17 +191,11 @@ export default function AttachMenu({
       case 'file':
         onPickFile();
         break;
-      case 'preview-generation':
-        onPreviewGeneration?.();
+      case 'preview-chat-thinking':
+        onPreviewChatThinking?.();
         break;
-      case 'preview-pre-map-chat':
-        onPreviewPreMapChat?.();
-        break;
-      case 'preview-loading':
-        onPreviewLoadingScreen?.();
-        break;
-      case 'preview-nucleo':
-        onPreviewNucleo?.();
+      case 'preview-hyperspace':
+        onPreviewHyperspace?.();
         break;
       case 'editorial-demo-actuar':
         onEditorialDemo?.('procrastination');
@@ -214,7 +230,7 @@ export default function AttachMenu({
       accessibilityState={{ disabled }}
       style={[styles.composerHit, disabled ? styles.composerHitDisabled : null]}
     >
-      <Plus size={control.iconLg} color={iconMuted} />
+      <Plus size={COMPOSER_PLUS_ICON_SIZE} color={iconMuted} strokeWidth={1.5} />
     </View>
   );
 

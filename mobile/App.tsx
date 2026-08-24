@@ -11,13 +11,16 @@ import AuthSheet from './src/components/AuthSheet';
 import BetaQuotaSheet from './src/components/BetaQuotaSheet';
 import PaywallSheet from './src/components/PaywallSheet';
 import OAuthRedirectListener from './src/components/OAuthRedirectListener';
+import IncomingShareListener from './src/components/IncomingShareListener';
 import DevPreviewDeepLink from './src/components/DevPreviewDeepLink';
+import { ToastProvider } from './src/components/Toast';
 import { AppSessionProvider, useAppSession } from './src/context/AppSessionContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { TypographyProvider } from './src/context/TypographyContext';
 import { NetworkStatusProvider } from './src/context/NetworkStatusContext';
 import { bootstrapStorage } from './src/shims/localStorage';
 import { hideScrollIndicatorsGlobally } from './src/logic/hideScrollIndicators';
+import { initCrashReporting } from './src/logic/crashReporting';
 import ComprensionApp from './src/screens/ComprensionApp';
 import { themeColor } from '@shared/design-tokens/generated/tokens';
 import { getInitialAppearancePreference } from './src/logic/appearancePreference';
@@ -90,14 +93,17 @@ function AppShell() {
     <View className="flex-1 bg-base" style={{ flex: 1, backgroundColor: colors.background.canvas }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <AppSessionProvider>
-        <View style={{ flex: 1 }}>
-          <ComprensionApp />
-          <AuthHost />
-          <BetaQuotaHost />
-          <PaywallHost />
-          <OAuthRedirectListener />
-          {__DEV__ ? <DevPreviewDeepLink /> : null}
-        </View>
+        <ToastProvider>
+          <View style={{ flex: 1 }}>
+            <ComprensionApp />
+            <AuthHost />
+            <BetaQuotaHost />
+            <PaywallHost />
+            <OAuthRedirectListener />
+            <IncomingShareListener />
+            {__DEV__ ? <DevPreviewDeepLink /> : null}
+          </View>
+        </ToastProvider>
       </AppSessionProvider>
     </View>
   );
@@ -121,7 +127,8 @@ export default function App() {
       console.warn('Uniwind.setTheme failed', provisional, error);
     }
     bootstrapStorage()
-      .then(() => {
+      .then(async () => {
+        await initCrashReporting();
         const scheme = resolveBootScheme();
         try {
           Uniwind.setTheme(scheme);

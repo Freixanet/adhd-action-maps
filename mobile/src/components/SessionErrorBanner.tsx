@@ -49,10 +49,10 @@ export default function SessionErrorBanner({ className = '', inline = false }: S
 
   const triggerShake = useCallback(() => {
     shakeX.value = withSequence(
-      withTiming(-6, { duration: motion.feedback45.duration }),
-      withTiming(6, { duration: motion.feedback45.duration }),
-      withTiming(-4, { duration: motion.feedback45.duration }),
-      withTiming(0, { duration: motion.feedback45.duration })
+      withTiming(-6, { duration: motion.feedback.duration }),
+      withTiming(6, { duration: motion.feedback.duration }),
+      withTiming(-4, { duration: motion.feedback.duration }),
+      withTiming(0, { duration: motion.feedback.duration })
     );
   }, [shakeX]);
 

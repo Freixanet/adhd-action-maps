@@ -5,14 +5,16 @@ import { radius, space, type } from '@shared/design-tokens';
 import type { HistoryEntry } from '@shared/history';
 import { useThemeColors } from '../context/ThemeContext';
 import { useTypography } from '../context/TypographyContext';
-import { stepHaptic } from '../logic/stepHaptic';
 import { SIDEBAR_EDGE_INSET } from './sidebarLayout';
+import { DevModelCaption } from './DevModelInspect';
 import NucleoCover from './NucleoCover';
 
 type NucleoOpenCoverProps = {
   entry: HistoryEntry | null;
   title: string;
   subtitle?: string;
+  modelUsed?: string;
+  showDevModel?: boolean;
   onExplore: () => void;
 };
 
@@ -30,6 +32,8 @@ export default function NucleoOpenCover({
   entry,
   title,
   subtitle,
+  modelUsed,
+  showDevModel = false,
   onExplore,
 }: NucleoOpenCoverProps) {
   const colors = useThemeColors();
@@ -102,7 +106,6 @@ export default function NucleoOpenCover({
         ) : null}
         <Pressable
           onPress={() => {
-            stepHaptic();
             onExplore();
           }}
           accessibilityRole="button"
@@ -124,6 +127,7 @@ export default function NucleoOpenCover({
             Explorar Núcleo
           </Text>
         </Pressable>
+        <DevModelCaption enabled={showDevModel} modelUsed={modelUsed} />
       </View>
     </View>
   );

@@ -164,12 +164,16 @@ final class NucleoGlassButtonView: ExpoView {
       configuration.title = titleText
     }
     if let systemImageName {
-      configuration.image = UIImage(systemName: systemImageName)
-      if let symbolPointSize {
-        configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
-          pointSize: symbolPointSize,
-          weight: .medium
-        )
+      if systemImageName == NucleoMenuGlyph.twoLinesName {
+        configuration.image = NucleoMenuGlyph.twoLines(pointSize: symbolPointSize ?? 20)
+      } else {
+        configuration.image = UIImage(systemName: systemImageName)
+        if let symbolPointSize {
+          configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
+            pointSize: symbolPointSize,
+            weight: .medium
+          )
+        }
       }
     }
 
@@ -197,5 +201,33 @@ final class NucleoGlassButtonView: ExpoView {
       spinner.stopAnimating()
       button.alpha = 1
     }
+  }
+}
+
+/// Two-line menu as `UIButton.Configuration.image` so Liquid Glass morphs the glyph.
+/// SF has no two-line hamburger; `line.3.horizontal` is three lines.
+private enum NucleoMenuGlyph {
+  static let twoLinesName = "nucleo.menu.two"
+
+  static func twoLines(pointSize: CGFloat) -> UIImage {
+    let format = UIGraphicsImageRendererFormat.preferred()
+    format.opaque = false
+    let canvas = CGSize(width: pointSize, height: pointSize)
+    let image = UIGraphicsImageRenderer(size: canvas, format: format).image { _ in
+      let lineWidth = max(2.0, pointSize * 0.105)
+      let inset = pointSize * 0.18
+      let spacing = lineWidth * 1.15
+      let mid = pointSize / 2
+      let path = UIBezierPath()
+      path.lineCapStyle = .round
+      path.lineWidth = lineWidth
+      path.move(to: CGPoint(x: inset, y: mid - spacing))
+      path.addLine(to: CGPoint(x: pointSize - inset, y: mid - spacing))
+      path.move(to: CGPoint(x: inset, y: mid + spacing))
+      path.addLine(to: CGPoint(x: pointSize - inset, y: mid + spacing))
+      UIColor.black.setStroke()
+      path.stroke()
+    }
+    return image.withRenderingMode(.alwaysTemplate)
   }
 }

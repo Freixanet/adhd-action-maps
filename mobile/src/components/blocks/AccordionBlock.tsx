@@ -7,13 +7,14 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { ChevronDown } from '../../icons';
-import * as Haptics from 'expo-haptics';
+import { hapticToggle } from '../../logic/haptics';
 import { RADII } from '@shared/uiTokens';
 import type { SourceReference, StepContentBlockAccordion } from '@shared/contracts';
 import GlassSurface from '../GlassSurface';
 import { useTheme } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import BlockEnter from './BlockEnter';
+import { contentEnterStagger } from '../../motion/contentEnter';
 import { motion, type, typography } from '@shared/design-tokens';
 
 type Props = {
@@ -50,9 +51,7 @@ export default function AccordionBlock({ block, index = 0 }: Props) {
   const toggle = () => {
     const next = !open;
     setOpen(next);
-    if (next) {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    }
+    hapticToggle(next);
     if (reduceMotion) {
       progress.value = next ? 1 : 0;
       return;
@@ -77,7 +76,7 @@ export default function AccordionBlock({ block, index = 0 }: Props) {
   }));
 
   return (
-    <BlockEnter delayMs={index * 60}>
+    <BlockEnter delayMs={contentEnterStagger(index)}>
       <View style={styles.wrap}>
         <GlassSurface
           liquid

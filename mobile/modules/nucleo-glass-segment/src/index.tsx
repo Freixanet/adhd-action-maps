@@ -3,13 +3,16 @@ import React from 'react';
 import { Platform, StyleProp, ViewStyle } from 'react-native';
 
 export type NucleoGlassSegmentProps = {
-  selectedIntent: 'understand' | 'apply';
+  selectedIntent?: 'understand' | 'apply';
+  selectedId?: string;
+  optionIds?: string[];
+  optionLabels?: string[];
   isEnabled?: boolean;
   themeVariant?: 'auto' | 'light' | 'dark';
   reduceMotion?: boolean;
   trackColor?: string;
   onIntentChange?: (event: {
-    nativeEvent: { intent: 'understand' | 'apply'; implementation: string };
+    nativeEvent: { intent: string; implementation: string };
   }) => void;
   style?: StyleProp<ViewStyle>;
 };
@@ -35,6 +38,7 @@ function loadNativeView(): NativeViewComponent | null {
 type NucleoGlassSegmentModuleApi = {
   isAvailable: () => boolean;
   implementationMode?: () => string;
+  supportsMultiSegment?: () => boolean;
 };
 
 let nativeModule: NucleoGlassSegmentModuleApi | null = null;
@@ -53,6 +57,16 @@ export function isNativeGlassSegmentAvailable(): boolean {
   if (!loadNativeView()) return false;
   try {
     return Boolean(loadNativeModule()?.isAvailable());
+  } catch {
+    return false;
+  }
+}
+
+/** True only after a rebuild that includes the N-option glass track. */
+export function isNativeMultiSegmentAvailable(): boolean {
+  if (!isNativeGlassSegmentAvailable()) return false;
+  try {
+    return Boolean(loadNativeModule()?.supportsMultiSegment?.());
   } catch {
     return false;
   }

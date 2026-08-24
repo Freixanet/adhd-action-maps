@@ -1,10 +1,10 @@
 import type { Request, Response } from "express";
-import { isProUser } from "../shared/proEntitlement";
 import {
   assertAndConsumeUsage,
   type UsageKind,
 } from "../shared/usageLimits";
 import type { TransformRequest } from "../shared/contracts";
+import { resolveServerIsPro } from "./revenueCatEntitlement";
 
 export type AuthenticatedRequest = Request & {
   userId?: string;
@@ -15,7 +15,6 @@ export type AuthenticatedRequest = Request & {
 };
 
 const PREMIUM_MODEL_IDS = new Set([
-  "gemini-3.5-flash",
   "gemini-3-pro-preview",
   "gemini-3.1-pro-preview",
   ...(process.env.GEMINI_DEEP_MODEL ?? "")
@@ -72,7 +71,7 @@ export async function authenticateOptional(req: AuthenticatedRequest) {
     if (!user.id) return;
     req.userId = user.id;
     req.userEmail = user.email;
-    req.isPro = isProUser(user.email);
+    req.isPro = await resolveServerIsPro({ userId: user.id, email: user.email });
   } catch (err) {
     console.warn("[auth] Supabase user lookup failed:", err instanceof Error ? err.message : err);
   }

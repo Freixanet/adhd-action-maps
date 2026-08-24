@@ -25,6 +25,11 @@ public class NucleoGlassSegmentModule: Module {
       return "fallback_solid"
     }
 
+    Function("supportsMultiSegment") { () -> Bool in
+      if #available(iOS 26.0, *) { return true }
+      return false
+    }
+
     View(NucleoGlassSegmentView.self) {
       Events("onIntentChange")
 
@@ -32,12 +37,29 @@ public class NucleoGlassSegmentModule: Module {
         view.applyExternalIntent(intent ?? "understand")
       }
 
+      Prop("selectedId") { (view: NucleoGlassSegmentView, id: String?) in
+        guard let id, !id.isEmpty else { return }
+        view.applyExternalIntent(id)
+      }
+
+      Prop("optionIds") { (view: NucleoGlassSegmentView, ids: [String]?) in
+        view.model.optionIds = ids ?? []
+        view.refreshMultiSegmentControl()
+      }
+
+      Prop("optionLabels") { (view: NucleoGlassSegmentView, labels: [String]?) in
+        view.model.optionLabels = labels ?? []
+        view.refreshMultiSegmentControl()
+      }
+
       Prop("isEnabled") { (view: NucleoGlassSegmentView, enabled: Bool?) in
         view.model.isEnabled = enabled ?? true
+        view.segmentedControl?.isEnabled = view.model.isEnabled
       }
 
       Prop("themeVariant") { (view: NucleoGlassSegmentView, theme: String?) in
         view.model.themeVariant = theme ?? "auto"
+        view.applyThemeVariant()
       }
 
       Prop("trackColor") { (_: NucleoGlassSegmentView, _: String?) in }
@@ -50,9 +72,14 @@ public class NucleoGlassSegmentModule: Module {
 final class NucleoGlassSegmentView: ExpoView {
   let onIntentChange = EventDispatcher()
   let model = IntentSegmentModel()
+  var segmentedControl: UISegmentedControl?
 
   private var hostingController: UIHostingController<AnyView>?
   private var ignoreExternalUntil: CFAbsoluteTime = 0
+  private let overflowPad: CGFloat = 24
+  /// Same inner inset on the first and last titles, so left of Esencia
+  /// matches right of Conceptos.
+  private let titleEndInset: CGFloat = 12
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -62,19 +89,17 @@ final class NucleoGlassSegmentView: ExpoView {
     isOpaque = false
     isUserInteractionEnabled = true
 
-    model.onConfirmChange = { [weak self] intent in
+    model.onConfirmChange = { [weak self] id in
       guard let self else { return }
       self.ignoreExternalUntil = CFAbsoluteTimeGetCurrent() + 0.35
       self.onIntentChange([
-        "intent": intent.rawValue,
+        "intent": id,
         "implementation": "native_system_segmented",
       ])
     }
 
     if #available(iOS 26.0, *) {
-      // Visual trial: native Liquid Glass track + smaller native glass lens.
-      // Keep the standard Picker implementation below for an immediate rollback.
-      let host = UIHostingController(rootView: AnyView(GlassCompositeSegmentedRoot(model: model)))
+      let host = UIHostingController(rootView: AnyView(AdaptiveSegmentRoot(model: model)))
       if #available(iOS 16.4, *) {
         host.safeAreaRegions = []
       }
@@ -91,9 +116,79 @@ final class NucleoGlassSegmentView: ExpoView {
 
   func applyExternalIntent(_ raw: String) {
     if CFAbsoluteTimeGetCurrent() < ignoreExternalUntil { return }
-    let intent = IntentOption(rawValue: raw) ?? .understand
     DispatchQueue.main.async {
-      self.model.applyExternal(intent)
+      self.model.applyExternalId(raw)
+      self.applySelectedIndex()
+    }
+  }
+
+  func applyThemeVariant() {
+    switch model.themeVariant {
+    case "dark": overrideUserInterfaceStyle = .dark
+    case "light": overrideUserInterfaceStyle = .light
+    default: overrideUserInterfaceStyle = .unspecified
+    }
+  }
+
+  func refreshMultiSegmentControl() {
+    let ids = model.optionIds
+    let labels = model.optionLabels
+    let multi = ids.count >= 2 && labels.count == ids.count
+    hostingController?.view.isHidden = multi
+    if !multi {
+      segmentedControl?.isHidden = true
+      return
+    }
+
+    let control = segmentedControl ?? UISegmentedControl()
+    if segmentedControl == nil {
+      control.apportionsSegmentWidthsByContent = false
+      control.addTarget(self, action: #selector(onSegmentChanged(_:)), for: .valueChanged)
+      addSubview(control)
+      segmentedControl = control
+    }
+    control.isHidden = false
+    control.isEnabled = model.isEnabled
+    if control.numberOfSegments != labels.count {
+      control.removeAllSegments()
+      for (index, label) in labels.enumerated() {
+        control.insertSegment(withTitle: label, at: index, animated: false)
+      }
+    } else {
+      for (index, label) in labels.enumerated() where control.titleForSegment(at: index) != label {
+        control.setTitle(label, forSegmentAt: index)
+      }
+    }
+    applySelectedIndex()
+    setNeedsLayout()
+  }
+
+  func applySelectedIndex() {
+    guard let control = segmentedControl, !control.isHidden else { return }
+    if let index = model.optionIds.firstIndex(of: model.selectedId) {
+      control.selectedSegmentIndex = index
+    }
+  }
+
+  @objc private func onSegmentChanged(_ sender: UISegmentedControl) {
+    let index = sender.selectedSegmentIndex
+    guard index >= 0, index < model.optionIds.count else { return }
+    model.userDidSelectId(model.optionIds[index])
+  }
+
+  private func distributeSegmentWidths(_ control: UISegmentedControl) {
+    let count = control.numberOfSegments
+    guard count > 0, bounds.width > 1 else { return }
+    let font = (control.titleTextAttributes(for: .normal)?[.font] as? UIFont)
+      ?? UIFont.systemFont(ofSize: 13, weight: .regular)
+    var raw: [CGFloat] = []
+    for index in 0..<count {
+      let title = (control.titleForSegment(at: index) ?? "") as NSString
+      raw.append(title.size(withAttributes: [.font: font]).width + titleEndInset * 2)
+    }
+    let extra = (bounds.width - raw.reduce(0, +)) / CGFloat(count)
+    for index in 0..<count {
+      control.setWidth(max(raw[index] + extra, 0), forSegmentAt: index)
     }
   }
 
@@ -107,6 +202,15 @@ final class NucleoGlassSegmentView: ExpoView {
     clipsToBounds = false
     backgroundColor = .clear
     isOpaque = false
+    if let control = segmentedControl, !control.isHidden {
+      control.frame = CGRect(
+        x: 0,
+        y: overflowPad,
+        width: bounds.width,
+        height: max(bounds.height - overflowPad * 2, 32)
+      )
+      distributeSegmentWidths(control)
+    }
   }
 }
 
@@ -117,23 +221,47 @@ enum IntentOption: String, Equatable, CaseIterable, Hashable {
 
 final class IntentSegmentModel: ObservableObject {
   @Published var selection: IntentOption = .understand
+  @Published var selectedId: String = "understand"
+  @Published var optionIds: [String] = []
+  @Published var optionLabels: [String] = []
   @Published var isEnabled: Bool = true
   @Published var themeVariant: String = "auto"
 
-  var onConfirmChange: ((IntentOption) -> Void)?
+  var onConfirmChange: ((String) -> Void)?
   private var suppressEmit = false
 
   func applyExternal(_ intent: IntentOption) {
     guard selection != intent else { return }
     suppressEmit = true
     selection = intent
+    selectedId = intent.rawValue
+    suppressEmit = false
+  }
+
+  func applyExternalId(_ id: String) {
+    guard selectedId != id else { return }
+    suppressEmit = true
+    selectedId = id
+    if let intent = IntentOption(rawValue: id) {
+      selection = intent
+    }
     suppressEmit = false
   }
 
   func userDidSelect(_ intent: IntentOption) {
     guard isEnabled, !suppressEmit, selection != intent else { return }
     selection = intent
-    onConfirmChange?(intent)
+    selectedId = intent.rawValue
+    onConfirmChange?(intent.rawValue)
+  }
+
+  func userDidSelectId(_ id: String) {
+    guard isEnabled, !suppressEmit, selectedId != id else { return }
+    selectedId = id
+    if let intent = IntentOption(rawValue: id) {
+      selection = intent
+    }
+    onConfirmChange?(id)
   }
 }
 
@@ -256,5 +384,58 @@ private struct GlassCompositeSegmentedRoot: View {
     .disabled(!model.isEnabled)
     .accessibilityLabel(option == .understand ? "Entender" : "Aplicar")
     .accessibilityAddTraits(selected ? .isSelected : [])
+  }
+}
+
+@available(iOS 26.0, *)
+struct AdaptiveSegmentRoot: View {
+  @ObservedObject var model: IntentSegmentModel
+
+  var body: some View {
+    if model.optionIds.count >= 2 {
+      SystemMultiSegmentedRoot(model: model)
+    } else {
+      GlassCompositeSegmentedRoot(model: model)
+    }
+  }
+}
+
+/// Stock iOS segmented `Picker` — the system owns the expanding Liquid Glass
+/// lens on press and the finger-drag between segments.
+@available(iOS 26.0, *)
+struct SystemMultiSegmentedRoot: View {
+  @ObservedObject var model: IntentSegmentModel
+
+  private let overflowPad: CGFloat = 24
+
+  private var preferredScheme: ColorScheme? {
+    switch model.themeVariant {
+    case "dark": return .dark
+    case "light": return .light
+    default: return nil
+    }
+  }
+
+  var body: some View {
+    Picker("Sección", selection: binding) {
+      ForEach(Array(zip(model.optionIds, model.optionLabels)), id: \.0) { id, label in
+        Text(label).tag(id)
+      }
+    }
+    .pickerStyle(.segmented)
+    .labelsHidden()
+    .controlSize(.large)
+    .disabled(!model.isEnabled)
+    .opacity(model.isEnabled ? 1 : 0.4)
+    .preferredColorScheme(preferredScheme)
+    .padding(overflowPad)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private var binding: Binding<String> {
+    Binding(
+      get: { model.selectedId },
+      set: { model.userDidSelectId($0) }
+    )
   }
 }

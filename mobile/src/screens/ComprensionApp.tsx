@@ -13,7 +13,10 @@ export default function ComprensionApp() {
         open={session.historyOpen}
         entries={session.historyStore.entries}
         collections={session.historyStore.collections}
-        activeId={session.phase === 'result' && session.data ? session.historyStore.activeId : null}
+        activeId={
+          session.activeChatId ??
+          (session.phase === 'result' && session.data ? session.historyStore.activeId : null)
+        }
         phase={session.phase}
         data={session.data}
         currentStep={session.currentStep}

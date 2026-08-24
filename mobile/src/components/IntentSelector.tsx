@@ -8,7 +8,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { hapticSegment } from '../logic/haptics';
 import type { MapIntent } from '@shared/contracts';
 import {
   INTENT_SELECTOR_LAYOUT,
@@ -158,7 +158,7 @@ function SolidCapsuleFallback({
       }
       if (!commit.changed) return;
       if (gen !== mountedGen.current) return;
-      void Haptics.selectionAsync();
+      hapticSegment();
       onChange(commit.intent);
     },
     [onChange, progress, reduceMotion]

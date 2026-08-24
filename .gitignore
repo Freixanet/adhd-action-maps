@@ -33,3 +33,4 @@ backups/
 
 # Tesseract language data, downloaded on first OCR run
 *.traineddata
+.originkit/

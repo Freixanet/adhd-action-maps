@@ -28,8 +28,7 @@ const wrapped = withUniwindConfig(config, {
   },
 });
 
-// Post-Uniwind: keep shared in the file map (do not watch the whole repo —
-// that pulls ~70k files and still leaves realpath SHA-1 broken).
+// Post-Uniwind: watch `shared/` only. The whole repo is ~70k files and is not needed.
 wrapped.watchFolders = [...new Set([...(wrapped.watchFolders || []), sharedRoot])];
 wrapped.projectRoot = projectRoot;
 
@@ -73,7 +72,7 @@ wrapped.resolver.resolveRequest = (context, moduleName, platform) => {
 
 wrapped.resolver.extraNodeModules = {
   ...(wrapped.resolver.extraNodeModules || {}),
-  '@shared': path.join(projectRoot, 'node_modules', '@shared'),
+  '@shared': sharedRoot,
 };
 
 module.exports = wrapped;

@@ -3,6 +3,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { HistoryEntry, HistoryStore } from './history';
+import { isChatHistoryEntry } from '@shared/historyKind';
 import { supabase } from './supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -217,7 +218,9 @@ export async function migrateLocalHistoryWithClient(
   client: MapsClient,
   entries: HistoryEntry[] | HistoryStore
 ) {
-  const list = Array.isArray(entries) ? entries : entries.entries;
+  const list = (Array.isArray(entries) ? entries : entries.entries).filter(
+    (entry) => !isChatHistoryEntry(entry)
+  );
   if (list.length === 0) return;
   const { error } = await client.from('maps').upsert(list.map(toCloudMap), {
     onConflict: 'id',
@@ -241,6 +244,7 @@ export async function deleteCloudHistoryEntryWithClient(client: MapsClient, id: 
 }
 
 export async function pushHistoryEntryWithClient(client: MapsClient, entry: HistoryEntry) {
+  if (isChatHistoryEntry(entry)) return;
   const { error } = await client.from('maps').upsert(toCloudMap(entry), { onConflict: 'id' });
   if (error) throw error;
 }

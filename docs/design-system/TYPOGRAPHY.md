@@ -4,12 +4,25 @@ La tipografía es parte de la función de lectura, no una capa decorativa.
 
 ## Decisiones
 
-- Familia de producto: **Source Sans 3**. Ajustes prueba **SF Pro** (`ui-sans-serif`) y **SF Pro Rounded** (`ui-rounded`) en iOS; esos nombres genéricos son los que React Native mapea al diseño del sistema. `"SF Pro Rounded"` como familia no carga y cae a SF Pro.
-- Pesos funcionales: regular (400), semibold (600) y bold (700). Los roles históricos restantes existen solo para compatibilidad visual de superficies concretas.
-- Cuerpo de lectura: 17/26 por defecto (≈1,53), sin justificado ni partición automática.
-- Titulares: interlineado aproximado 1,1–1,25 mediante roles semánticos.
-- Ancho: `reading.maxWidth`/`space.editorial.maxReadWidth` limita únicamente columnas de lectura; las tarjetas, formularios y navegación conservan su propio layout.
-- Dynamic Type sigue activo. La preferencia interna `system | comfortable | large | extraLarge` modifica solo lectura/editorial y se combina con la escala del sistema sin desactivarla.
+- Familia de producto: **SF Pro** (iOS) / **Roboto** (Android). Es la cara de sistema; no hace falta una display de pago para que se lea bien.
+- Source Sans 3 y SF Pro Rounded quedan como prueba en Ajustes. No son el default.
+- Firma opcional: solo en títulos de canvas Lumen, **Iowan Old Style** (iOS) / Georgia (Android). El cuerpo sigue en system. No añadir Söhne, Geist ni Inter Display sin una decisión explícita.
+- Escala única: **34 / 28 / 22 / 17 / 15 / 13**.
+- Pesos: **400** cuerpo, **500** subtítulo y UI, **700** display (28 y 34, y títulos Lumen).
+- Interlineado: **1,4** cuerpo (13/15/17) y **1,15** titulares (22/28/34).
+- Tracking: **−0,02 em** por encima de 24 px (28 y 34). El resto, 0. Los kickers en mayúsculas conservan tracking abierto.
+- **Máximo 3 tamaños por pantalla.**
+
+## Roles
+
+| Tamaño | Uso |
+| --- | --- |
+| 34 | Display / cover |
+| 28 | Título de página |
+| 22 | Sección / subtítulo |
+| 17 | Cuerpo y campos |
+| 15 | Callout, botón, caption |
+| 13 | Meta, kicker, label |
 
 ## Regla de uso
 
@@ -21,4 +34,4 @@ El checker `npm run check:design-tokens` protege también contra `allowFontScali
 
 La opción se guarda en `nucleo.reading-size-preference` y se ofrece desde el menú de perfil. El valor `system` no intenta neutralizar la configuración de accesibilidad del dispositivo; por eso el contenido sigue usando `allowFontScaling`.
 
-La prueba de familia se guarda en `nucleo.reading-font-preference` (Source Sans 3 o SF Pro Rounded) en el mismo panel de Ajustes.
+La prueba de familia se guarda en `nucleo.reading-font-preference` (SF Pro, Rounded o Source Sans 3) en el mismo panel de Ajustes.

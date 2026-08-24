@@ -1,7 +1,6 @@
 import React from 'react';
 import { Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
 import type { HistoryListFilter } from '@shared/historySearch';
-import { stepHaptic } from '../context/AppSessionContext';
 import { getHistoryFilterIcon } from '../logic/categoryIcons';
 import { useTheme } from '../context/ThemeContext';
 import { ACCENT, TEXT_SECONDARY } from '@shared/uiTokens';
@@ -66,7 +65,6 @@ export default function HistoryCategoryFilter({
 
   const selectFilter = (filter: HistoryListFilter) => {
     dismissKeyboard();
-    stepHaptic();
     onSelectFilter(filter);
   };
 

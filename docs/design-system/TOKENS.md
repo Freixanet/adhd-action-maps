@@ -85,6 +85,12 @@ import { BG_BASE, TEXT_PRIMARY } from '@shared/uiTokens';
 <Text style={{ fontSize: 15, color: '#FAFAFA' }} className="text-[15px]" />
 ```
 
+## Icons
+
+Sizes: `control.iconSm` 16, `iconMd` 20, `iconLg` 24. Stroke emphasis: `control.iconEmphasis` (2.5).
+
+iOS uses SF Symbols, other platforms Hugeicons. Pass `filled` when the glyph should be solid; `strokeWidth` only changes weight. Do not infer fill from thickness.
+
 ## Exceptions
 
 A `design-token-ignore: <reason>` is allowed only when the value is **inevitable** (dynamic channel math, vendor code, intrinsic icon geometry, external API). The reason must be concrete and must **not** contain unfinished-work language (`pending`, `todo`, `legacy`, `local`, `pair with`, `unmatched`, …).

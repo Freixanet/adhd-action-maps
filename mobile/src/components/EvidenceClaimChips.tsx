@@ -8,7 +8,6 @@ import { Pressable, Text, View } from 'react-native';
 import type { ContentClaim, EvidenceLinkV1 } from '@shared/evidence/types';
 import { EVIDENCE_UI_LABELS } from '@shared/evidence/policy';
 import { useSourceViewer } from '../context/SourceViewerContext';
-import { stepHaptic } from '../context/AppSessionContext';
 import { type } from '@shared/design-tokens';
 
 function statusCopy(claim: ContentClaim): { label: string; detail: string; tone: 'ok' | 'warn' | 'info' } {
@@ -85,7 +84,6 @@ export default function EvidenceClaimChips({
   }
 
   const openChunk = (chunkId: string) => {
-    stepHaptic();
     if (onOpenChunk) onOpenChunk(chunkId);
     else openCitation(chunkId, { label: 'Evidencia', locator: chunkId, chunkId });
   };

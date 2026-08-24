@@ -1,14 +1,16 @@
 import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { MenuView, type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
-import * as Haptics from 'expo-haptics';
 import { FALLBACK_MAP_CATEGORY } from '@shared/categories';
+import { isChatHistoryEntry } from '@shared/historyKind';
 import { resolveLibraryStatePresentation } from '@shared/progress';
 import { useTheme } from '../context/ThemeContext';
 import { formatRelativeDate, type HistoryEntry } from '../logic/history';
 import HistoryEntrySourceIcon from './HistoryEntrySourceIcon';
 import MapCategoryLabel from './MapCategoryLabel';
-import { type } from '@shared/design-tokens';
+import { space } from '@shared/design-tokens';
+import { PRESS_HIT_SLOP, PRESS_RETENTION_OFFSET, usePressScale } from '../hooks/usePressScale';
 
 export const HISTORY_ENTRY_CARD_HEIGHT = 104;
 const MENU_TAP_GUARD_MS = 1200;
@@ -54,27 +56,46 @@ export default function HistoryEntryCard({
 }: HistoryEntryCardProps) {
   const lastMenuOpenAtRef = useRef<number | null>(null);
   const { isDark, colors } = useTheme();
+  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const isChat = isChatHistoryEntry(entry);
   const category = entry.category || FALLBACK_MAP_CATEGORY;
   const cardBackground = isDark ? colors.background.canvas : colors.background.surface;
   const metaIconColor = colors.icon.muted;
   const state = resolveLibraryStatePresentation(entry);
-  const metaTextParts = [
-    state.label,
-    state.detail,
-    formatRelativeDate(entry.updatedAt),
-  ].filter(Boolean);
+  const relativeDate = formatRelativeDate(entry.updatedAt);
+  const metaTextParts = isChat
+    ? ['Chat', relativeDate].filter(Boolean)
+    : [state.label, state.detail, relativeDate].filter(Boolean);
 
-  const menuActions: MenuAction[] = [
-    { id: 'pin', title: entry.pinned ? 'Desfijar' : 'Fijar' },
-    { id: 'rename', title: 'Cambiar nombre' },
-    { id: 'category', title: 'Cambiar categoría' },
-    { id: 'pdf', title: 'Exportar' },
-    {
-      id: 'delete',
-      title: 'Eliminar',
-      attributes: { destructive: true },
-    },
-  ];
+  const menuActions: MenuAction[] = isChat
+    ? [
+        {
+          id: 'pin',
+          title: entry.pinned ? 'Desfijar' : 'Fijar',
+          image: entry.pinned ? 'pin.slash' : 'pin',
+        },
+        { id: 'rename', title: 'Cambiar nombre' },
+        {
+          id: 'delete',
+          title: 'Eliminar',
+          attributes: { destructive: true },
+        },
+      ]
+    : [
+        {
+          id: 'pin',
+          title: entry.pinned ? 'Desfijar' : 'Fijar',
+          image: entry.pinned ? 'pin.slash' : 'pin',
+        },
+        { id: 'rename', title: 'Cambiar nombre' },
+        { id: 'category', title: 'Cambiar categoría' },
+        { id: 'pdf', title: 'Exportar' },
+        {
+          id: 'delete',
+          title: 'Eliminar',
+          attributes: { destructive: true },
+        },
+      ];
 
   const handleMenuAction = ({ nativeEvent }: NativeActionEvent) => {
     switch (nativeEvent.event) {
@@ -85,7 +106,6 @@ export default function HistoryEntryCard({
         onChangeCategory(entry);
         break;
       case 'pin':
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onTogglePin(entry);
         break;
       case 'pdf':
@@ -102,7 +122,7 @@ export default function HistoryEntryCard({
       <View
         collapsable={false}
         className="mb-2 rounded-2xl px-3 py-3 justify-center"
-        style={{ height: HISTORY_ENTRY_CARD_HEIGHT }}
+        style={isChat ? undefined : { height: HISTORY_ENTRY_CARD_HEIGHT }}
       >
         <View className="flex-row items-center gap-2">
           <TextInput
@@ -123,7 +143,7 @@ export default function HistoryEntryCard({
   const showActiveStyle = isActive && !isMenuOpen;
 
   return (
-    <View collapsable={false} style={styles.cardShell}>
+    <View collapsable={false} style={[styles.cardShell, isChat ? styles.chatShell : styles.nucleoShell]}>
       <Pressable
         onPress={() => {
           if (menuSessionOpen) return;
@@ -134,10 +154,14 @@ export default function HistoryEntryCard({
           }
           onSelect(entry.id);
         }}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        hitSlop={PRESS_HIT_SLOP}
+        pressRetentionOffset={PRESS_RETENTION_OFFSET}
         pointerEvents={menuInteractionBlocked ? 'none' : 'auto'}
-        className={`flex-1 rounded-2xl overflow-hidden ${showActiveStyle ? 'bg-accent/10' : ''}`}
+        className={`rounded-2xl overflow-hidden ${isChat ? '' : 'flex-1 '}${showActiveStyle ? 'bg-accent/10' : ''}`}
         style={[
-          styles.cardPressable,
+          isChat ? null : styles.cardPressable,
           isMenuOpen
             ? { backgroundColor: isDark ? colors.background.whiteFade08 : colors.background.whiteFade72 }
             : !showActiveStyle
@@ -145,15 +169,19 @@ export default function HistoryEntryCard({
               : null,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={`${entry.title}. ${state.label}. ${state.detail}`}
+        accessibilityLabel={
+          isChat
+            ? `${entry.title}. Chat. ${relativeDate}`
+            : `${entry.title}. ${state.label}. ${state.detail}`
+        }
       >
+        <Animated.View style={[isChat ? styles.chatMenu : styles.menuFill, animatedStyle]}>
         <MenuView
-          style={styles.menuFill}
+          style={isChat ? styles.chatMenu : styles.menuFill}
           actions={menuActions}
           onPressAction={handleMenuAction}
           onOpenMenu={() => {
             lastMenuOpenAtRef.current = Date.now();
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             onMenuOpen?.();
           }}
           onCloseMenu={() => {
@@ -162,9 +190,13 @@ export default function HistoryEntryCard({
           shouldOpenOnLongPress
           themeVariant="dark"
         >
-          <View pointerEvents="none" style={styles.cardContent} collapsable={false}>
-            <MapCategoryLabel category={category} />
-            <Text className="mt-1 text-base font-semibold leading-5 text-primary" numberOfLines={2}>
+          <View
+            pointerEvents="none"
+            style={[styles.cardContent, isChat ? styles.chatContent : styles.nucleoContent]}
+            collapsable={false}
+          >
+            {isChat ? null : <MapCategoryLabel category={category} />}
+            <Text className={`${isChat ? '' : 'mt-1 '}text-base font-semibold leading-5 text-primary`} numberOfLines={2}>
               {entry.title}
             </Text>
             <View className="mt-1.5 flex-row items-center gap-1.5 min-w-0">
@@ -177,6 +209,7 @@ export default function HistoryEntryCard({
             </View>
           </View>
         </MenuView>
+        </Animated.View>
       </Pressable>
     </View>
   );
@@ -184,8 +217,13 @@ export default function HistoryEntryCard({
 
 const styles = StyleSheet.create({
   cardShell: {
+    marginBottom: space.stack.sm,
+  },
+  nucleoShell: {
     height: HISTORY_ENTRY_CARD_HEIGHT,
-    marginBottom: 8,
+  },
+  chatShell: {
+    minHeight: 64,
   },
   cardPressable: {
     flex: 1,
@@ -194,10 +232,18 @@ const styles = StyleSheet.create({
     flex: 1,
     alignSelf: 'stretch',
   },
+  chatMenu: {
+    alignSelf: 'stretch',
+  },
   cardContent: {
-    flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: space.stack.md,
+    paddingVertical: space.stack.md,
+  },
+  nucleoContent: {
+    flex: 1,
+  },
+  chatContent: {
+    paddingVertical: space.stack.sm,
   },
 });

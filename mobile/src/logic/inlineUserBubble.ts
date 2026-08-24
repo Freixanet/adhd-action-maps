@@ -24,6 +24,8 @@ export type InlineUserTurnSnapshot = {
   sourceUrl: string | null;
   urlKind: 'youtube' | 'link' | null;
   linkTitle: string | null;
+  /** Restored history turns skip typewriter / enter choreography. */
+  revealInstant?: boolean;
 };
 
 export function formatInlineFileSize(bytes: number | undefined): string {
@@ -73,8 +75,16 @@ export function buildInlineUserTurnSnapshot(params: {
   uploadedFile: UploadedFile | null;
   conversationalMessage: string;
   kind?: InlineUserTurnKind;
+  revealInstant?: boolean;
 }): InlineUserTurnSnapshot {
-  const { inputText, pastedText, uploadedFile, conversationalMessage, kind = 'source' } = params;
+  const {
+    inputText,
+    pastedText,
+    uploadedFile,
+    conversationalMessage,
+    kind = 'source',
+    revealInstant = false,
+  } = params;
   const bodyText = pastedText?.trim() ?? inputText.trim();
 
   let urlDetection: ReturnType<typeof detectUrlInput> | null = null;
@@ -97,6 +107,7 @@ export function buildInlineUserTurnSnapshot(params: {
           ? 'link'
           : null,
     linkTitle: null,
+    ...(revealInstant ? { revealInstant: true } : {}),
   };
 }
 

@@ -1,25 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { hapticSuccess, hapticWarning } from '../../logic/haptics';
 import { RADII } from '@shared/uiTokens';
 import type { StepContentBlockQuiz } from '@shared/contracts';
 import GlassSurface from '../GlassSurface';
 import { useTheme, useThemeColors } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import BlockEnter from './BlockEnter';
+import { contentEnterStagger } from '../../motion/contentEnter';
 import { motion, typography } from '@shared/design-tokens';
 
 type Props = {
   block: StepContentBlockQuiz;
   index?: number;
+  questionStyle?: StyleProp<TextStyle>;
 };
 
 type OptionState = 'idle' | 'correct' | 'wrong' | 'missed';
@@ -44,10 +45,10 @@ function QuizOptionRow({
   useEffect(() => {
     if (state !== 'wrong' || reduceMotion) return;
     shake.value = withSequence(
-      withTiming(-6, { duration: motion.feedback40.duration }),
+      withTiming(-6, { duration: motion.feedback.duration }),
       withTiming(6, { duration: motion.feedback.duration }),
-      withTiming(-4, { duration: motion.feedback45.duration }),
-      withTiming(0, { duration: motion.feedback40.duration })
+      withTiming(-4, { duration: motion.feedback.duration }),
+      withTiming(0, { duration: motion.feedback.duration })
     );
   }, [reduceMotion, shake, state]);
 
@@ -75,11 +76,17 @@ function QuizOptionRow({
         onPress={onPress}
         onPressIn={() => {
           if (!disabled && !reduceMotion) {
-            scale.value = withSpring(0.97, { damping: 26, stiffness: 600 });
+            scale.value = withTiming(motion.press.scale, {
+              duration: motion.press.duration,
+              easing: Easing.bezier(0.23, 1, 0.32, 1),
+            });
           }
         }}
         onPressOut={() => {
-          scale.value = withSpring(1, { damping: 20, stiffness: 400 });
+          scale.value = withTiming(1, {
+            duration: motion.press.duration,
+            easing: Easing.bezier(0.23, 1, 0.32, 1),
+          });
         }}
         accessibilityRole="button"
         accessibilityState={{ disabled }}
@@ -99,7 +106,7 @@ function QuizOptionRow({
   );
 }
 
-export default function QuizBlock({ block, index = 0 }: Props) {
+export default function QuizBlock({ block, index = 0, questionStyle }: Props) {
   const { isDark, colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
   const [selected, setSelected] = useState<number | null>(null);
@@ -118,9 +125,9 @@ export default function QuizBlock({ block, index = 0 }: Props) {
     setSelected(optionIndex);
     const ok = optionIndex === block.correct;
     if (ok) {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      hapticSuccess();
     } else {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      hapticWarning();
     }
     feedbackProgress.value = reduceMotion
       ? 1
@@ -128,9 +135,9 @@ export default function QuizBlock({ block, index = 0 }: Props) {
   };
 
   return (
-    <BlockEnter delayMs={index * 60}>
+    <BlockEnter delayMs={contentEnterStagger(index)}>
       <View style={styles.wrap} accessibilityRole="summary">
-        <Text style={[styles.question, { color: colors.text.primary }]} maxFontSizeMultiplier={1.35}>
+        <Text style={[styles.question, questionStyle, { color: colors.text.primary }]} maxFontSizeMultiplier={1.35}>
           {block.question}
         </Text>
         <View style={styles.options}>

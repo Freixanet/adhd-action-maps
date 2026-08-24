@@ -1,15 +1,15 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
+import { space } from '@shared/design-tokens';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import { useInViewportOnce } from '../../hooks/useInViewportOnce';
-import { motion, type } from '@shared/design-tokens';
+import { CONTENT_ENTER_TIMING } from '../../motion/contentEnter';
 
 type BlockEnterProps = {
   children: React.ReactNode;
@@ -17,7 +17,7 @@ type BlockEnterProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-/** Fade + translateY(12→0) once in viewport; instant if reduce-motion. */
+/** Fade + translateY(8→0) once in viewport; instant if reduce-motion. */
 export default function BlockEnter({ children, delayMs = 0, style }: BlockEnterProps) {
   const { reduceMotion } = useGlassAccessibility();
   const { visible, onLayout } = useInViewportOnce();
@@ -29,15 +29,12 @@ export default function BlockEnter({ children, delayMs = 0, style }: BlockEnterP
       progress.value = 1;
       return;
     }
-    progress.value = withDelay(
-      delayMs,
-      withTiming(1, { duration: motion.sheet.duration, easing: Easing.out(Easing.cubic) })
-    );
+    progress.value = withDelay(delayMs, withTiming(1, CONTENT_ENTER_TIMING));
   }, [delayMs, progress, reduceMotion, visible]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 12 }],
+    transform: [{ translateY: (1 - progress.value) * space.stack.sm }],
   }));
 
   return (

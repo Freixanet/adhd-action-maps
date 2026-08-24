@@ -1,4 +1,17 @@
 /** Shared by ComposerDock worklets — keep this file free of RN imports. */
+
+/** iOS can report height 0 for a frame while the keyboard is still up. */
+export function stickyKeyboardHeight(
+  reported: number,
+  hold: boolean,
+  lastNonZero: number
+): number {
+  'worklet';
+  if (reported > 1) return reported;
+  if (hold && lastNonZero > 1) return lastNonZero;
+  return 0;
+}
+
 export function keyboardLiftPx(
   keyboardHeight: number,
   insetBottom: number,

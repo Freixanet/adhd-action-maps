@@ -15,6 +15,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import { useInViewportOnce } from '../../hooks/useInViewportOnce';
 import BlockEnter from './BlockEnter';
+import { contentEnterStagger } from '../../motion/contentEnter';
 import { motion, typography } from '@shared/design-tokens';
 
 function parseStatValue(raw: string): {
@@ -104,7 +105,7 @@ export default function StatBlock({ block, index = 0 }: Props) {
 
   if (!isHero) {
     return (
-      <BlockEnter delayMs={index * 60}>
+      <BlockEnter delayMs={contentEnterStagger(index)}>
         <View
           style={[styles.compact, emphasis === 'quiet' && styles.quiet]}
           accessibilityRole="text"
@@ -119,7 +120,7 @@ export default function StatBlock({ block, index = 0 }: Props) {
   }
 
   return (
-    <BlockEnter delayMs={index * 60}>
+    <BlockEnter delayMs={contentEnterStagger(index)}>
       <View onLayout={onLayout} style={styles.heroShell}>
         <GlassSurface
           liquid

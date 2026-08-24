@@ -228,10 +228,7 @@ function FloatingGlassButton({
       hitSlop={hitSlop}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [
-        fullWidth ? styles.fullWidth : null,
-        pressed ? styles.pressedOpacity : null,
-      ]}
+      style={fullWidth ? styles.fullWidth : undefined}
     >
       <Animated.View style={animatedStyle}>
         <FloatingGlassShell
@@ -256,9 +253,6 @@ const styles = StyleSheet.create({
   },
   shadowCompact: {
     ...shadow.glassFloatingCompact,
-  },
-  pressedOpacity: {
-    opacity: 0.82,
   },
   accentShadow: {
     ...shadow.glassFloatingAccent,

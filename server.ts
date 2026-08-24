@@ -54,6 +54,12 @@ import {
 // } from "./shared/nucleoVisual";
 import { normalizeVisualizeArtifact, ensureVisualizeArtifact } from "./shared/visualizeCompiler";
 import { NO_AI_SLOP_WRITING_CONTRACT } from "./shared/noAiSlopWriting";
+import { LUMEN_ASK_SYSTEM } from "./shared/lumen/prompt";
+import {
+  ASK_SYSTEM_PROMPT,
+  buildAskUserPrompt,
+  parseAskModelText,
+} from "./shared/askChatContract";
 import { pickReadyAssistantMessage } from "./shared/deliveryMessage";
 import { ensureLayer0, normalizeLayer0 } from "./shared/layer0";
 import { countBlockPlainWords, getBlockPlainText, normalizeStepContentBlocks } from "./shared/stepContentBlocks";
@@ -68,6 +74,18 @@ import {
   PREMIUM_MODEL_IDS,
   type AuthenticatedRequest,
 } from "./server/llmAccess";
+import {
+  DEFAULT_GEMINI_MODEL_CHAIN,
+  GEMINI_FLASH_LITE,
+  buildGeminiModelChainFromEnv,
+  geminiThinkingConfig,
+  isGeminiThinkingConfigError,
+  lumenIlluminateModelChain,
+  parseGeminiModelRoute,
+  resolveGeminiModelChain,
+  uniqueRoutes,
+  withMinimalThinking,
+} from "./shared/geminiModelChain";
 import { deleteAccountFully } from "./server/accountDelete";
 import { fetchUrlContent } from "./server/remoteContent";
 import { persistPastedTextWithUserJwt } from "./server/src/ingestors/pastedTextPersist";
@@ -82,6 +100,8 @@ import {
   type TransformRouteDeps,
 } from "./server/src/routes/registerTransformRoutes";
 import { registerIllustrationRoutes } from "./server/src/routes/registerIllustrationRoutes";
+import { registerCoverRoutes } from "./server/src/routes/registerCoverRoutes";
+import { generateNucleoCoverImage } from "./server/src/covers/generateNucleoCover";
 import {
   createRunUnderstandEngineDep,
   logUnderstandingTelemetry,
@@ -94,6 +114,8 @@ import {
   createRunApplicationEngineDep,
   logApplicationTelemetry,
 } from "./server/src/application/wireApplicationEngine";
+import { createRunLumenIlluminateDep } from "./server/src/lumen/illuminate";
+import { tryParseLumenJson } from "./shared/lumen/parse";
 import {
   UNDERSTANDING_BLUEPRINT_RESPONSE_SCHEMA,
   UNDERSTANDING_UNITS_RESPONSE_SCHEMA,
@@ -171,36 +193,25 @@ const analyzeAi = new GoogleGenAI({
   },
 });
 
-// Free chain: balanced 3.6 + cheap Lite. Premium 3.5 Flash is Pro-only.
-const FREE_MODEL_CHAIN = ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
+const DEFAULT_MODEL_CHAIN = DEFAULT_GEMINI_MODEL_CHAIN;
 
-const DEFAULT_MODEL_CHAIN = [
-  "gemini-3.6-flash",
-  "gemini-3.5-flash",
-  "gemini-3.5-flash-lite",
-];
-
-const DEEP_MODEL_CHAIN: string[] = [
-  ...new Set([
-    ...(process.env.GEMINI_DEEP_MODEL ?? "gemini-3-pro-preview")
-      .split(",")
-      .map((m) => m.trim())
-      .filter(Boolean),
-    ...DEFAULT_MODEL_CHAIN,
-  ]),
-];
-
-const MODEL_CHAIN: string[] = (() => {
-  const envChain = (process.env.GEMINI_MODEL ?? "")
+const DEEP_MODEL_CHAIN: string[] = uniqueRoutes([
+  ...(process.env.GEMINI_DEEP_MODEL ?? "gemini-3-pro-preview")
     .split(",")
     .map((m) => m.trim())
-    .filter(Boolean);
-  return [...new Set([...envChain, ...DEFAULT_MODEL_CHAIN])];
-})();
+    .filter(Boolean),
+  ...DEFAULT_MODEL_CHAIN,
+]);
 
-const MODEL = MODEL_CHAIN[0];
+const MODEL_CHAIN: string[] = buildGeminiModelChainFromEnv(process.env.GEMINI_MODEL);
 
-const ALLOWED_MODELS = new Set([...DEFAULT_MODEL_CHAIN, ...DEEP_MODEL_CHAIN]);
+const MODEL = parseGeminiModelRoute(MODEL_CHAIN[0] ?? "").model;
+
+const ALLOWED_MODELS = new Set(
+  [...DEFAULT_MODEL_CHAIN, ...DEEP_MODEL_CHAIN].map(
+    (route) => parseGeminiModelRoute(route).model
+  )
+);
 const MAP_CACHE_LIMIT = 120;
 const mapCache = new Map<string, ActionMapData>();
 
@@ -211,26 +222,11 @@ const MAX_OUTPUT_TOKENS_DEEP = 24576;
 const MAX_CHAT_OUTPUT_TOKENS = 2048;
 
 function resolveModelChain(preferred?: string, isPro = false): string[] {
-  const chain = isPro ? MODEL_CHAIN : FREE_MODEL_CHAIN;
-  if (!preferred || preferred === "auto") return chain;
-  if (!isPro && PREMIUM_MODEL_IDS.has(preferred)) return FREE_MODEL_CHAIN;
-  if (preferred === "gemini-3.5-flash-lite") return ["gemini-3.5-flash-lite"];
-  if (preferred === "gemini-3.6-flash") {
-    return isPro
-      ? ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
-      : ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
+  if (preferred && PREMIUM_MODEL_IDS.has(preferred) && !isPro) {
+    return MODEL_CHAIN;
   }
-  if (preferred === "gemini-3.5-flash") return isPro ? MODEL_CHAIN : FREE_MODEL_CHAIN;
-  // Legacy prefs from older clients
-  if (preferred === "gemini-3.1-flash-lite" || preferred === "gemini-3.1-flash-lite-preview") {
-    return ["gemini-3.5-flash-lite"];
-  }
-  if (preferred === "gemini-3-flash-preview") {
-    return isPro
-      ? ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
-      : ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
-  }
-  return chain.includes(preferred) ? [preferred, ...chain.filter((m) => m !== preferred)] : chain;
+  if (!preferred || preferred === "auto") return MODEL_CHAIN;
+  return resolveGeminiModelChain(preferred);
 }
 
 function resolveTransformModelChain(
@@ -261,12 +257,21 @@ async function generateWithFallback(
   timeoutMs = 60_000,
   client: GoogleGenAI = ai,
   logPrefix?: string
-): Promise<{ response: Awaited<ReturnType<typeof ai.models.generateContent>>; model: string }> {
+): Promise<{
+  response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  model: string;
+  route: string;
+}> {
   let lastErr: any;
 
-  for (const model of chain) {
+  for (const route of chain) {
+    const { model, thinkingLevel } = parseGeminiModelRoute(route);
     try {
-      const config = configForModel?.(model) ?? params.config;
+      const baseConfig = configForModel?.(route) ?? params.config;
+      const config = {
+        ...baseConfig,
+        ...geminiThinkingConfig(thinkingLevel),
+      };
       const response = await Promise.race([
         client.models.generateContent({ model, ...params, config }),
         new Promise<never>((_, reject) => {
@@ -276,15 +281,20 @@ async function generateWithFallback(
         }),
       ]);
       if (logPrefix) {
-        console.log(`${logPrefix} model attempt`, { model, status: "ok" });
+        console.log(`${logPrefix} model attempt`, {
+          model,
+          thinkingLevel,
+          status: "ok",
+        });
       }
-      return { response, model };
+      return { response, model, route };
     } catch (err: any) {
       lastErr = err;
       const { statusCode } = describeGeminiError(err);
       if (logPrefix) {
         console.log(`${logPrefix} model attempt`, {
           model,
+          thinkingLevel,
           status: statusCode,
           error: String(err?.message || err).slice(0, 160),
         });
@@ -296,12 +306,13 @@ async function generateWithFallback(
         statusCode === 502 ||
         statusCode === 503 ||
         statusCode === 504 ||
+        isGeminiThinkingConfigError(statusCode, message) ||
         /network connection|fetch failed|econnreset|socket|timed out|timeout|temporar(?:y|ily)|overload|unavailable/i.test(
           message
         );
       if (retryableProviderFailure) {
         console.warn(
-          `Modelo "${model}" no disponible (estado ${statusCode}). Probando el siguiente modelo...`
+          `Modelo "${model}"${thinkingLevel ? ` (${thinkingLevel})` : ""} no disponible (estado ${statusCode}). Probando el siguiente modelo...`
         );
         continue;
       }
@@ -319,23 +330,33 @@ async function generateStreamWithFallback(
 ) {
   let lastErr: any;
 
-  for (const model of chain) {
+  for (const route of chain) {
+    const { model, thinkingLevel } = parseGeminiModelRoute(route);
     try {
+      const config = {
+        ...params.config,
+        ...geminiThinkingConfig(thinkingLevel),
+      };
       const stream = await Promise.race([
-        ai.models.generateContentStream({ model, ...params }),
+        ai.models.generateContentStream({ model, ...params, config }),
         new Promise<never>((_, reject) => {
           setTimeout(() => {
             reject(new Error("La generación ha superado el tiempo límite. Inténtalo de nuevo."));
           }, timeoutMs);
         }),
       ]);
-      return { stream, model };
+      return { stream, model, route };
     } catch (err: any) {
       lastErr = err;
       const { statusCode } = describeGeminiError(err);
-      if (statusCode === 429 || statusCode === 503) {
+      const message = String(err?.message || err);
+      if (
+        statusCode === 429 ||
+        statusCode === 503 ||
+        isGeminiThinkingConfigError(statusCode, message)
+      ) {
         console.warn(
-          `Modelo "${model}" no disponible para streaming (estado ${statusCode}). Probando el siguiente modelo...`
+          `Modelo "${model}"${thinkingLevel ? ` (${thinkingLevel})` : ""} no disponible para streaming (estado ${statusCode}). Probando el siguiente modelo...`
         );
         continue;
       }
@@ -1352,9 +1373,10 @@ function buildAdaptiveRepairPrompt(
 }
 
 function resolveRepairModelChain(usedModel: string): string[] {
-  const chain = [usedModel];
-  if (usedModel !== "gemini-3.5-flash-lite") {
-    chain.push("gemini-3.5-flash-lite");
+  const model = parseGeminiModelRoute(usedModel).model;
+  const chain = [model];
+  if (model !== GEMINI_FLASH_LITE) {
+    chain.push(GEMINI_FLASH_LITE);
   }
   return chain;
 }
@@ -1373,7 +1395,7 @@ async function attemptQualityRepair(
       : Math.min(context.maxOutputTokens, MAX_OUTPUT_TOKENS_STANDARD);
 
   try {
-    const { response, model: repairModel } = await generateWithFallback(
+    const { response, route: repairModel } = await generateWithFallback(
       {
         contents: repairPrompt,
         config: getRepairGenerationConfig(repairTokens),
@@ -1779,10 +1801,11 @@ async function buildTransformContext(
 function geminiGenerationConfig(
   maxOutputTokens: number,
   _depth: TransformRequest["depth"],
-  _model: string
+  route: string
 ) {
   // Do not send thinkingBudget: 0 — Gemini 3.x flash rejects it as INVALID_ARGUMENT.
-  // Omit thinkingConfig and let the model use its default (works for rapido/estandar).
+  // thinkingLevel comes from the route: HIGH = extended thinking, LOW/MINIMAL = fallback.
+  const { thinkingLevel } = parseGeminiModelRoute(route);
   const schemaProps = Object.keys((schema as { properties?: Record<string, unknown> }).properties ?? {});
   safeTransformDebugLog("[transform-schema-props]", {
     props: schemaProps,
@@ -1795,6 +1818,7 @@ function geminiGenerationConfig(
     temperature: 0.3,
     topP: 0.9,
     maxOutputTokens,
+    ...geminiThinkingConfig(thinkingLevel),
   };
 }
 
@@ -1933,7 +1957,7 @@ async function parseMapJsonWithRetry(
       textHead: String(jsonText ?? "").slice(0, 240),
       textTail: String(jsonText ?? "").slice(-240),
     });
-    const { response, model: repairModel } = await generateWithFallback(
+    const { response, route: repairModel } = await generateWithFallback(
       {
         contents: [
           {
@@ -2101,17 +2125,17 @@ async function handleTransformStream(
     writeStreamEvent(res, { type: "source_meta", sourceMeta });
   }
 
-  let usedModel = context.modelChain[0];
+  let usedModel = context.modelChain[0] ?? "";
   let finishReason: string | null = null;
   let fullText = "";
 
-  const { response, model: activeModel } = await generateWithFallback(
+  const { response, route: activeRoute } = await generateWithFallback(
     { contents: context.contents },
     context.modelChain,
     (model) => geminiGenerationConfig(context.maxOutputTokens, context.resolvedDepth, model),
     resolveLlmTimeoutMs(context.resolvedDepth, context.generationMode)
   );
-  usedModel = activeModel;
+  usedModel = activeRoute;
   fullText = response.text || "{}";
   finishReason =
     (response as { candidates?: Array<{ finishReason?: string }> }).candidates?.[0]
@@ -3410,63 +3434,48 @@ const askResponseSchema = {
   required: ["answer"],
 };
 
-const ASK_SYSTEM_PROMPT = `Eres Núcleo. Respondes preguntas abiertas con claridad adulta pensada para mente sobrecargada: idea primero, trozos cortos, sin relleno.
-
-${NO_AI_SLOP_WRITING_CONTRACT}
-
-Reglas:
-1. Puedes usar conocimiento general. Si no estás seguro, dilo en una frase y no inventes cifras ni citas.
-2. Estructura la respuesta en párrafos cortos (2–4 frases). Usa saltos de línea entre ideas. Sin markdown decorativo, sin listas interminables, sin emoji.
-3. Empieza por la respuesta directa. Después el mecanismo o el matiz útil. Termina en el último hecho o en la siguiente acción concreta si aplica.
-4. Respeta la profundidad pedida: rapido = respuesta breve; estandar = cobertura clara sin divagar; profundo = más matices y ejemplos sin hinchar.
-5. Tono sobrio. Nada de coach, celebración ni eslóganes.
-6. Devuelve solo JSON válido con "answer" (texto completo) y opcionalmente "title" (etiqueta corta de 3–6 palabras).`;
-
 async function generateAskAnswer(
   question: string,
   depth: TransformRequest["depth"] = "estandar",
-  userDisplayName?: string
-): Promise<string> {
+  userDisplayName?: string,
+  preferredModel?: string,
+  history?: AskRequest["history"]
+): Promise<{ answer: string; title?: string; modelUsed: string }> {
   const resolved =
     depth === "rapido" || depth === "profundo" ? depth : "estandar";
-  const depthLine =
-    resolved === "rapido"
-      ? "Profundidad: rapido — respuesta breve, un mecanismo y listo."
-      : resolved === "profundo"
-        ? "Profundidad: profundo — más matices y un ejemplo concreto, sin hinchar."
-        : "Profundidad: estandar — cobertura clara en pocos párrafos.";
-  const name = userDisplayName?.trim().split(/\s+/)[0];
-  const prompt = [
-    depthLine,
-    name ? `Nombre del usuario (solo tono, no lo fuerces): ${name}` : "",
-    `Pregunta:\n${question}`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const prompt = buildAskUserPrompt({
+    question,
+    depth: resolved,
+    userDisplayName,
+    history,
+  });
   const maxTokens =
     resolved === "rapido"
-      ? 1024
+      ? 2048
       : resolved === "profundo"
         ? MAX_CHAT_OUTPUT_TOKENS * 2
         : MAX_CHAT_OUTPUT_TOKENS;
 
-  const { response } = await generateWithFallback({
-    contents: prompt,
-    config: {
-      systemInstruction: ASK_SYSTEM_PROMPT,
-      responseMimeType: "application/json",
-      responseSchema: askResponseSchema as any,
-      temperature: 0.35,
-      topP: 0.9,
-      maxOutputTokens: maxTokens,
+  const { response, route: modelUsed } = await generateWithFallback(
+    {
+      contents: prompt,
+      config: {
+        systemInstruction: ASK_SYSTEM_PROMPT,
+        responseMimeType: "application/json",
+        responseSchema: askResponseSchema as any,
+        temperature: 0.35,
+        topP: 0.9,
+        maxOutputTokens: maxTokens,
+      },
     },
-  });
-  const parsed = JSON.parse(response.text || "{}") as AskResponse;
-  const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : "";
-  if (!answer) {
-    throw new Error("No se pudo generar una respuesta.");
-  }
-  return answer;
+    withMinimalThinking(resolveModelChain(preferredModel))
+  );
+  const parsed = parseAskModelText(response.text || "");
+  return {
+    answer: parsed.answer,
+    modelUsed,
+    ...(parsed.title ? { title: parsed.title } : {}),
+  };
 }
 
 async function fetchYouTubeTranscript(url: string): Promise<string> {
@@ -3966,11 +3975,12 @@ async function startServer() {
       url: process.env.SUPABASE_URL,
       anonKey: process.env.SUPABASE_ANON_KEY,
     }),
-    generateAskAnswer,
+    generateAskAnswer: async (text, depth, userDisplayName, preferredModel, history) =>
+      generateAskAnswer(text, depth, userDisplayName, preferredModel, history),
     buildTransformContext: async (body, opts) =>
       buildTransformContext(body, opts),
     generateTransformJson: async (context, _req, _res) => {
-      const { response, model: usedModel } = await generateWithFallback(
+      const { response, route: usedModel } = await generateWithFallback(
         { contents: context.contents as any },
         context.modelChain,
         (model) =>
@@ -4089,6 +4099,49 @@ async function startServer() {
       },
       onTelemetry: logApplicationTelemetry,
     }),
+    runLumenIlluminate: createRunLumenIlluminateDep({
+      generateJson: async ({ system, user, maxOutputTokens }) => {
+        const chain = lumenIlluminateModelChain(MODEL_CHAIN);
+        let last = { text: "{}", model: parseGeminiModelRoute(chain[0] ?? "").model || "gemini-3.7-flash" };
+        for (const route of chain) {
+          try {
+            const { response, model } = await generateWithFallback(
+              { contents: user },
+              [route],
+              () => ({
+                systemInstruction: system,
+                responseMimeType: "application/json",
+                temperature: 0.3,
+                topP: 0.9,
+                maxOutputTokens,
+              }),
+              90_000
+            );
+            const text = response.text || "";
+            const finishReason =
+              (response as { candidates?: Array<{ finishReason?: string }> }).candidates?.[0]
+                ?.finishReason ?? null;
+            dumpLastGenerationRaw(text, {
+              model,
+              finishReason,
+              maxOutputTokens,
+              path: "lumen-illuminate",
+            });
+            last = { text: text || "{}", model };
+            const parsed = text.trim() ? tryParseLumenJson(text) : null;
+            if (parsed) return last;
+            console.warn(
+              `[lumen] unusable JSON from ${model} finish=${finishReason ?? "unknown"} (${text.length} chars). Trying next route.`
+            );
+          } catch (err) {
+            console.warn(
+              `[lumen] generate failed on ${route}: ${String((err as Error)?.message || err).slice(0, 160)}`
+            );
+          }
+        }
+        return last;
+      },
+    }),
     runTransformStream: async (context, res, req, ingest, sourceMeta, generation) =>
       handleTransformStream(context as any, res, req, ingest, sourceMeta, generation),
     generationResultStore,
@@ -4124,6 +4177,11 @@ async function startServer() {
   // Production and HTTP tests share these exact handler functions.
   registerTransformRoutes(app, transformRouteDeps);
   registerIllustrationRoutes(app);
+  registerCoverRoutes(app, {
+    isWithinRateLimit,
+    requireLlmAccess,
+    generateCover: (input) => generateNucleoCoverImage(ai, input),
+  });
 
   app.post("/api/maps/:id/chat", async (req: AuthenticatedRequest, res) => {
     try {
@@ -4144,6 +4202,7 @@ async function startServer() {
         return res.status(400).json({ error: "Escribe una pregunta para continuar." });
       }
 
+      const lumenCanvas = map.lumenCanvas;
       const historyText = Array.isArray(payload.history)
         ? payload.history
             .slice(-6)
@@ -4151,22 +4210,32 @@ async function startServer() {
             .join("\n")
         : "";
 
-      const prompt = [
-        `Pregunta actual: ${payload.question.trim()}`,
-        historyText ? `Historial reciente:\n${historyText}` : "",
-        "Mapa disponible en JSON:",
-        JSON.stringify(map),
-      ]
-        .filter(Boolean)
-        .join("\n\n");
+      const prompt = lumenCanvas
+        ? [
+            `Pregunta actual: ${payload.question.trim()}`,
+            historyText ? `Historial reciente:\n${historyText}` : "",
+            `Interfaz (${JSON.stringify({ kind: lumenCanvas.kind, title: lumenCanvas.title, hook: lumenCanvas.hook })}).`,
+            "Material:",
+            JSON.stringify(lumenCanvas).slice(0, 5000),
+          ]
+            .filter(Boolean)
+            .join("\n\n")
+        : [
+            `Pregunta actual: ${payload.question.trim()}`,
+            historyText ? `Historial reciente:\n${historyText}` : "",
+            "Mapa disponible en JSON:",
+            JSON.stringify(map),
+          ]
+            .filter(Boolean)
+            .join("\n\n");
 
-      const { response } = await generateWithFallback({
+      const { response, route: modelUsed } = await generateWithFallback({
         contents: prompt,
         config: {
-          systemInstruction: CHAT_SYSTEM_PROMPT,
+          systemInstruction: lumenCanvas ? LUMEN_ASK_SYSTEM : CHAT_SYSTEM_PROMPT,
           responseMimeType: "application/json",
-          responseSchema: chatResponseSchema as any,
-          temperature: 0.2,
+          responseSchema: lumenCanvas ? undefined : (chatResponseSchema as any),
+          temperature: lumenCanvas ? 0.3 : 0.2,
           topP: 0.85,
           maxOutputTokens: MAX_CHAT_OUTPUT_TOKENS,
         },
@@ -4180,6 +4249,7 @@ async function startServer() {
         limitations: Array.isArray(parsed.limitations)
           ? parsed.limitations.map((item) => String(item))
           : [],
+        modelUsed,
       } satisfies MapChatResponse);
     } catch (err: any) {
       console.error(err);
@@ -4205,49 +4275,18 @@ async function startServer() {
 
       const depth =
         payload.depth === "rapido" || payload.depth === "profundo" ? payload.depth : "estandar";
-      const depthLine =
-        depth === "rapido"
-          ? "Profundidad: rapido — respuesta breve, un mecanismo y listo."
-          : depth === "profundo"
-            ? "Profundidad: profundo — más matices y un ejemplo concreto, sin hinchar."
-            : "Profundidad: estandar — cobertura clara en pocos párrafos.";
-
-      const name = payload.userDisplayName?.trim().split(/\s+/)[0];
-      const prompt = [
-        depthLine,
-        name ? `Nombre del usuario (solo tono, no lo fuerces): ${name}` : "",
-        `Pregunta:\n${question}`,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-
-      const maxTokens =
-        depth === "rapido" ? 1024 : depth === "profundo" ? MAX_CHAT_OUTPUT_TOKENS * 2 : MAX_CHAT_OUTPUT_TOKENS;
-
-      const { response } = await generateWithFallback({
-        contents: prompt,
-        config: {
-          systemInstruction: ASK_SYSTEM_PROMPT,
-          responseMimeType: "application/json",
-          responseSchema: askResponseSchema as any,
-          temperature: 0.35,
-          topP: 0.9,
-          maxOutputTokens: maxTokens,
-        },
-      });
-
-      const parsed = JSON.parse(response.text || "{}") as AskResponse;
-      const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : "";
-      if (!answer) {
-        return res.status(502).json({ error: "No se pudo generar una respuesta." });
-      }
+      const generated = await generateAskAnswer(
+        question,
+        depth,
+        payload.userDisplayName,
+        payload.preferredModel,
+        payload.history
+      );
 
       const askPayload: AskResponse = {
-        ...askResultShell(answer),
-        title:
-          typeof parsed.title === "string" && parsed.title.trim()
-            ? parsed.title.trim().slice(0, 80)
-            : undefined,
+        ...askResultShell(generated.answer),
+        title: generated.title,
+        modelUsed: generated.modelUsed,
       };
       res.json(askPayload);
     } catch (err: any) {

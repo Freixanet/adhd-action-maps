@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useState, type ReactNode } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   Extrapolation,
   interpolate,
-  runOnJS,
+  ReduceMotion,
   useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
@@ -13,7 +13,9 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { HomeSheetGestureLockContext } from '../context/HomeSheetGestureLock';
 import HistorySheet from './HistorySheet';
 import {
   SidebarBrandHeader,
@@ -24,6 +26,7 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import { DRAWER_WIDTH, MAIN_SHEET_CORNER_RADIUS, SCREEN_WIDTH } from './sidebarLayout';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { rubberbandOffset } from '../logic/motionWorklets';
 import type { Coleccion } from '@shared/collections';
 import type { ActionMapData } from '../logic/contracts';
 import type { HistoryEntry } from '../logic/history';
@@ -32,7 +35,11 @@ import { motion, radius, color, primitive, type, shadow } from '@shared/design-t
 
 export { DRAWER_WIDTH, MAIN_SHEET_CORNER_RADIUS } from './sidebarLayout';
 
-const SPRING = { damping: 26, stiffness: 280 } as const;
+const DRAWER_SPRING = {
+  duration: motion.fade.duration,
+  dampingRatio: 0.8,
+  reduceMotion: ReduceMotion.System,
+} as const;
 const EDGE_SWIPE_TOP_INSET = 140;
 
 /** Single curve for clip + pill + sheet — no derived dual-easing hitch. */
@@ -95,12 +102,22 @@ export default function HistoryDrawer({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilters, setSearchFilters] = useState<ReactNode>(null);
   const [openHistoryMenuEntryId, setOpenHistoryMenuEntryId] = useState<string | null>(null);
+  const [sheetGesturesLocked, setSheetGesturesLocked] = useState(false);
+  const sheetGestureLock = useMemo(
+    () => ({ locked: sheetGesturesLocked, setLocked: setSheetGesturesLocked }),
+    [sheetGesturesLocked]
+  );
   const offsetX = useSharedValue(open ? DRAWER_WIDTH : 0);
   const sidebarClipWidth = useSharedValue(DRAWER_WIDTH);
   const searchProgress = useSharedValue(0);
   const openShared = useSharedValue(open);
   const searchActiveShared = useSharedValue(false);
   const dragStartX = useSharedValue(0);
+  const reduceMotionShared = useSharedValue(reduceMotion);
+
+  useEffect(() => {
+    reduceMotionShared.value = reduceMotion;
+  }, [reduceMotion, reduceMotionShared]);
 
   const drawerMaxWidth = useDerivedValue(() =>
     searchActiveShared.value ? SCREEN_WIDTH : DRAWER_WIDTH
@@ -163,7 +180,7 @@ export default function HistoryDrawer({
     if (!searchMorphPending) return;
     setSearchMorphPending(false);
     searchProgress.value = withTiming(1, SEARCH_TIMING, (finished) => {
-      if (finished) runOnJS(bumpSearchFocus)();
+      if (finished) scheduleOnRN(bumpSearchFocus);
     });
     offsetX.value = withTiming(SCREEN_WIDTH, SEARCH_TIMING);
   }, [bumpSearchFocus, offsetX, searchMorphPending, searchProgress]);
@@ -180,7 +197,7 @@ export default function HistoryDrawer({
     }
     // Morph back first; drop categories/index only when the bar is done.
     searchProgress.value = withTiming(0, SEARCH_TIMING, (finished) => {
-      if (finished) runOnJS(finishCloseSearch)();
+      if (finished) scheduleOnRN(finishCloseSearch);
     });
     offsetX.value = withTiming(DRAWER_WIDTH, SEARCH_TIMING);
   }, [
@@ -218,7 +235,7 @@ export default function HistoryDrawer({
       setSearchQuery('');
       searchActiveShared.value = false;
       searchProgress.value = 0;
-      offsetX.value = withSpring(0, SPRING);
+      offsetX.value = withSpring(0, DRAWER_SPRING);
       sidebarClipWidth.value = DRAWER_WIDTH;
       return;
     }
@@ -227,100 +244,147 @@ export default function HistoryDrawer({
       return;
     }
 
-    offsetX.value = withSpring(DRAWER_WIDTH, SPRING);
+    offsetX.value = withSpring(DRAWER_WIDTH, DRAWER_SPRING);
     sidebarClipWidth.value = DRAWER_WIDTH;
   }, [offsetX, open, openShared, searchActiveShared, searchProgress, sidebarClipWidth]);
 
-  const panGesture = Gesture.Pan()
-    .enabled(open && !openHistoryMenuEntryId)
-    .activeOffsetX([-12, 12])
-    .failOffsetY([-16, 16])
-    .onBegin(() => {
-      dragStartX.value = offsetX.value;
-    })
-    .onUpdate((event) => {
-      const maxW = drawerMaxWidth.value;
-      const next = dragStartX.value + event.translationX;
-      offsetX.value = Math.max(0, Math.min(maxW, next));
-      if (searchActiveShared.value) {
-        sidebarClipWidth.value = offsetX.value;
-        const span = SCREEN_WIDTH - DRAWER_WIDTH;
-        searchProgress.value = span > 0 ? (offsetX.value - DRAWER_WIDTH) / span : 1;
-      }
-    })
-    .onEnd((event) => {
-      const maxW = drawerMaxWidth.value;
-      const current = offsetX.value;
-      const opening = dragStartX.value < maxW * 0.5;
-      const velocity = event.velocityX;
+  const panGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(open && !openHistoryMenuEntryId)
+        .activeOffsetX([-12, 12])
+        .failOffsetY([-16, 16])
+        .onBegin(() => {
+          dragStartX.value = offsetX.value;
+        })
+        .onUpdate((event) => {
+          const maxW = drawerMaxWidth.value;
+          const next = dragStartX.value + event.translationX;
+          offsetX.value = reduceMotionShared.value
+            ? Math.max(0, Math.min(maxW, next))
+            : rubberbandOffset(next, 0, maxW, maxW);
+          if (searchActiveShared.value) {
+            const clipped = Math.max(0, Math.min(maxW, offsetX.value));
+            sidebarClipWidth.value = clipped;
+            const span = SCREEN_WIDTH - DRAWER_WIDTH;
+            searchProgress.value = span > 0 ? (clipped - DRAWER_WIDTH) / span : 1;
+          }
+        })
+        .onEnd((event) => {
+          const maxW = drawerMaxWidth.value;
+          const current = Math.max(0, Math.min(maxW, offsetX.value));
+          const opening = dragStartX.value < maxW * 0.5;
+          const velocity = event.velocityX;
+          const settle = (target: number) => {
+            'worklet';
+            offsetX.value = withSpring(target, {
+              ...DRAWER_SPRING,
+              velocity,
+              clamp: [0, maxW],
+            });
+          };
 
-      if (opening) {
-        const shouldOpen = current > maxW * 0.35 || velocity > 650;
-        const target = shouldOpen ? maxW : 0;
-        offsetX.value = withSpring(target, SPRING);
-        if (searchActiveShared.value) {
-          sidebarClipWidth.value = target;
-          const span = SCREEN_WIDTH - DRAWER_WIDTH;
-          searchProgress.value = span > 0 ? (target - DRAWER_WIDTH) / span : 1;
-        }
-        if (shouldOpen && !openShared.value) runOnJS(onOpen)();
-        if (!shouldOpen && openShared.value) runOnJS(onClose)();
-        return;
-      }
+          if (opening) {
+            const shouldOpen = current > maxW * 0.35 || velocity > 650;
+            const target = shouldOpen ? maxW : 0;
+            settle(target);
+            if (searchActiveShared.value) {
+              sidebarClipWidth.value = target;
+              const span = SCREEN_WIDTH - DRAWER_WIDTH;
+              searchProgress.value = span > 0 ? (target - DRAWER_WIDTH) / span : 1;
+            }
+            if (shouldOpen && !openShared.value) scheduleOnRN(onOpen);
+            if (!shouldOpen && openShared.value) scheduleOnRN(onClose);
+            return;
+          }
 
-      const shouldClose = current < maxW * 0.65 || velocity < -650;
-      const target = shouldClose ? 0 : maxW;
-      offsetX.value = withSpring(target, SPRING);
-      if (searchActiveShared.value) {
-        sidebarClipWidth.value = target;
-        const span = SCREEN_WIDTH - DRAWER_WIDTH;
-        searchProgress.value = span > 0 ? (target - DRAWER_WIDTH) / span : 1;
-      }
-      if (shouldClose && openShared.value) runOnJS(onClose)();
-      if (!shouldClose && !openShared.value) runOnJS(onOpen)();
-    });
+          const shouldClose = current < maxW * 0.65 || velocity < -650;
+          const target = shouldClose ? 0 : maxW;
+          settle(target);
+          if (searchActiveShared.value) {
+            sidebarClipWidth.value = target;
+            const span = SCREEN_WIDTH - DRAWER_WIDTH;
+            searchProgress.value = span > 0 ? (target - DRAWER_WIDTH) / span : 1;
+          }
+          if (shouldClose && openShared.value) scheduleOnRN(onClose);
+          if (!shouldClose && !openShared.value) scheduleOnRN(onOpen);
+        }),
+    [onClose, onOpen, open, openHistoryMenuEntryId]
+  );
 
-  const tapGesture = Gesture.Tap()
-    .enabled(open && !openHistoryMenuEntryId)
-    .onEnd(() => {
-      runOnJS(onClose)();
-    });
+  const tapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .enabled(open && !openHistoryMenuEntryId)
+        .onEnd(() => {
+          scheduleOnRN(onClose);
+        }),
+    [onClose, open, openHistoryMenuEntryId]
+  );
 
-  // Open by swiping right from anywhere on the main sheet. Disabled on the
-  // result phase, where a horizontal swipe navigates between steps instead.
-  const allowFullOpenSwipe = enableEdgeSwipe && phase !== 'result';
-  const openPanGesture = Gesture.Pan()
-    .enabled(!open && allowFullOpenSwipe)
-    .activeOffsetX(20)
-    .failOffsetY([-16, 16])
-    .onBegin(() => {
-      dragStartX.value = 0;
-    })
-    .onUpdate((event) => {
-      offsetX.value = Math.max(0, Math.min(DRAWER_WIDTH, event.translationX));
-    })
-    .onEnd((event) => {
-      const shouldOpen = offsetX.value > DRAWER_WIDTH * 0.35 || event.velocityX > 650;
-      offsetX.value = withSpring(shouldOpen ? DRAWER_WIDTH : 0, SPRING);
-      if (shouldOpen) {
-        runOnJS(onOpen)();
-      }
-    });
+  // Open by swiping right from anywhere on the main sheet.
+  // Classic result keeps a left-edge swipe only — horizontal pan there
+  // changes steps. Lumen canvases have no sidebar button, so the full sheet
+  // swipe stays on.
+  const allowFullOpenSwipe =
+    enableEdgeSwipe && (phase !== 'result' || Boolean(data?.lumenCanvas));
+  const openPanGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!open && allowFullOpenSwipe && !sheetGesturesLocked)
+        .activeOffsetX(20)
+        .failOffsetY([-16, 16])
+        .onBegin(() => {
+          dragStartX.value = 0;
+        })
+        .onUpdate((event) => {
+          offsetX.value = reduceMotionShared.value
+            ? Math.max(0, Math.min(DRAWER_WIDTH, event.translationX))
+            : rubberbandOffset(event.translationX, 0, DRAWER_WIDTH, DRAWER_WIDTH);
+        })
+        .onEnd((event) => {
+          const current = Math.max(0, Math.min(DRAWER_WIDTH, offsetX.value));
+          const shouldOpen = current > DRAWER_WIDTH * 0.35 || event.velocityX > 650;
+          offsetX.value = withSpring(shouldOpen ? DRAWER_WIDTH : 0, {
+            ...DRAWER_SPRING,
+            velocity: event.velocityX,
+            clamp: [0, DRAWER_WIDTH],
+          });
+          if (shouldOpen) {
+            scheduleOnRN(onOpen);
+          }
+        }),
+    [allowFullOpenSwipe, onOpen, open, sheetGesturesLocked]
+  );
 
-  const mainGesture = Gesture.Exclusive(panGesture, tapGesture, openPanGesture);
+  const mainGesture = useMemo(
+    () => Gesture.Exclusive(panGesture, tapGesture, openPanGesture),
+    [openPanGesture, panGesture, tapGesture]
+  );
 
-  const edgeOpenGesture = Gesture.Pan()
-    .activeOffsetX(12)
-    .onUpdate((event) => {
-      offsetX.value = Math.max(0, Math.min(DRAWER_WIDTH, event.translationX));
-    })
-    .onEnd((event) => {
-      const shouldOpen = offsetX.value > DRAWER_WIDTH * 0.35 || event.velocityX > 650;
-      offsetX.value = withSpring(shouldOpen ? DRAWER_WIDTH : 0, SPRING);
-      if (shouldOpen) {
-        runOnJS(onOpen)();
-      }
-    });
+  const edgeOpenGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX(12)
+        .onUpdate((event) => {
+          offsetX.value = reduceMotionShared.value
+            ? Math.max(0, Math.min(DRAWER_WIDTH, event.translationX))
+            : rubberbandOffset(event.translationX, 0, DRAWER_WIDTH, DRAWER_WIDTH);
+        })
+        .onEnd((event) => {
+          const current = Math.max(0, Math.min(DRAWER_WIDTH, offsetX.value));
+          const shouldOpen = current > DRAWER_WIDTH * 0.35 || event.velocityX > 650;
+          offsetX.value = withSpring(shouldOpen ? DRAWER_WIDTH : 0, {
+            ...DRAWER_SPRING,
+            velocity: event.velocityX,
+            clamp: [0, DRAWER_WIDTH],
+          });
+          if (shouldOpen) {
+            scheduleOnRN(onOpen);
+          }
+        }),
+    [onOpen]
+  );
 
   const sidebarClipStyle = useAnimatedStyle(() => ({
     width: searchActiveShared.value ? sidebarClipWidth.value : DRAWER_WIDTH,
@@ -376,6 +440,7 @@ export default function HistoryDrawer({
   const canvasColor = mainCanvasColor;
 
   return (
+    <HomeSheetGestureLockContext.Provider value={sheetGestureLock}>
     <View
       className={isDark ? 'dark' : undefined}
       style={[styles.root, { backgroundColor: sidebarCanvasColor }]}
@@ -489,6 +554,7 @@ export default function HistoryDrawer({
         </GestureDetector>
       ) : null}
     </View>
+    </HomeSheetGestureLockContext.Provider>
   );
 }
 

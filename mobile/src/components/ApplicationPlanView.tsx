@@ -7,14 +7,15 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import type { ApplicationArtifactV1, ApplicationReviewOutcome } from '@shared/application';
 import { TEXT_SECONDARY, TEXT_PRIMARY, EDITORIAL_TEXT, RADII } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
-import { stepHaptic } from '../context/AppSessionContext';
+import { hapticCommit } from '../logic/haptics';
 import { useSourceViewer } from '../context/SourceViewerContext';
 import { ReadingText } from '../context/TypographyContext';
 import { color, primitive, type, typography } from '@shared/design-tokens';
+import { contentEntering, contentEnterStagger } from '../motion/contentEnter';
 
 type Props = {
   application: ApplicationArtifactV1;
@@ -51,7 +52,7 @@ export default function ApplicationPlanView({
 
   const cardBg = isDark ? color.background.whiteFade06 : color.background.blackFade04;
   const enter = (delay: number) =>
-    reduceMotion ? undefined : FadeInDown.delay(delay).duration(260);
+    reduceMotion ? undefined : contentEntering(delay);
 
   const Section = ({
     title,
@@ -79,7 +80,6 @@ export default function ApplicationPlanView({
           </ReadingText>
           <Pressable
             onPress={() => {
-              stepHaptic();
               onEditContext?.();
             }}
             accessibilityRole="button"
@@ -90,7 +90,7 @@ export default function ApplicationPlanView({
           </Pressable>
         </Section>
         {plan.sourceBasis ? (
-          <Section title="De la fuente" delay={40}>
+          <Section title="De la fuente" delay={contentEnterStagger(1)}>
             <ReadingText typeRole="readingBody" style={styles.body}>{plan.sourceBasis}</ReadingText>
           </Section>
         ) : null}
@@ -105,7 +105,7 @@ export default function ApplicationPlanView({
           <ReadingText typeRole="readingBody" style={styles.body}>{plan.abstentionReason || plan.inference}</ReadingText>
         </Section>
         {plan.sourceBasis ? (
-          <Section title="De la fuente" delay={40}>
+          <Section title="De la fuente" delay={contentEnterStagger(1)}>
             <ReadingText typeRole="readingBody" style={styles.body}>{plan.sourceBasis}</ReadingText>
           </Section>
         ) : null}
@@ -141,15 +141,14 @@ export default function ApplicationPlanView({
         ) : null}
       </Section>
 
-      <Section title="Inferencia de Núcleo" delay={40}>
+      <Section title="Inferencia de Núcleo" delay={contentEnterStagger(1)}>
         <ReadingText typeRole="readingBody" style={styles.body}>{plan.inference}</ReadingText>
       </Section>
 
-      <Section title="Adaptación para ti" delay={80}>
+      <Section title="Adaptación para ti" delay={contentEnterStagger(2)}>
         <ReadingText typeRole="readingBody" style={styles.body}>{plan.adaptation}</ReadingText>
         <Pressable
           onPress={() => {
-            stepHaptic();
             onEditContext?.();
           }}
           accessibilityRole="button"
@@ -161,7 +160,7 @@ export default function ApplicationPlanView({
       </Section>
 
       {plan.assumptions.length ? (
-        <Section title="Supuestos" delay={120}>
+        <Section title="Supuestos" delay={contentEnterStagger(3)}>
           {plan.assumptions.map((a) => (
             <Text key={a.id} style={styles.bullet}>
               • {a.text}
@@ -173,7 +172,7 @@ export default function ApplicationPlanView({
 
       {action ? (
         <Animated.View
-          entering={enter(160)}
+          entering={enter(contentEnterStagger(4))}
           style={[styles.heroCard, { backgroundColor: isDark ? color.background.accentFade16 : color.background.accentSofter }]}
         >
           <Text style={styles.kicker}>Próxima acción</Text>
@@ -185,7 +184,6 @@ export default function ApplicationPlanView({
           </Text>
           <Pressable
             onPress={() => {
-              stepHaptic();
               onStartAction?.();
             }}
             accessibilityRole="button"
@@ -199,13 +197,13 @@ export default function ApplicationPlanView({
 
       {action ? (
         <>
-          <Section title="Cómo comprobarlo" delay={200}>
+          <Section title="Cómo comprobarlo" delay={contentEnterStagger(5)}>
             <ReadingText typeRole="readingBody" style={styles.body}>{action.successCriterion}</ReadingText>
           </Section>
-          <Section title="Cuándo parar o cambiar" delay={240}>
+          <Section title="Cuándo parar o cambiar" delay={contentEnterStagger(6)}>
             <ReadingText typeRole="readingBody" style={styles.body}>{action.stopOrChangeCriterion}</ReadingText>
           </Section>
-          <Section title="Revisión" delay={280}>
+          <Section title="Revisión" delay={contentEnterStagger(7)}>
             <ReadingText typeRole="readingBody" style={styles.body}>{plan.reviewTrigger}</ReadingText>
             {plan.reviewQuestions.map((q) => (
               <Text key={q} style={styles.bullet}>
@@ -262,7 +260,7 @@ export default function ApplicationPlanView({
                 <Pressable
                   key={outcome}
                   onPress={() => {
-                    stepHaptic();
+                    hapticCommit();
                     const needsAssumption =
                       outcome === 'partial' ||
                       outcome === 'did_not_work' ||

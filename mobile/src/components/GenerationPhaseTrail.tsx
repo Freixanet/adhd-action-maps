@@ -1,10 +1,11 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeOut } from 'react-native-reanimated';
 import ThinkingOrbWebView from './ThinkingOrbWebView';
 import { GENERATION_PHASE_STEPS } from '../logic/generationPhaseTrail';
 import { formatCollectionProgress } from '@shared/collections';
-import { typography } from '@shared/design-tokens';
+import { motion, typography } from '@shared/design-tokens';
+import { contentEntering } from '../motion/contentEnter';
 import { useThemeColors } from '../context/ThemeContext';
 
 type GenerationPhaseTrailProps = {
@@ -37,8 +38,8 @@ export default function GenerationPhaseTrail({
     <View style={styles.wrap} accessibilityRole="summary">
       <Animated.View
         key={collectionProgress ? `collection-${collectionProgress.completed}` : step.id}
-        entering={reduceMotion ? undefined : FadeIn.duration(220)}
-        exiting={reduceMotion ? undefined : FadeOut.duration(160)}
+        entering={reduceMotion ? undefined : contentEntering()}
+        exiting={reduceMotion ? undefined : FadeOut.duration(motion.exit.duration)}
         style={styles.row}
       >
         <View style={styles.orbSlot}>

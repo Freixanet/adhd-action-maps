@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
-import { stepHaptic } from '../logic/stepHaptic';
+import { hapticCommit } from '../logic/haptics';
 import { type, color } from '@shared/design-tokens';
 
 type ApplicationReplanConfirmDialogProps = {
@@ -57,7 +57,7 @@ export default function ApplicationReplanConfirmDialog({
               <Pressable
                 onPress={() => {
                   if (busy) return;
-                  stepHaptic();
+                  hapticCommit();
                   onReplace();
                 }}
                 disabled={busy}
@@ -75,7 +75,6 @@ export default function ApplicationReplanConfirmDialog({
               <Pressable
                 onPress={() => {
                   if (busy) return;
-                  stepHaptic();
                   onKeepCurrent();
                 }}
                 disabled={busy}

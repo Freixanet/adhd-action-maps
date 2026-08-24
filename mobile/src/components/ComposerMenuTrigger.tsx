@@ -54,6 +54,7 @@ export default function ComposerMenuTrigger({
       title={title}
       themeVariant={themeVariant}
       actions={menuActions}
+      key={menuActions.map((action) => `${action.id}:${action.title}`).join('|')}
       onPresent={() => {
         markComposerNativeMenuPresented();
       }}

@@ -2,6 +2,7 @@ import {
   getIntentSelectorImplementationMode,
   getIntentSelectorUnavailableReason,
   isNativeGlassSegmentAvailable,
+  isNativeMultiSegmentAvailable,
 } from '../../modules/nucleo-glass-segment/src';
 
 /**
@@ -10,6 +11,10 @@ import {
  */
 export function shouldUseNativeGlassSegment(_reduceTransparency = false): boolean {
   return isNativeGlassSegmentAvailable();
+}
+
+export function shouldUseNativeMultiSegment(_reduceTransparency = false): boolean {
+  return isNativeMultiSegmentAvailable();
 }
 
 export function resolveIntentSelectorImplementation(

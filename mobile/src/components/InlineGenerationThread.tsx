@@ -1,8 +1,7 @@
-import { color, radius } from '@shared/design-tokens';
+import { color, motion, space, type } from '@shared/design-tokens';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
-  Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -10,27 +9,35 @@ import {
 } from 'react-native';
 import Animated, {
   Easing,
-  FadeIn,
+  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import type { HistoryEntry } from '@shared/history';
+import { splitAskParagraphs } from '@shared/askChatContract';
+import { visibleAskAnswer } from '../logic/visibleAskAnswer';
 import { RADII } from '@shared/uiTokens';
 import CompletionGlassButton from './CompletionGlassButton';
+import { DevModelCaption, DevModelLongPress } from './DevModelInspect';
+import ChatThinkingIndicator from './ChatThinkingIndicator';
 import GenerationPhaseTrail from './GenerationPhaseTrail';
 import NucleoCover from './NucleoCover';
+import AskReplyActions from './AskReplyActions';
+import UserMessageText from './UserMessageText';
 import SessionErrorBanner from './SessionErrorBanner';
-import { stepHaptic, useAppSession } from '../context/AppSessionContext';
+import { useAppSession } from '../context/AppSessionContext';
+import { hapticSuccess } from '../logic/haptics';
 import { useTheme } from '../context/ThemeContext';
+import { useTypography } from '../context/TypographyContext';
 import { useGenerationSoftStage } from '../hooks/useGenerationSoftStage';
 import { useTypewriter } from '../hooks/useTypewriter';
 import {
   pickReadyAssistantMessageFromMap,
   resolveGenerationPhaseIndex,
 } from '../logic/generationPhaseTrail';
-import { restoreComposerInputFocus } from '../logic/composerNativeMenuSession';
+import { contentEntering } from '../motion/contentEnter';
 const ACK_DELAY_MS = 180;
 const PHASES_AFTER_ACK_MS = 320;
 const READY_CARD_DELAY_MS = 280;
@@ -43,44 +50,72 @@ function UserChatBubble({
   maxWidth,
   backgroundColor,
   entering,
+  onEdit,
 }: {
   text: string;
   maxWidth: number;
   backgroundColor: string;
   entering?: React.ComponentProps<typeof Animated.View>['entering'];
+  onEdit: () => void;
 }) {
+  const { colors } = useTheme();
   return (
-    <Animated.View entering={entering} className="w-full items-end">
-      <View
-        style={{
-          maxWidth,
-          backgroundColor,
-          borderRadius: radius.bubble,
-          borderBottomRightRadius: 6,
-          paddingHorizontal: 14,
-          paddingVertical: 10,
-        }}
-      >
-        <Text className="text-input leading-6 text-primary" maxFontSizeMultiplier={1.35}>
-          {text}
-        </Text>
-      </View>
+    <Animated.View entering={entering} className="w-full items-end" style={styles.userTurn}>
+      <UserMessageText
+        text={text}
+        color={colors.text.primary}
+        maxWidth={maxWidth}
+        backgroundColor={backgroundColor}
+        onEdit={onEdit}
+      />
     </Animated.View>
+  );
+}
+
+function AssistantReplyText({
+  text,
+  tone = 'primary',
+}: {
+  text: string;
+  tone?: 'primary' | 'secondary';
+}) {
+  const { font } = useTypography();
+  const { colors } = useTheme();
+  return (
+    <Text
+      style={{
+        color: tone === 'secondary' ? colors.text.secondary : colors.text.primary,
+        fontFamily: font.family,
+        fontSize: type.readingBody.fontSize,
+        lineHeight: type.readingBody.lineHeight,
+      }}
+      maxFontSizeMultiplier={1.35}
+    >
+      {text}
+    </Text>
+  );
+}
+
+function AskAnswerBody({ text }: { text: string }) {
+  const paragraphs = splitAskParagraphs(visibleAskAnswer(text));
+  return (
+    <View className="w-full" style={styles.askParagraphs}>
+      {paragraphs.map((paragraph, index) => (
+        <AssistantReplyText key={index} text={paragraph} />
+      ))}
+    </View>
   );
 }
 
 function AssistantTextRow({
   children,
   entering,
-  flushTop = false,
 }: {
   children: React.ReactNode;
   entering?: React.ComponentProps<typeof Animated.View>['entering'];
-  /** First content on the page — no top margin so it sits at the top edge. */
-  flushTop?: boolean;
 }) {
   return (
-    <Animated.View entering={entering} className={flushTop ? 'w-full' : 'mt-4 w-full'}>
+    <Animated.View entering={entering} className="w-full">
       {children}
     </Animated.View>
   );
@@ -110,7 +145,10 @@ export default function InlineGenerationThread() {
 
   const snapshot = session.inlineUserTurn;
   const status = session.inlineGenerationStatus;
-  const isAsk = snapshot?.kind === 'ask';
+  const priorAskTurns = session.inlineAskPriorTurns ?? [];
+  const isAsk = snapshot?.kind === 'ask' || priorAskTurns.length > 0;
+  const instantAskReveal = Boolean(isAsk && snapshot?.revealInstant);
+  const skipAskMotion = reduceMotion || instantAskReveal;
 
   const isPreviewGen = Boolean(session.devPreviewGenerationActive);
   const softStage = useGenerationSoftStage(
@@ -176,13 +214,18 @@ export default function InlineGenerationThread() {
     }
   );
 
-  const askAnswerFull = session.inlineAskAnswer ?? '';
-  const { displayed: askDisplayed } = useTypewriter(askAnswerFull, askAnswerActive && isAsk, {
-    reduceMotion,
+  const askAnswerFull = visibleAskAnswer(session.inlineAskAnswer ?? '');
+  const { displayed: askTyped } = useTypewriter(askAnswerFull, askAnswerActive && isAsk, {
+    reduceMotion: skipAskMotion,
     startDelayMs: 0,
     tickMs: typewriterTickMs,
-    charsPerTick: 1,
+    charsPerTick: 2,
   });
+  const askDisplayed = instantAskReveal && askAnswerFull ? askAnswerFull : askTyped;
+  const showAskCopy =
+    status === 'ready' &&
+    askAnswerFull.length > 0 &&
+    (instantAskReveal || askDisplayed.length >= askAnswerFull.length);
 
   const openResult = () => {
     readyPreviewCardRef.current?.measureInWindow((x, y, width, height) => {
@@ -210,7 +253,7 @@ export default function InlineGenerationThread() {
     setPhasesVisible(false);
     setReadyMessageActive(false);
     setOpenCardVisible(false);
-    setAskAnswerActive(false);
+    setAskAnswerActive(Boolean(snapshot.kind === 'ask' && snapshot.revealInstant));
     phasesOpacity.value = 1;
     cardOpacity.value = 0;
     cardScale.value = reduceMotion ? 1 : 0.92;
@@ -219,7 +262,7 @@ export default function InlineGenerationThread() {
 
     const timer = setTimeout(() => setAckActive(true), ACK_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [snapshot?.kind, snapshot?.sourceUrl, snapshot?.conversationalMessage, snapshot?.text, snapshot?.pastedText]);
+  }, [snapshot?.kind, snapshot?.revealInstant, snapshot?.sourceUrl, snapshot?.conversationalMessage, snapshot?.text, snapshot?.pastedText]);
 
   // Ask: start typing when the answer arrives.
   useEffect(() => {
@@ -298,7 +341,7 @@ export default function InlineGenerationThread() {
       setOpenCardVisible(true);
       if (!hapticFiredRef.current) {
         hapticFiredRef.current = true;
-        stepHaptic();
+        hapticSuccess();
       }
     }, READY_CARD_DELAY_MS);
     return () => clearTimeout(timer);
@@ -310,7 +353,11 @@ export default function InlineGenerationThread() {
     cardOpacity.value = withTiming(1, { duration: fadeMs });
     cardScale.value = reduceMotion
       ? 1
-      : withSpring(1, { damping: 22, stiffness: 260 });
+      : withSpring(1, {
+          duration: motion.sheetAlt.duration,
+          dampingRatio: 1,
+          reduceMotion: ReduceMotion.System,
+        });
   }, [cardOpacity, cardScale, openCardVisible, reduceMotion]);
 
   const phasesStyle = useAnimatedStyle(() => ({
@@ -322,88 +369,89 @@ export default function InlineGenerationThread() {
     transform: [{ scale: cardScale.value }],
   }));
 
-  if (!snapshot || status === 'idle') return null;
+  if (!snapshot && priorAskTurns.length === 0) return null;
+  if (status === 'idle' && !isAsk) return null;
 
-  const userMessage = snapshot.text?.trim() || snapshot.pastedText?.trim() || '';
+  const userMessage = snapshot?.text?.trim() || snapshot?.pastedText?.trim() || '';
   const userBubbleBg = isDark ? color.background.whiteFade10 : color.background.blackFade06;
   const userBubble = userMessage ? (
     <UserChatBubble
       text={userMessage}
       maxWidth={bubbleMaxWidth}
       backgroundColor={userBubbleBg}
-      entering={reduceMotion ? undefined : FadeIn.duration(200)}
+      entering={skipAskMotion ? undefined : contentEntering()}
+      onEdit={() => session.beginComposerEdit?.(userMessage)}
     />
   ) : null;
 
+  const firstUserTurnOffset =
+    isAsk && priorAskTurns.length === 0 && userBubble
+      ? { paddingTop: space.stack.xl }
+      : undefined;
+
   if (status === 'cancelled') {
-    return <View className="w-full flex-1">{userBubble}</View>;
+    return (
+      <View className="w-full flex-1" style={firstUserTurnOffset}>
+        {userBubble}
+      </View>
+    );
   }
 
   if (isAsk) {
     return (
-      <View className="w-full flex-1">
-        {userBubble}
-
-        {status === 'error' ? (
-          <AssistantTextRow
-            flushTop={!userMessage}
-            entering={reduceMotion ? undefined : FadeIn.duration(200)}
-          >
-            <View className="w-full">
-              <SessionErrorBanner inline className="mb-0" />
-            </View>
-          </AssistantTextRow>
-        ) : null}
-
-        {(status === 'ready' || status === 'generating') && askAnswerFull ? (
-          <AssistantTextRow
-            flushTop={!userMessage}
-            entering={reduceMotion ? undefined : FadeIn.duration(220)}
-          >
-            <View className="w-full">
-              <View className="self-start rounded-full bg-white/8 px-2.5 py-1 mb-2">
-                <Text className="text-meta font-semibold uppercase tracking-widest text-secondary">
-                  Conocimiento general
-                </Text>
+      <View className="w-full flex-1" style={[styles.thread, firstUserTurnOffset]}>
+        {priorAskTurns.map((turn, index) => (
+          <View key={`prior-${index}`}>
+            <UserChatBubble
+              text={turn.question}
+              maxWidth={bubbleMaxWidth}
+              backgroundColor={userBubbleBg}
+              onEdit={() => session.beginComposerEdit?.(turn.question)}
+            />
+            <AssistantTextRow>
+              <View className="w-full">
+                <AskAnswerBody text={turn.answer} />
               </View>
-              <Text className="text-input leading-6 text-primary" maxFontSizeMultiplier={1.35}>
-                {askDisplayed}
-              </Text>
-              {status === 'ready' && session.inlineAskDisclaimer ? (
-                <Text className="mt-3 text-callout leading-5 text-secondary" maxFontSizeMultiplier={1.3}>
-                  {session.inlineAskDisclaimer}
-                </Text>
-              ) : null}
-              {status === 'ready' && session.inlineAskCtaLabel ? (
-                <Pressable
-                  onPress={() => {
-                    stepHaptic();
-                    restoreComposerInputFocus();
-                    session.setAttachMenuOpen(true);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={session.inlineAskCtaLabel}
-                  className="mt-3 self-start rounded-full border border-white/12 bg-white/6 px-3 py-2 active:opacity-80"
-                >
-                  <Text className="text-callout font-medium text-body">
-                    {session.inlineAskCtaLabel}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </AssistantTextRow>
-        ) : null}
+              <AskReplyActions text={visibleAskAnswer(turn.answer)} />
+            </AssistantTextRow>
+          </View>
+        ))}
+        <View>
+          {userBubble}
 
-        {status === 'generating' && !askAnswerFull ? (
-          <AssistantTextRow
-            flushTop={!userMessage}
-            entering={reduceMotion ? undefined : FadeIn.duration(220)}
-          >
-            <Text className="text-input leading-6 text-secondary" maxFontSizeMultiplier={1.35}>
-              …
-            </Text>
-          </AssistantTextRow>
-        ) : null}
+          {status === 'error' ? (
+            <AssistantTextRow
+              entering={skipAskMotion ? undefined : contentEntering()}
+            >
+              <View className="w-full">
+                <SessionErrorBanner inline className="mb-0" />
+              </View>
+            </AssistantTextRow>
+          ) : null}
+
+          {askDisplayed.trim() ? (
+            <AssistantTextRow
+              key={instantAskReveal ? `restored:${snapshot?.text ?? ''}` : 'live'}
+              entering={skipAskMotion ? undefined : contentEntering()}
+            >
+              <DevModelLongPress
+                enabled={session.devToolsEnabled}
+                modelUsed={session.inlineAskModelUsed}
+              >
+                <View className="w-full">
+                  <AskAnswerBody text={askDisplayed} />
+                </View>
+              </DevModelLongPress>
+              {showAskCopy ? <AskReplyActions text={askAnswerFull} /> : null}
+            </AssistantTextRow>
+          ) : null}
+
+          {(status === 'generating' || status === 'partial') && !askDisplayed.trim() ? (
+            <View collapsable={false}>
+              <ChatThinkingIndicator reduceMotion={reduceMotion} />
+            </View>
+          ) : null}
+        </View>
       </View>
     );
   }
@@ -414,20 +462,15 @@ export default function InlineGenerationThread() {
       {(ackActive || showReadyMessage) && status !== 'error' && status !== 'cancelled' ? (
         <AssistantTextRow
           key={showReadyMessage ? 'ready' : 'ack'}
-          flushTop
-          entering={reduceMotion ? undefined : FadeIn.duration(220)}
+          entering={reduceMotion ? undefined : contentEntering()}
         >
-          <Text className="text-input leading-6 text-primary" maxFontSizeMultiplier={1.35}>
-            {showReadyMessage ? readyDisplayed : ackDisplayed}
-          </Text>
+          <AssistantReplyText text={showReadyMessage ? readyDisplayed : ackDisplayed} />
         </AssistantTextRow>
       ) : null}
 
       {ackActive && status === 'error' ? (
-        <AssistantTextRow flushTop entering={reduceMotion ? undefined : FadeIn.duration(200)}>
-          <Text className="text-input leading-6 text-primary" maxFontSizeMultiplier={1.35}>
-            {ackDisplayed}
-          </Text>
+        <AssistantTextRow entering={reduceMotion ? undefined : contentEntering()}>
+          <AssistantReplyText text={ackDisplayed} />
           <View className="mt-3 w-full">
             <SessionErrorBanner inline className="mb-0" />
           </View>
@@ -494,6 +537,12 @@ export default function InlineGenerationThread() {
                 onPress={openResult}
                 accessibilityLabel={`Abrir ${title}`}
               />
+              <View className="mt-2 items-center">
+                <DevModelCaption
+                  enabled={session.devToolsEnabled}
+                  modelUsed={session.data?.modelUsed}
+                />
+              </View>
             </View>
           </Animated.View>
         </View>
@@ -503,6 +552,16 @@ export default function InlineGenerationThread() {
 }
 
 const styles = StyleSheet.create({
+  thread: {
+    gap: space.stack.xl,
+  },
+  /** Empty canvas under the user bubble before the AI reply. */
+  userTurn: {
+    paddingBottom: space.stack.xl + space.stack.lg,
+  },
+  askParagraphs: {
+    gap: space.stack.lg,
+  },
   readyPreviewWrap: {
     width: '100%',
   },

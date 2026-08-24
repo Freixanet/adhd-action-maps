@@ -19,7 +19,6 @@ import type {
   NucleoVisualLink,
   NucleoVisualSpec,
 } from '../logic/contracts';
-import { stepHaptic } from '../context/AppSessionContext';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { color, type, typography, radius } from '@shared/design-tokens';
 
@@ -545,7 +544,6 @@ export default function NucleoVisualOverview({
   const selectItem = (id: string) => {
     if (id === selectedId) return;
     setSelectedId(id);
-    stepHaptic();
   };
 
   const onLayout = (event: LayoutChangeEvent) => {

@@ -94,22 +94,23 @@
       "11": 64
     },
     "fontSize": {
-      "2xs": 10,
-      "xs": 11,
-      "sm": 12,
+      "3xs": 13,
+      "2xs": 13,
+      "xs": 13,
+      "sm": 13,
       "md": 13,
-      "base": 14,
+      "base": 15,
       "lg": 15,
-      "xl": 16,
+      "xl": 17,
       "2xl": 17,
-      "3xl": 18,
-      "4xl": 20,
+      "3xl": 17,
+      "4xl": 22,
       "5xl": 22,
-      "6xl": 24,
-      "7xl": 26,
-      "8xl": 32,
-      "display": 44,
-      "3xs": 9
+      "6xl": 22,
+      "7xl": 28,
+      "8xl": 28,
+      "lumen3xl": 34,
+      "display": 34
     },
     "lineHeight": {
       "tight": 1.15,
@@ -129,10 +130,13 @@
       "reading": "SourceSans3",
       "rounded": "ui-rounded",
       "systemUi": "ui-sans-serif",
-      "system": "-apple-system, BlinkMacSystemFont, ui-rounded, 'SF Pro Text', 'Roboto', sans-serif"
+      "android": "sans-serif",
+      "system": "-apple-system, BlinkMacSystemFont, ui-sans-serif, 'SF Pro Text', Roboto, sans-serif",
+      "lumenDisplay": "Iowan Old Style",
+      "lumenDisplayFallback": "Georgia"
     },
     "letterSpacing": {
-      "tight": -0.2,
+      "tight": 0,
       "normal": 0,
       "wide": 0.8,
       "wider": 1,
@@ -141,12 +145,17 @@
       "labelEm": 0.08,
       "labelWideEm": 0.14,
       "labelWidestEm": 0.16,
-      "displayTight": -0.8,
-      "titleTight": -0.3,
+      "displayTight": -0.68,
+      "titleTight": -0.56,
       "labelLoose": 0.2,
       "captionEmph": 0.4,
       "metaEmph": 0.5,
-      "engraved": 0.6
+      "engraved": 0.6,
+      "lumenTightLg": 0,
+      "lumenTightXl": -0.56,
+      "lumenTight2xl": -0.56,
+      "lumenTight3xl": -0.68,
+      "lumenKicker": 1.68
     },
     "radius": {
       "none": 0,
@@ -187,16 +196,15 @@
     },
     "duration": {
       "instant": 0,
-      "micro": 50,
+      "micro": 120,
+      "stagger": 30,
       "press": 140,
       "fast": 180,
-      "base": 250,
+      "base": 200,
       "moderate": 300,
       "slow": 420,
       "deliberate": 500,
-      "page": 800,
-      "feedback40": 40,
-      "feedback45": 45,
+      "page": 340,
       "exit": 200,
       "drawer": 260,
       "quizSettle": 320,
@@ -414,8 +422,13 @@
       "iconSm": 16,
       "iconMd": 20,
       "iconLg": 24,
+      "iconEmphasis": 2.5,
       "composerSend": 36,
-      "floatingButton": 48
+      "floatingButton": 48,
+      "lumenChip": 36,
+      "lumenDepthPill": 40,
+      "lumenBanner": 240,
+      "lumenAskThread": 144
     }
   },
   "semantic": {
@@ -642,11 +655,13 @@
       }
     },
     "font": {
-      "family": "{primitive.fontFamily.reading}",
+      "family": "{primitive.fontFamily.systemUi}",
       "fallback": "{primitive.fontFamily.rounded}",
       "scale": 1.2,
       "maxLineChars": 75,
-      "minLineChars": 60
+      "minLineChars": 60,
+      "lumenDisplay": "{primitive.fontFamily.lumenDisplay}",
+      "lumenDisplayFallback": "{primitive.fontFamily.lumenDisplayFallback}"
     },
     "reading": {
       "maxWidth": 560,
@@ -662,447 +677,522 @@
     },
     "type": {
       "display": {
-        "fontSize": "{primitive.fontSize.display}",
-        "lineHeight": 50,
+        "fontSize": 34,
+        "lineHeight": 39,
         "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.displayTight}"
+        "letterSpacing": -0.68
       },
       "pageTitle": {
-        "fontSize": "{primitive.fontSize.5xl}",
-        "lineHeight": 28,
+        "fontSize": 28,
+        "lineHeight": 32,
         "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.tight}"
+        "letterSpacing": -0.56
       },
       "heading": {
-        "fontSize": "{primitive.fontSize.6xl}",
-        "lineHeight": 30,
-        "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.tight}"
+        "fontSize": 22,
+        "lineHeight": 25,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "sectionTitle": {
-        "fontSize": "{primitive.fontSize.3xl}",
-        "lineHeight": 24,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 22,
+        "lineHeight": 25,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "subtitle": {
-        "fontSize": "{primitive.fontSize.4xl}",
-        "lineHeight": 26,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 22,
+        "lineHeight": 25,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "title": {
-        "fontSize": "{primitive.fontSize.xl}",
-        "lineHeight": 22,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 17,
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "body": {
-        "fontSize": "{primitive.fontSize.2xl}",
-        "lineHeight": 26,
+        "fontSize": 17,
+        "lineHeight": 24,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "bodyStrong": {
-        "fontSize": "{primitive.fontSize.2xl}",
-        "lineHeight": 26,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 17,
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "readingBody": {
         "fontSize": 17,
-        "lineHeight": 26,
+        "lineHeight": 24,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "readingBodyStrong": {
         "fontSize": 17,
-        "lineHeight": 26,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "readingLead": {
-        "fontSize": 19,
-        "lineHeight": 30,
+        "fontSize": 17,
+        "lineHeight": 24,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "readingTitle": {
-        "fontSize": 24,
-        "lineHeight": 29,
+        "fontSize": 28,
+        "lineHeight": 32,
         "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.tight}"
+        "letterSpacing": -0.56
       },
       "readingSection": {
-        "fontSize": 21,
+        "fontSize": 22,
         "lineHeight": 25,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "readingCaption": {
-        "fontSize": 14,
-        "lineHeight": 21,
+        "fontSize": 13,
+        "lineHeight": 18,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "callout": {
-        "fontSize": "{primitive.fontSize.base}",
-        "lineHeight": 20,
+        "fontSize": 15,
+        "lineHeight": 21,
         "fontWeight": "{primitive.fontWeight.medium}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "caption": {
-        "fontSize": "{primitive.fontSize.sm}",
-        "lineHeight": 16,
+        "fontSize": 15,
+        "lineHeight": 21,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "label": {
-        "fontSize": "{primitive.fontSize.md}",
+        "fontSize": 13,
         "lineHeight": 18,
         "fontWeight": "{primitive.fontWeight.medium}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "meta": {
-        "fontSize": "{primitive.fontSize.xs}",
-        "lineHeight": 14,
+        "fontSize": 13,
+        "lineHeight": 18,
         "fontWeight": "{primitive.fontWeight.medium}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "micro": {
-        "fontSize": "{primitive.fontSize.2xs}",
-        "lineHeight": 13,
+        "fontSize": 13,
+        "lineHeight": 18,
         "fontWeight": "{primitive.fontWeight.medium}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "kicker": {
-        "fontSize": "{primitive.fontSize.xs}",
-        "lineHeight": 14,
-        "fontWeight": "{primitive.fontWeight.semibold}",
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": "{primitive.letterSpacing.kicker}",
         "textTransform": "uppercase"
       },
       "button": {
-        "fontSize": "{primitive.fontSize.lg}",
-        "lineHeight": 20,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "buttonSm": {
-        "fontSize": "{primitive.fontSize.md}",
-        "lineHeight": 18,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "input": {
-        "fontSize": "{primitive.fontSize.2xl}",
+        "fontSize": 17,
         "lineHeight": 24,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "editorialCover": {
-        "fontSize": "{primitive.fontSize.7xl}",
-        "lineHeight": 32,
+        "fontSize": 34,
+        "lineHeight": 39,
         "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.tight}"
+        "letterSpacing": -0.68
       },
       "editorialLede": {
-        "fontSize": "{primitive.fontSize.xl}",
-        "lineHeight": 26,
+        "fontSize": 17,
+        "lineHeight": 24,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "pageTitleTight": {
-        "fontSize": "{primitive.fontSize.5xl}",
-        "lineHeight": 28,
+        "fontSize": 28,
+        "lineHeight": 32,
         "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.titleTight}"
+        "letterSpacing": -0.56
       },
       "inputStrong": {
-        "fontSize": "{primitive.fontSize.2xl}",
+        "fontSize": 17,
         "lineHeight": 24,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "inputTitle": {
-        "fontSize": "{primitive.fontSize.2xl}",
-        "lineHeight": 22,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 17,
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "metaBold": {
-        "fontSize": "{primitive.fontSize.xs}",
-        "lineHeight": 14,
-        "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.metaEmph}"
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "captionBold": {
-        "fontSize": "{primitive.fontSize.sm}",
-        "lineHeight": 16,
-        "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "captionBoldTrack": {
-        "fontSize": "{primitive.fontSize.sm}",
-        "lineHeight": 16,
-        "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.captionEmph}"
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "captionSemibold": {
-        "fontSize": "{primitive.fontSize.sm}",
-        "lineHeight": 16,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "captionExtrabold": {
-        "fontSize": "{primitive.fontSize.sm}",
-        "lineHeight": 17,
-        "fontWeight": "{primitive.fontWeight.extrabold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "labelSemibold": {
-        "fontSize": "{primitive.fontSize.md}",
+        "fontSize": 13,
         "lineHeight": 18,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "labelSemiboldTrack": {
-        "fontSize": "{primitive.fontSize.md}",
+        "fontSize": 13,
         "lineHeight": 18,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.labelLoose}"
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "labelBold": {
-        "fontSize": "{primitive.fontSize.md}",
+        "fontSize": 13,
         "lineHeight": 18,
-        "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "bodyBold": {
-        "fontSize": "{primitive.fontSize.lg}",
-        "lineHeight": 22,
-        "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 17,
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "bodyRelaxed": {
-        "fontSize": "{primitive.fontSize.lg}",
-        "lineHeight": 21,
+        "fontSize": 17,
+        "lineHeight": 24,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "calloutBold": {
-        "fontSize": "{primitive.fontSize.base}",
-        "lineHeight": 20,
-        "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "calloutTight": {
-        "fontSize": "{primitive.fontSize.base}",
-        "lineHeight": 19,
-        "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "titleMedium": {
-        "fontSize": "{primitive.fontSize.xl}",
-        "lineHeight": 22,
+        "fontSize": 17,
+        "lineHeight": 24,
         "fontWeight": "{primitive.fontWeight.medium}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "sectionTitleTrack": {
-        "fontSize": "{primitive.fontSize.3xl}",
-        "lineHeight": 24,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.captionEmph}"
+        "fontSize": 22,
+        "lineHeight": 25,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "microExtrabold": {
-        "fontSize": "{primitive.fontSize.2xs}",
-        "lineHeight": 13,
-        "fontWeight": "{primitive.fontWeight.extrabold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "microLabel": {
-        "fontSize": "{primitive.fontSize.3xs}",
-        "lineHeight": 12,
+        "fontSize": 13,
+        "lineHeight": 18,
         "fontWeight": "{primitive.fontWeight.medium}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "kickerWide": {
-        "fontSize": "{primitive.fontSize.xs}",
-        "lineHeight": 15,
-        "fontWeight": "{primitive.fontWeight.extrabold}",
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": "{primitive.letterSpacing.wide}",
         "textTransform": "uppercase"
       },
       "metaWide": {
-        "fontSize": "{primitive.fontSize.xs}",
-        "lineHeight": 14,
+        "fontSize": 13,
+        "lineHeight": 18,
         "fontWeight": "{primitive.fontWeight.medium}",
-        "letterSpacing": "{primitive.letterSpacing.wide}"
+        "letterSpacing": 0
       },
       "label17": {
-        "fontSize": "{primitive.fontSize.md}",
-        "lineHeight": 17,
-        "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "label19": {
-        "fontSize": "{primitive.fontSize.md}",
-        "lineHeight": 19,
+        "fontSize": 13,
+        "lineHeight": 18,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "subtitle17": {
-        "fontSize": "{primitive.fontSize.2xl}",
-        "lineHeight": 22,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 17,
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "headingTight": {
-        "fontSize": "{primitive.fontSize.3xl}",
-        "lineHeight": 23,
-        "fontWeight": "{primitive.fontWeight.bold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 22,
+        "lineHeight": 25,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "body16lh24": {
-        "fontSize": "{primitive.fontSize.xl}",
+        "fontSize": 17,
         "lineHeight": 24,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "captionSemiboldTrack": {
-        "fontSize": "{primitive.fontSize.sm}",
-        "lineHeight": 16,
-        "fontWeight": "{primitive.fontWeight.semibold}",
-        "letterSpacing": "{primitive.letterSpacing.captionEmph}"
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "meta16": {
-        "fontSize": "{primitive.fontSize.xs}",
-        "lineHeight": 16,
+        "fontSize": 13,
+        "lineHeight": 18,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "captionExtrabold16": {
-        "fontSize": "{primitive.fontSize.sm}",
-        "lineHeight": 16,
-        "fontWeight": "{primitive.fontWeight.extrabold}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "micro14": {
-        "fontSize": "{primitive.fontSize.2xs}",
-        "lineHeight": 14,
+        "fontSize": 13,
+        "lineHeight": 18,
         "fontWeight": "{primitive.fontWeight.regular}",
-        "letterSpacing": "{primitive.letterSpacing.normal}"
+        "letterSpacing": 0
       },
       "bodySemibold": {
-        "fontSize": 16,
+        "fontSize": 17,
         "lineHeight": 24,
-        "fontWeight": "600",
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": 0
       },
       "buttonTitle": {
-        "fontSize": 16,
-        "lineHeight": 20,
-        "fontWeight": "600",
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": 0
       },
       "buttonTitleBold": {
-        "fontSize": 16,
-        "lineHeight": 20,
-        "fontWeight": "700",
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": 0
       },
       "calloutSemibold": {
         "fontSize": 15,
         "lineHeight": 21,
-        "fontWeight": "600",
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": 0
       },
       "continueTitle": {
         "fontSize": 17,
-        "lineHeight": 22,
-        "fontWeight": "700",
-        "letterSpacing": -0.1
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "editorialCoverTitle": {
-        "fontSize": 32,
-        "lineHeight": 36,
-        "fontWeight": "700",
-        "letterSpacing": -0.4
+        "fontSize": 34,
+        "lineHeight": 39,
+        "fontWeight": "{primitive.fontWeight.bold}",
+        "letterSpacing": -0.68
       },
       "editorialSectionTitle": {
         "fontSize": 22,
-        "lineHeight": 26,
-        "fontWeight": "700",
-        "letterSpacing": -0.2
+        "lineHeight": 25,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "inputBold": {
-        "fontSize": 16,
-        "lineHeight": 22,
-        "fontWeight": "700",
+        "fontSize": 17,
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": 0
       },
       "intentLabel": {
         "fontSize": 13,
-        "lineHeight": 16,
-        "fontWeight": "700",
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": 0.4,
         "textTransform": "uppercase"
       },
       "labelExtrabold": {
         "fontSize": 13,
-        "lineHeight": 16,
-        "fontWeight": "800",
-        "letterSpacing": 0.3
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "metaKicker": {
-        "fontSize": 12,
-        "lineHeight": 15,
-        "fontWeight": "700",
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": 0.8,
         "textTransform": "uppercase"
       },
       "pageTitleMedium": {
         "fontSize": 22,
-        "lineHeight": 28,
-        "fontWeight": "600",
-        "letterSpacing": -0.2
+        "lineHeight": 25,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       },
       "planBody": {
-        "fontSize": 16,
+        "fontSize": 17,
         "lineHeight": 24,
-        "fontWeight": "400",
+        "fontWeight": "{primitive.fontWeight.regular}",
         "letterSpacing": 0
       },
       "planBullet": {
-        "fontSize": 16,
-        "lineHeight": 23,
-        "fontWeight": "400",
+        "fontSize": 17,
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.regular}",
         "letterSpacing": 0
       },
       "planHero": {
-        "fontSize": 24,
-        "lineHeight": 29,
-        "fontWeight": "700",
-        "letterSpacing": -0.2
+        "fontSize": 28,
+        "lineHeight": 32,
+        "fontWeight": "{primitive.fontWeight.bold}",
+        "letterSpacing": -0.56
       },
       "planKicker": {
-        "fontSize": 12,
-        "lineHeight": 15,
-        "fontWeight": "700",
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": 0.7,
         "textTransform": "uppercase"
       },
       "stripTitle": {
         "fontSize": 15,
-        "lineHeight": 19,
-        "fontWeight": "700",
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
         "letterSpacing": 0
       },
       "titleExtrabold": {
-        "fontSize": 24,
-        "lineHeight": 28,
-        "fontWeight": "800",
-        "letterSpacing": -0.2
+        "fontSize": 28,
+        "lineHeight": 32,
+        "fontWeight": "{primitive.fontWeight.bold}",
+        "letterSpacing": -0.56
+      },
+      "lumenKicker": {
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": "{primitive.letterSpacing.lumenKicker}",
+        "textTransform": "uppercase"
+      },
+      "lumenReadTime": {
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": "{primitive.letterSpacing.lumenKicker}",
+        "textTransform": "uppercase"
+      },
+      "lumenSectionTitle": {
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": "{primitive.letterSpacing.lumenKicker}",
+        "textTransform": "uppercase"
+      },
+      "lumenHook": {
+        "fontSize": 28,
+        "lineHeight": 32,
+        "fontWeight": "{primitive.fontWeight.bold}",
+        "letterSpacing": -0.56
+      },
+      "lumenLead": {
+        "fontSize": 17,
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.regular}",
+        "letterSpacing": 0
+      },
+      "lumenCopy": {
+        "fontSize": 17,
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.regular}",
+        "letterSpacing": 0
+      },
+      "lumenDisplayLg": {
+        "fontSize": 28,
+        "lineHeight": 32,
+        "fontWeight": "{primitive.fontWeight.bold}",
+        "letterSpacing": -0.56
+      },
+      "lumenDisplayXl": {
+        "fontSize": 28,
+        "lineHeight": 32,
+        "fontWeight": "{primitive.fontWeight.bold}",
+        "letterSpacing": -0.56
+      },
+      "lumenDisplay3xl": {
+        "fontSize": 34,
+        "lineHeight": 39,
+        "fontWeight": "{primitive.fontWeight.bold}",
+        "letterSpacing": -0.68
+      },
+      "lumenTab": {
+        "fontSize": 13,
+        "lineHeight": 18,
+        "fontWeight": "{primitive.fontWeight.regular}",
+        "letterSpacing": 0
+      },
+      "lumenLabel": {
+        "fontSize": 17,
+        "lineHeight": 24,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
+      },
+      "lumenChipLabel": {
+        "fontSize": 15,
+        "lineHeight": 21,
+        "fontWeight": "{primitive.fontWeight.medium}",
+        "letterSpacing": 0
       }
     },
     "radius": {
@@ -1153,13 +1243,9 @@
         "duration": "{primitive.duration.instant}",
         "easing": "{primitive.easing.linear}"
       },
-      "feedback40": {
-        "duration": "{primitive.duration.feedback40}",
-        "easing": "{primitive.easing.standard}"
-      },
-      "feedback45": {
-        "duration": "{primitive.duration.feedback45}",
-        "easing": "{primitive.easing.standard}"
+      "stagger": {
+        "duration": "{primitive.duration.stagger}",
+        "easing": "{primitive.easing.linear}"
       },
       "exitSoft": {
         "duration": "{primitive.duration.exit}",
@@ -1205,10 +1291,10 @@
         "duration": 1800,
         "easing": "ease-in-out"
       },
-      "homeCardPress": {
+      "press": {
         "duration": "{primitive.duration.press}",
         "easing": "{primitive.easing.standard}",
-        "scale": 0.96
+        "scale": 0.97
       }
     },
     "shadow": {
@@ -1252,9 +1338,14 @@
       "iconSm": "{primitive.control.iconSm}",
       "iconMd": "{primitive.control.iconMd}",
       "iconLg": "{primitive.control.iconLg}",
+      "iconEmphasis": "{primitive.control.iconEmphasis}",
       "composerSend": "{primitive.control.composerSend}",
       "floatingButton": "{primitive.control.floatingButton}",
-      "composerDockElevation": 40
+      "composerDockElevation": 40,
+      "lumenChip": "{primitive.control.lumenChip}",
+      "lumenDepthPill": "{primitive.control.lumenDepthPill}",
+      "lumenBanner": "{primitive.control.lumenBanner}",
+      "lumenAskThread": "{primitive.control.lumenAskThread}"
     }
   },
   "specialized": {

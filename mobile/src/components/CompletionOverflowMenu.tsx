@@ -4,7 +4,6 @@ import Animated from 'react-native-reanimated';
 import { MenuView, type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
 import { MoreHorizontal } from '../icons';
 import { RADII, TEXT_BODY } from '@shared/uiTokens';
-import { stepHaptic } from '../context/AppSessionContext';
 import GlassSurface from './GlassSurface';
 import { usePressScale } from '../hooks/usePressScale';
 import { useTheme } from '../context/ThemeContext';
@@ -23,7 +22,6 @@ export default function CompletionOverflowMenu({ onViewAll }: CompletionOverflow
 
   const handlePress = ({ nativeEvent }: NativeActionEvent) => {
     if (nativeEvent.event === 'viewAll') onViewAll();
-    stepHaptic();
   };
 
   const iconColor = isDark ? TEXT_BODY : color.text.muted;
@@ -41,7 +39,7 @@ export default function CompletionOverflowMenu({ onViewAll }: CompletionOverflow
           accessibilityLabel="Más acciones"
           onPressIn={onPressIn}
           onPressOut={onPressOut}
-          style={({ pressed }) => [styles.pressable, pressed ? styles.pressedOpacity : null]}
+          style={styles.pressable}
         >
           <Animated.View style={[styles.pressableInner, animatedStyle]}>
             <GlassSurface
@@ -94,8 +92,5 @@ const styles = StyleSheet.create({
     height: OVERFLOW_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  pressedOpacity: {
-    opacity: 0.88,
   },
 });

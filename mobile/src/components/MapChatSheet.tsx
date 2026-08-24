@@ -11,15 +11,17 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { hapticCommit } from '../logic/haptics';
 import { MessageSquareText, X, ArrowUp } from '../icons';
 import { apiUrl } from '../logic/apiBase';
 import { buildLlmRequestHeaders } from '../logic/apiHeaders';
 import type { ActionMapData, ChatTurn, MapChatResponse } from '../logic/contracts';
 import { supabase } from '../logic/supabase';
 import GlassSurface from './GlassSurface';
+import { DevModelLongPress } from './DevModelInspect';
 import { fetchWithTimeout } from '../logic/network';
 import { useThemeColors } from '../context/ThemeContext';
+import { useAppSession } from '../context/AppSessionContext';
 import { type } from '@shared/design-tokens';
 
 type MapChatSheetProps = {
@@ -99,12 +101,21 @@ function formatAssistantText(reply: MapChatResponse): string {
   return `${reply.answer}${citationText}${limitationsText}`.trim();
 }
 
-function AssistantBubble({ text }: { text: string }) {
+function AssistantBubble({
+  text,
+  modelUsed,
+  inspectEnabled,
+}: {
+  text: string;
+  modelUsed?: string;
+  inspectEnabled: boolean;
+}) {
   const parsed = parseStoredAssistantText(text);
 
   return (
-    <View className="self-start max-w-[92%] mb-4 rounded-card px-4 py-3 bg-neutral-100 dark:bg-white/5">
-      <Text className="text-sm leading-relaxed text-primary">{parsed.answer}</Text>
+    <DevModelLongPress enabled={inspectEnabled} modelUsed={modelUsed}>
+      <View className="self-start max-w-[92%] mb-4 rounded-card px-4 py-3 bg-neutral-100 dark:bg-white/5">
+        <Text className="text-sm leading-relaxed text-primary">{parsed.answer}</Text>
       {parsed.citations?.length ? (
         <View className="mt-3 pt-3 border-t border-neutral-200/80 border-white/10">
           <Text className="text-meta font-bold uppercase tracking-widest text-secondary mb-2">
@@ -140,11 +151,14 @@ function AssistantBubble({ text }: { text: string }) {
         </View>
       ) : null}
     </View>
+    </DevModelLongPress>
   );
 }
 
 export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapChatSheetProps) {
   const colors = useThemeColors();
+  const session = useAppSession();
+  const inspectEnabled = session.devToolsEnabled;
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
@@ -179,7 +193,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
       const question = (presetQuestion || chatInput).trim();
       if (!question || chatBusy) return;
 
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      hapticCommit();
 
       const optimisticHistory: ChatTurn[] = [...chatHistory, { role: 'user', text: question }];
       setChatHistory(optimisticHistory);
@@ -223,6 +237,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
           {
             role: 'assistant',
             text: formatAssistantText(parsed),
+            modelUsed: parsed.modelUsed,
           },
         ]);
       } catch (err) {
@@ -313,7 +328,12 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
                     <Text className="text-sm leading-relaxed text-white">{turn.text}</Text>
                   </View>
                 ) : (
-                  <AssistantBubble key={`${turn.role}-${index}`} text={turn.text} />
+                  <AssistantBubble
+                    key={`${turn.role}-${index}`}
+                    text={turn.text}
+                    modelUsed={turn.modelUsed}
+                    inspectEnabled={inspectEnabled}
+                  />
                 )
               )
             )}

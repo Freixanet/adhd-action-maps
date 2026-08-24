@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  SquarePen,
 } from '../icons';
 import ProfileMenu from './ProfileMenu';
 import {
@@ -24,6 +25,7 @@ import {
   sortPinnedEntries,
   type HistoryEntry,
 } from '../logic/history';
+import { isChatHistoryEntry } from '@shared/historyKind';
 import { groupHistoryEntries, type Coleccion } from '@shared/collections';
 import HistoryCollectionGroup from './HistoryCollectionGroup';
 import { applyHistoryListFilter, filterHistoryEntries, type HistoryListFilter } from '../logic/historySearch';
@@ -128,11 +130,19 @@ export default function HistorySheet({
     modalSearchProgress.value = searchActive ? 1 : 0;
   }, [modalSearchProgress, searchActive]);
 
-  const usedCategories = useMemo(() => collectUsedCategories(entries), [entries]);
-  const userCategories = useMemo(() => collectUserCategories(entries), [entries]);
-  const hasIncompleteEntries = useMemo(
-    () => entries.some((entry) => libraryStateForEntry(entry) !== 'completed'),
+  const nucleoEntries = useMemo(
+    () => entries.filter((entry) => !isChatHistoryEntry(entry)),
     [entries]
+  );
+  const chatEntries = useMemo(
+    () => entries.filter((entry) => isChatHistoryEntry(entry)),
+    [entries]
+  );
+  const usedCategories = useMemo(() => collectUsedCategories(nucleoEntries), [nucleoEntries]);
+  const userCategories = useMemo(() => collectUserCategories(nucleoEntries), [nucleoEntries]);
+  const hasIncompleteEntries = useMemo(
+    () => nucleoEntries.some((entry) => libraryStateForEntry(entry) !== 'completed'),
+    [nucleoEntries]
   );
 
   useEffect(() => {
@@ -158,8 +168,8 @@ export default function HistorySheet({
   }, [hasIncompleteEntries, listFilter, usedCategories]);
 
   const libraryCounts = useMemo(
-    () => countEntriesByLibraryState(entries),
-    [entries]
+    () => countEntriesByLibraryState(nucleoEntries),
+    [nucleoEntries]
   );
 
   useEffect(() => {
@@ -168,24 +178,46 @@ export default function HistorySheet({
     }
   }, [libraryCounts, libraryFilter]);
 
-  const filteredEntries = useMemo(() => {
-    const byState = filterEntriesByLibraryState(entries, libraryFilter);
+  const filteredNucleos = useMemo(() => {
+    const byState = filterEntriesByLibraryState(nucleoEntries, libraryFilter);
     if (!searchMode) return byState;
     const searched = filterHistoryEntries(byState, searchQuery);
     return applyHistoryListFilter(searched, listFilter);
-  }, [entries, libraryFilter, listFilter, searchMode, searchQuery]);
+  }, [listFilter, libraryFilter, nucleoEntries, searchMode, searchQuery]);
+
+  const filteredChats = useMemo(() => {
+    if (libraryFilter !== 'all') return [];
+    if (searchMode && listFilter !== 'all') return [];
+    if (!searchMode) return chatEntries;
+    return filterHistoryEntries(chatEntries, searchQuery);
+  }, [chatEntries, libraryFilter, listFilter, searchMode, searchQuery]);
+
+  const pinnedChats = useMemo(
+    () => sortPinnedEntries(filteredChats.filter((entry) => entry.pinned)),
+    [filteredChats]
+  );
+  const recentChats = useMemo(
+    () =>
+      filteredChats
+        .filter((entry) => !entry.pinned)
+        .sort((a, b) => {
+          if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+          return b.createdAt - a.createdAt;
+        }),
+    [filteredChats]
+  );
 
   const pinnedStandalone = useMemo(
-    () => sortPinnedEntries(filteredEntries.filter((entry) => entry.pinned && !entry.collectionId)),
-    [filteredEntries]
+    () => sortPinnedEntries(filteredNucleos.filter((entry) => entry.pinned && !entry.collectionId)),
+    [filteredNucleos]
   );
   const { standalone, groups } = useMemo(
     () =>
       groupHistoryEntries(
-        filteredEntries.filter((entry) => !entry.pinned || Boolean(entry.collectionId)),
+        filteredNucleos.filter((entry) => !entry.pinned || Boolean(entry.collectionId)),
         collections
       ),
-    [collections, filteredEntries]
+    [collections, filteredNucleos]
   );
   const regularStandalone = useMemo(
     () => standalone.filter((entry) => !entry.pinned),
@@ -193,6 +225,14 @@ export default function HistorySheet({
   );
   const listData = useMemo(
     () => [
+      ...(pinnedChats.length
+        ? [{ type: 'header' as const, id: 'chats-pinned-header', title: 'Chats fijados' }]
+        : []),
+      ...pinnedChats.map((entry) => ({ type: 'entry' as const, entry })),
+      ...(recentChats.length
+        ? [{ type: 'header' as const, id: 'chats-header', title: 'Chats recientes' }]
+        : []),
+      ...recentChats.map((entry) => ({ type: 'entry' as const, entry })),
       ...(pinnedStandalone.length
         ? [{ type: 'header' as const, id: 'pinned-header', title: 'Núcleos fijados' }]
         : []),
@@ -203,7 +243,7 @@ export default function HistorySheet({
         : []),
       ...regularStandalone.map((entry) => ({ type: 'entry' as const, entry })),
     ],
-    [groups, pinnedStandalone, regularStandalone]
+    [groups, pinnedChats, pinnedStandalone, recentChats, regularStandalone]
   );
 
   const toggleCollectionExpanded = useCallback((collectionId: string) => {
@@ -254,14 +294,19 @@ export default function HistorySheet({
 
   const handleDeleteEntry = useCallback(
     (entry: HistoryEntry) => {
-      Alert.alert('Eliminar Núcleo', '¿Seguro que quieres eliminar este Núcleo?', [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => onDelete(entry.id),
-        },
-      ]);
+      const isChat = isChatHistoryEntry(entry);
+      Alert.alert(
+        isChat ? 'Eliminar chat' : 'Eliminar Núcleo',
+        isChat ? '¿Seguro que quieres eliminar este chat?' : '¿Seguro que quieres eliminar este Núcleo?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Eliminar',
+            style: 'destructive',
+            onPress: () => onDelete(entry.id),
+          },
+        ]
+      );
     },
     [onDelete]
   );
@@ -270,7 +315,7 @@ export default function HistorySheet({
     ({ item, index }: { item: (typeof listData)[number]; index: number }) => {
       if (item.type === 'header') {
         const isRecentHeader = item.id === 'recent-header';
-        const isPinnedHeader = item.id === 'pinned-header';
+        const isPinnedHeader = item.id === 'pinned-header' || item.id === 'chats-pinned-header';
         const pinTopPadding =
           isPinnedHeader && searchMode
             ? 'pt-3'
@@ -279,11 +324,15 @@ export default function HistorySheet({
               : isPinnedHeader
                 ? 'pt-1'
                 : 'pt-1';
+        const headerTopPadding =
+          item.id === 'chats-header' || (item.id === 'chats-pinned-header' && index === 0)
+            ? 'pt-8'
+            : isRecentHeader
+              ? 'pt-8'
+              : pinTopPadding;
         return (
           <Text
-            className={`px-1 pb-2 text-meta font-bold uppercase tracking-widest text-secondary ${
-              isRecentHeader ? 'pt-8' : pinTopPadding
-            }`}
+            className={`px-1 pb-2 text-meta font-bold uppercase tracking-widest text-secondary ${headerTopPadding}`}
           >
             {item.title}
           </Text>
@@ -444,7 +493,7 @@ export default function HistorySheet({
                       {step.shortNav || step.title}
                     </Text>
                   </View>
-                  <CheckCircle2 size={16} color={isPast ? ACCENT : TEXT_SECONDARY} />
+                  <CheckCircle2 size={16} color={isPast ? ACCENT : TEXT_SECONDARY} filled={isPast} />
                 </Pressable>
               );
             })}
@@ -595,9 +644,11 @@ export default function HistorySheet({
             accessibilityLabel="Nuevo Núcleo"
             shape="circle"
             tone="accent"
-            systemImage="plus"
-            symbolPointSize={15}
-          />
+            systemImage="square.and.pencil"
+            symbolPointSize={17}
+          >
+            <SquarePen size={20} color={color.text.onAccent} />
+          </FloatingGlassButton>
         </View>
       ) : null}
 

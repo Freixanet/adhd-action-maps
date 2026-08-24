@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
-  FadeIn,
   FadeOut,
   SharedValue,
   useAnimatedStyle,
@@ -10,6 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { motion, type } from '@shared/design-tokens';
+import { contentEntering } from '../motion/contentEnter';
 import { useTheme } from '../context/ThemeContext';
 
 function clampRatio(value: number): number {
@@ -132,15 +132,15 @@ export function LoadingPhaseLabel({
   align = 'center',
   variant = 'body',
 }: PhaseLabelProps) {
-  const duration = reduceMotion ? 0 : 200;
+  const duration = reduceMotion ? 0 : motion.enter.duration;
   const alignClass = align === 'left' ? 'text-left' : 'text-center';
   const toneClass = variant === 'meta' ? 'text-callout text-secondary' : 'text-body text-body';
 
   return (
     <Animated.Text
       key={text}
-      entering={duration ? FadeIn.duration(duration) : undefined}
-      exiting={duration ? FadeOut.duration(duration) : undefined}
+      entering={duration ? contentEntering() : undefined}
+      exiting={duration ? FadeOut.duration(motion.exit.duration) : undefined}
       className={`${toneClass} ${alignClass}`}
     >
       {text}

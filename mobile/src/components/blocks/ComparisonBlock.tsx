@@ -14,6 +14,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import { useInViewportOnce } from '../../hooks/useInViewportOnce';
 import BlockEnter from './BlockEnter';
+import { contentEnterStagger } from '../../motion/contentEnter';
 import { motion, typography } from '@shared/design-tokens';
 
 type Props = {
@@ -93,7 +94,7 @@ export default function ComparisonBlock({ block, index = 0 }: Props) {
     const left = cols[0]!;
     const right = cols[1]!;
     return (
-      <BlockEnter delayMs={index * 60}>
+      <BlockEnter delayMs={contentEnterStagger(index)}>
         <View onLayout={onLayout} style={styles.wrap} accessibilityRole="summary">
           <View style={styles.twoCol}>
             <SideCard
@@ -123,7 +124,7 @@ export default function ComparisonBlock({ block, index = 0 }: Props) {
   }
 
   return (
-    <BlockEnter delayMs={index * 60}>
+    <BlockEnter delayMs={contentEnterStagger(index)}>
       <View onLayout={onLayout} style={styles.wrap}>
         <GlassSurface
           liquid

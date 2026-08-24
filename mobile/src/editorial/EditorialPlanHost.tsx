@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  FadeIn,
   FadeOut,
   runOnJS,
   useSharedValue,
@@ -19,11 +18,11 @@ import {
   editorialGutter,
 } from '@shared/editorial/space';
 import NativeGlassButton from '../components/NativeGlassButton';
-import { stepHaptic } from '../context/AppSessionContext';
 import { EDITORIAL_SCROLL_BOTTOM_MASK } from './editorialChrome';
 import EditorialPageView from './EditorialPageView';
 import { RADII } from '@shared/uiTokens';
-import { color, type, space, radius, typography } from '@shared/design-tokens';
+import { color, type, space, radius, typography, motion } from '@shared/design-tokens';
+import { contentEntering } from '../motion/contentEnter';
 
 type Props = {
   plan: EditorialPlan;
@@ -75,18 +74,15 @@ export default function EditorialPlanHost({ plan, onClose }: Props) {
 
   const goForward = useCallback(() => {
     if (!canGoForward) return;
-    stepHaptic();
     go(index + 1);
   }, [canGoForward, go, index]);
 
   const goBack = useCallback(() => {
     if (index <= 0) return;
-    stepHaptic();
     go(index - 1);
   }, [go, index]);
 
   const handleClose = useCallback(() => {
-    stepHaptic();
     onClose();
   }, [onClose]);
 
@@ -139,8 +135,8 @@ export default function EditorialPlanHost({ plan, onClose }: Props) {
         <GestureDetector gesture={swipe}>
           <Animated.View
             key={page.id}
-            entering={FadeIn.duration(180)}
-            exiting={FadeOut.duration(120)}
+            entering={contentEntering()}
+            exiting={FadeOut.duration(motion.exit.duration)}
             style={styles.pageSlot}
           >
             <EditorialPageView

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
+import { isGeneratedCoverRecord } from '@shared/generatedCover';
 import { getVisualAssetById } from '@shared/editorial/visualLibrary';
 import { resolveNucleoCover } from '@shared/homeFeed';
 import type { HistoryEntry } from '@shared/history';
@@ -10,6 +11,8 @@ type NucleoCoverProps = {
   entry: HistoryEntry;
   width: number;
   height: number;
+  /** Home jump-back photo. When set, replaces catalog and generated covers. */
+  photoSource?: ImageSourcePropType;
   /**
    * Push the illustration below a top chrome/safe-area bleed (e.g. Dynamic Island)
    * while the wash still fills the full frame.
@@ -23,6 +26,8 @@ type NucleoCoverProps = {
   artOffsetX?: number;
   /** Fraction of the art plane. Default 0.92. */
   artScale?: number;
+  /** `cover` fills the frame and crops, like Lumen’s `object-cover` kind banner. */
+  fit?: 'contain' | 'cover';
 };
 
 /**
@@ -38,6 +43,8 @@ export default function NucleoCover({
   artOffsetY = 0,
   artOffsetX = 0,
   artScale = 0.92,
+  photoSource,
+  fit = 'contain',
 }: NucleoCoverProps) {
   const colors = useThemeColors();
   const resolution = useMemo(() => resolveNucleoCover(entry), [entry]);
@@ -45,9 +52,11 @@ export default function NucleoCover({
     () => getVisualAssetById(resolution.assetId),
     [resolution.assetId]
   );
+  const generatedCover = isGeneratedCoverRecord(entry.generatedCover) ? entry.generatedCover : null;
 
   const artPlane = Math.max(0, height - contentInsetTop - contentInsetBottom);
-  const artSize = Math.min(width, artPlane) * artScale;
+  const cover = fit === 'cover';
+  const artSize = (cover ? Math.max(width, artPlane) : Math.min(width, artPlane)) * artScale;
   const topBand = Math.max(0, height - contentInsetBottom);
 
   return (
@@ -66,6 +75,7 @@ export default function NucleoCover({
       <View
         style={[
           styles.artBand,
+          cover ? styles.artBandCover : null,
           {
             width,
             height: topBand,
@@ -73,7 +83,19 @@ export default function NucleoCover({
           },
         ]}
       >
-        {asset ? (
+        {photoSource ? (
+          <Image
+            source={photoSource}
+            resizeMode="cover"
+            style={styles.generatedCover}
+          />
+        ) : generatedCover ? (
+          <Image
+            source={{ uri: generatedCover.localUri }}
+            resizeMode="cover"
+            style={styles.generatedCover}
+          />
+        ) : asset ? (
           <View
             style={[
               styles.art,
@@ -109,11 +131,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'visible',
   },
+  artBandCover: {
+    overflow: 'hidden',
+  },
   art: {
     alignItems: 'center',
     justifyContent: 'center',
   },
+  generatedCover: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
   fallbackWash: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
 });

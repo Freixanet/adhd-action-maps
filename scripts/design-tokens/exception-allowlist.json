@@ -5,7 +5,7 @@
     {
       "id": "callout-brand-accent-rgb-runtime",
       "file": "mobile/src/components/blocks/CalloutBlock.tsx",
-      "line": 42,
+      "line": 43,
       "rule": "color-rgb",
       "match": "rgba(",
       "reason": "runtime alpha wash from brand.accentRgb channels",
@@ -14,7 +14,7 @@
     {
       "id": "callout-parsed-hex-runtime",
       "file": "mobile/src/components/blocks/CalloutBlock.tsx",
-      "line": 44,
+      "line": 45,
       "rule": "color-rgb",
       "match": "rgba(",
       "reason": "runtime alpha wash from parsed hex channels",

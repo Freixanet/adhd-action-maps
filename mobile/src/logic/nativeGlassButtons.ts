@@ -3,6 +3,9 @@ import {
   isNativeGlassButtonAvailable,
 } from '../../modules/nucleo-glass-button/src';
 
+/** Two-line drawer glyph drawn as UIButton.Configuration.image so glass morphs it. */
+export const NATIVE_MENU_TWO_LINES = 'nucleo.menu.two';
+
 /**
  * Product path on iOS 26+: UIKit `UIButton.Configuration.glass()` / `.prominentGlass()`.
  * Availability alone decides — no permanent off switch.

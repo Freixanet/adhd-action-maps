@@ -24,6 +24,7 @@ export const SIDEBAR_OCCLUSION = {
   headerBelowSafeArea: 52,
   bodyBelowSafeArea: 72,
   fade: 24,
+  edgeFade: 40,
   listTopExtra: 10,
   listBottomMin: 120,
 } as const;
@@ -71,20 +72,48 @@ export function sidebarSearchStackHeight(insetTop: number) {
   );
 }
 
-export function SidebarOcclusionFade({ top, color }: { top: number; color: string }) {
+type SidebarOcclusionFadeProps = {
+  color: string;
+  /** Distance from the top when `edge` is `top`. */
+  top?: number;
+  /** `top` fades content under the header; `right` fades trailing overflow. */
+  edge?: 'top' | 'right';
+};
+
+export function SidebarOcclusionFade({
+  color,
+  top,
+  edge = 'top',
+}: SidebarOcclusionFadeProps) {
+  const isRight = edge === 'right';
+  const size = isRight ? SIDEBAR_OCCLUSION.edgeFade : SIDEBAR_OCCLUSION.fade;
+  const gradientId = isRight ? 'sidebarOcclusionFadeRight' : 'sidebarOcclusionFade';
+
   return (
     <View
       pointerEvents="none"
-      style={[occlusionFadeStyles.root, { top, height: SIDEBAR_OCCLUSION.fade }]}
+      style={
+        isRight
+          ? [occlusionFadeStyles.right, { width: size }]
+          : [occlusionFadeStyles.root, { top, height: size }]
+      }
     >
-      <Svg width="100%" height={SIDEBAR_OCCLUSION.fade} style={StyleSheet.absoluteFill}>
+      <Svg width="100%" height={isRight ? '100%' : size} style={StyleSheet.absoluteFill}>
         <Defs>
-          <LinearGradient id="sidebarOcclusionFade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={color} stopOpacity="1" />
-            <Stop offset="1" stopColor={color} stopOpacity="0" />
-          </LinearGradient>
+          {isRight ? (
+            <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+              <Stop offset="0" stopColor={color} stopOpacity="0" />
+              <Stop offset="0.55" stopColor={color} stopOpacity="0.28" />
+              <Stop offset="1" stopColor={color} stopOpacity="0.62" />
+            </LinearGradient>
+          ) : (
+            <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={color} stopOpacity="1" />
+              <Stop offset="1" stopColor={color} stopOpacity="0" />
+            </LinearGradient>
+          )}
         </Defs>
-        <Rect width="100%" height={SIDEBAR_OCCLUSION.fade} fill="url(#sidebarOcclusionFade)" />
+        <Rect width="100%" height="100%" fill={`url(#${gradientId})`} />
       </Svg>
     </View>
   );
@@ -175,7 +204,11 @@ export function SidebarBrandHeader({
             accessibilityLabel="Ir a inicio"
           >
             <View style={[styles.brandMark, { height: SIDEBAR_HEADER_BUTTON_SIZE }]}>
-              <AppIcon size={28} color={colors.icon.primary} />
+              <AppIcon
+                size={SIDEBAR_HEADER_BUTTON_SIZE}
+                color={colors.icon.primary}
+                flush
+              />
               <EngravedNucleoMark
                 fontSize={ENGRAVED_NUCLEO_COMPACT_FONT_SIZE}
                 tone="sidebar"
@@ -198,7 +231,7 @@ export function SidebarBrandHeader({
         ]}
       >
         <Animated.View style={[styles.searchPillContent, pillContentStyle]}>
-          <Search size={16} color={iconColor} strokeWidth={2.25} />
+          <Search size={16} color={iconColor} />
           <TextInput
             ref={searchRef}
             value={searchQuery}
@@ -223,10 +256,10 @@ export function SidebarBrandHeader({
       >
         <View style={styles.iconSwap}>
           <Animated.View style={[styles.iconLayer, searchIconStyle]}>
-            <Search size={20} color={iconColor} strokeWidth={2.25} />
+            <Search size={20} color={iconColor} />
           </Animated.View>
           <Animated.View style={[styles.iconLayer, closeIconStyle]}>
-            <X size={20} color={iconColor} strokeWidth={2.25} />
+            <X size={20} color={iconColor} />
           </Animated.View>
         </View>
       </FloatingGlassButton>
@@ -351,5 +384,12 @@ const occlusionFadeStyles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 20,
+  },
+  right: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2,
   },
 });

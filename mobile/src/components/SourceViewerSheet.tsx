@@ -16,7 +16,6 @@ import {
 import { WebView } from 'react-native-webview';
 import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
-import { stepHaptic } from '../context/AppSessionContext';
 import { useSourceViewer } from '../context/SourceViewerContext';
 import {
   reduceSourceViewerDocStatus,
@@ -279,7 +278,6 @@ export default function SourceViewerSheet() {
                 {surface.showRetry ? (
                   <Pressable
                     onPress={() => {
-                      stepHaptic();
                       retryDocumentUrl();
                       setWebKey((k) => k + 1);
                       dispatch({ type: 'loadStart' });
@@ -322,7 +320,6 @@ export default function SourceViewerSheet() {
             <View className="px-5 pb-5 pt-2">
               <Pressable
                 onPress={() => {
-                  stepHaptic();
                   close();
                 }}
                 accessibilityRole="button"

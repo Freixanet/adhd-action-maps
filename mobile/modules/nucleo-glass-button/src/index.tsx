@@ -14,7 +14,7 @@ export type NucleoGlassButtonProps = {
   onPress?: () => void;
   variant?: NucleoGlassVariant;
   title?: string;
-  /** SF Symbol drawn by SwiftUI. Omit and render React children above instead. */
+  /** SF Symbol drawn by UIKit, or `nucleo.menu.two` for the two-line drawer glyph. */
   systemImage?: string;
   symbolPointSize?: number;
   isEnabled?: boolean;

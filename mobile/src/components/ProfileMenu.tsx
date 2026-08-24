@@ -7,11 +7,13 @@ import NativeGlassButton from './NativeGlassButton';
 import { FloatingGlassShell, FLOATING_CIRCLE_SIZE } from './FloatingGlassButton';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
-import { useAppSession, stepHaptic } from '../context/AppSessionContext';
+import { useAppSession } from '../context/AppSessionContext';
 import { privacyPolicyUrl, termsOfUseUrl } from '../logic/legalUrls';
+import type { ModelPreference } from '@shared/modelPreference';
 import { useTheme } from '../context/ThemeContext';
 import { useTypography } from '../context/TypographyContext';
 import { typography } from '@shared/design-tokens';
+import { hapticSegment } from '../logic/haptics';
 
 type ProfileMenuProps = {
   placement?: 'topRight' | 'bottomLeft';
@@ -19,6 +21,12 @@ type ProfileMenuProps = {
 };
 
 type MenuPanel = 'root' | 'settings';
+
+const DEV_MODEL_OPTIONS: ReadonlyArray<{ id: ModelPreference; label: string; hint: string }> = [
+  { id: 'auto', label: 'Automático', hint: '3.7 Flash, luego Lite' },
+  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', hint: 'Principal' },
+  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite', hint: 'Rápido / pruebas' },
+];
 
 const MENU_WIDTH = 272;
 const MENU_GAP = 10;
@@ -74,7 +82,6 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
   const { reduceTransparency } = useGlassAccessibility();
   const nativeGlass = shouldUseNativeGlassButton(reduceTransparency);
   const menuIconColor = colors.icon.primary;
-  const iconStroke = 2.25;
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<MenuPanel>('root');
@@ -164,7 +171,6 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
 
   const toggleMenu = () => {
     setOpen((current) => !current);
-    stepHaptic();
   };
 
   const anchorLabel = session.cloudSignedIn ? 'Tu cuenta' : 'Cuenta y ajustes';
@@ -235,26 +241,25 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                       <Pressable
                         onPress={() => {
                           setPanel('settings');
-                          stepHaptic();
                         }}
                         accessibilityRole="menuitem"
                         accessibilityLabel="Ajustes"
                         className="px-2.5 py-3.5 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
                       >
-                        <Settings size={20} color={menuIconColor} strokeWidth={iconStroke} />
+                        <Settings size={20} color={menuIconColor} />
                         <Text
                           className="flex-1 text-base font-semibold text-body"
                           style={{ fontFamily: font.family }}
                         >
                           Ajustes
                         </Text>
-                        <ChevronRight size={16} color={menuIconColor} strokeWidth={iconStroke} />
+                        <ChevronRight size={16} color={menuIconColor} />
                       </Pressable>
 
                       <MenuRow
                         font={font}
                         label={session.devToolsEnabled ? 'Salir de modo DEV' : 'Entrar en modo DEV'}
-                        icon={<Cpu size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                        icon={<Cpu size={20} color={menuIconColor} />}
                         onPress={() => {
                           session.setDevToolsEnabled(!session.devToolsEnabled);
                           closeMenu();
@@ -270,22 +275,20 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                         <MenuRow
                           font={font}
                           label="Cerrar sesión"
-                          icon={<LogOut size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                          icon={<LogOut size={20} color={menuIconColor} />}
                           onPress={() => {
                             closeMenu();
                             void session.handleSignOut();
-                            stepHaptic();
                           }}
                         />
                       ) : session.isCloudSyncConfigured ? (
                         <MenuRow
                           font={font}
                           label="Iniciar sesión"
-                          icon={<LogIn size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                          icon={<LogIn size={20} color={menuIconColor} />}
                           onPress={() => {
                             closeMenu();
                             session.openAuthSheet();
-                            stepHaptic();
                           }}
                         />
                       ) : null}
@@ -313,7 +316,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                             key={option.id}
                             onPress={() => {
                               setPreference(option.id);
-                              stepHaptic();
+                              hapticSegment();
                             }}
                             accessibilityRole="radio"
                             accessibilityState={{ selected }}
@@ -323,7 +326,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                             <CheckCircle2
                               size={18}
                               color={selected ? colors.action.primary : colors.text.muted}
-                              strokeWidth={selected ? 2.2 : 1.5}
+                              filled={selected}
                             />
                             <Text
                               className="flex-1 text-base font-semibold text-body"
@@ -355,7 +358,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                             key={option.id}
                             onPress={() => {
                               setReadingFont(option.id);
-                              stepHaptic();
+                              hapticSegment();
                             }}
                             accessibilityRole="radio"
                             accessibilityState={{ selected }}
@@ -365,7 +368,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                             <CheckCircle2
                               size={18}
                               color={selected ? colors.action.primary : colors.text.muted}
-                              strokeWidth={selected ? 2.2 : 1.5}
+                              filled={selected}
                             />
                             <Text
                               className="flex-1 text-base font-semibold text-body"
@@ -415,7 +418,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                             key={option.id}
                             onPress={() => {
                               setReadingSize(option.id);
-                              stepHaptic();
+                              hapticSegment();
                             }}
                             accessibilityRole="radio"
                             accessibilityState={{ selected }}
@@ -425,7 +428,7 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                             <CheckCircle2
                               size={18}
                               color={selected ? colors.action.primary : colors.text.muted}
-                              strokeWidth={selected ? 2.2 : 1.5}
+                              filled={selected}
                             />
                             <Text
                               className="flex-1 text-base font-semibold text-body"
@@ -439,19 +442,17 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                       <MenuRow
                         font={font}
                         label="Privacidad"
-                        icon={<FileText size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                        icon={<FileText size={20} color={menuIconColor} />}
                         onPress={() => {
                           void openLegalUrl(privacyPolicyUrl(), 'Privacidad');
-                          stepHaptic();
                         }}
                       />
                       <MenuRow
                         font={font}
                         label="Términos"
-                        icon={<FileText size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                        icon={<FileText size={20} color={menuIconColor} />}
                         onPress={() => {
                           void openLegalUrl(termsOfUseUrl(), 'Términos');
-                          stepHaptic();
                         }}
                         accessibilityLabel="Términos de uso"
                       />
@@ -461,17 +462,64 @@ export default function ProfileMenu({ placement = 'topRight', floating = false }
                           label="Eliminar cuenta"
                           destructive
                           destructiveColor={colors.action.danger}
-                          icon={<Trash2 size={20} color={colors.action.danger} strokeWidth={iconStroke} />}
+                          icon={<Trash2 size={20} color={colors.action.danger} />}
                           onPress={() => {
                             confirmDeleteAccount();
-                            stepHaptic();
                           }}
                         />
+                      ) : null}
+                      {session.devToolsEnabled ? (
+                        <>
+                          <View className="px-2.5 pt-3 pb-3">
+                            <Text
+                              className="text-meta font-bold uppercase tracking-widest text-secondary"
+                              style={{ fontFamily: font.family }}
+                            >
+                              Modelo de IA
+                            </Text>
+                          </View>
+                          {DEV_MODEL_OPTIONS.map((option) => {
+                            const selected = option.id === session.modelPreference;
+                            return (
+                              <Pressable
+                                key={option.id}
+                                onPress={() => {
+                                  session.setModelPreference(option.id);
+                                  hapticSegment();
+                                }}
+                                accessibilityRole="radio"
+                                accessibilityState={{ selected }}
+                                accessibilityLabel={`Modelo de IA: ${option.label}`}
+                                className="px-2.5 py-3 flex-row items-center gap-3 rounded-chip active:bg-white/[0.06]"
+                              >
+                                <CheckCircle2
+                                  size={18}
+                                  color={selected ? colors.action.primary : colors.text.muted}
+                                  filled={selected}
+                                />
+                                <View className="flex-1">
+                                  <Text
+                                    className="text-base font-semibold text-body"
+                                    style={{ fontFamily: font.family }}
+                                  >
+                                    {option.label}
+                                  </Text>
+                                  <Text
+                                    className="mt-0.5 text-sm leading-5 text-secondary"
+                                    style={{ fontFamily: font.family }}
+                                  >
+                                    {option.hint}
+                                  </Text>
+                                </View>
+                              </Pressable>
+                            );
+                          })}
+                        </>
                       ) : null}
                       <MenuRow
                         font={font}
                         label={session.devToolsEnabled ? 'Salir de modo DEV' : 'Entrar en modo DEV'}
-                        icon={<Cpu size={20} color={menuIconColor} strokeWidth={iconStroke} />}
+                        icon={<Cpu size={20} color={menuIconColor} />}
                         onPress={() => {
                           session.setDevToolsEnabled(!session.devToolsEnabled);
                           if (!session.devToolsEnabled) {

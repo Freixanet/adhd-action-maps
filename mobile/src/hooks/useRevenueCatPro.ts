@@ -4,8 +4,8 @@ import {
   subscribeRevenueCatPro,
 } from '../logic/proPurchases';
 
-/** Subscribes to RevenueCat Pro entitlement and configures the SDK when the user email changes. */
-export function useRevenueCatPro(cloudUserEmail: string | null) {
+/** Subscribes to RevenueCat Pro entitlement and configures the SDK when the user id changes. */
+export function useRevenueCatPro(appUserId: string | null) {
   const [revenueCatPro, setRevenueCatPro] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
 
@@ -15,8 +15,8 @@ export function useRevenueCatPro(cloudUserEmail: string | null) {
   }, []);
 
   useEffect(() => {
-    void configureRevenueCat(cloudUserEmail);
-  }, [cloudUserEmail]);
+    void configureRevenueCat(appUserId);
+  }, [appUserId]);
 
   const openPaywall = useCallback(() => {
     setPaywallOpen(true);

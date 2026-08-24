@@ -6,6 +6,7 @@ import GlassSurface from '../GlassSurface';
 import { useTheme } from '../../context/ThemeContext';
 import BlockReferences from '../BlockReferences';
 import BlockEnter from './BlockEnter';
+import { contentEnterStagger } from '../../motion/contentEnter';
 import { typography, shadow, primitive } from '@shared/design-tokens';
 
 export type CalloutTone = 'clave' | 'matiz' | 'ejemplo' | 'alerta';
@@ -98,7 +99,7 @@ export default function CalloutBlock({
   );
 
   return (
-    <BlockEnter delayMs={index * 60}>
+    <BlockEnter delayMs={contentEnterStagger(index)}>
       <View style={styles.wrap}>
         <GlassSurface
           liquid

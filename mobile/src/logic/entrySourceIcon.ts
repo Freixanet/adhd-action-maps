@@ -14,6 +14,7 @@ import {
 } from '../icons';
 import type { SourceContentKind, SourceType } from '@shared/contracts';
 import { inferLegacySourceContentKind } from '@shared/sourceContentKind';
+import { isChatHistoryEntry } from '@shared/historyKind';
 import type { HistoryEntry } from './history';
 
 /**
@@ -75,5 +76,6 @@ export function resolveSourceVisual(entry: HistoryEntry): SourceVisual {
 }
 
 export function resolveEntrySourceIcon(entry: HistoryEntry): AppIconComponent {
+  if (isChatHistoryEntry(entry)) return MessageSquareText;
   return SOURCE_ICONS[resolveSourceVisual(entry)] ?? FileText;
 }

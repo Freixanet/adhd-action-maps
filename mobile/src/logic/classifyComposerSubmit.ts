@@ -1,18 +1,20 @@
-import type { UploadedFile } from './attachments';
 import { detectUrlInput } from './urlInput';
+import type { HomeSurface } from '@shared/homeSurfaceModel';
 
 export type ComposerSubmitKind = 'source' | 'ask';
 
 /**
- * Source: file, URL/YouTube, paste-chip, or invalid URL attempt.
- * Ask: free-form conversational text without a source attachment/paste.
+ * Source: file, URL/YouTube, paste-chip, invalid URL attempt, or Núcleo surface
+ * with free text (the typed body is the source).
+ * Ask: Chat surface with free-form text and no source attachment/paste.
  */
 export function classifyComposerSubmit(params: {
   inputText: string;
   pastedText: string | null;
-  uploadedFile: UploadedFile | null;
+  uploadedFile: { name?: string } | null;
+  surface?: HomeSurface;
 }): ComposerSubmitKind {
-  const { uploadedFile, pastedText, inputText } = params;
+  const { uploadedFile, pastedText, inputText, surface } = params;
   if (uploadedFile) return 'source';
   if (pastedText?.trim()) return 'source';
 
@@ -27,5 +29,7 @@ export function classifyComposerSubmit(params: {
   ) {
     return 'source';
   }
+
+  if (surface === 'nucleo') return 'source';
   return 'ask';
 }
