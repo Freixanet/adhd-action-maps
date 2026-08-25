@@ -37,7 +37,6 @@ export function LumenCard({
   accessibilityLabel?: string;
 }) {
   const colors = useThemeColors();
-  const { reduceMotion } = useGlassAccessibility();
   const cardStyle = [
     styles.card,
     {
@@ -51,7 +50,6 @@ export function LumenCard({
   return (
     <PressableScale
       onPress={onPress}
-      reduceMotion={reduceMotion}
       accessibilityLabel={accessibilityLabel}
       contentStyle={cardStyle}
     >
@@ -76,12 +74,10 @@ export function LumenIconButton({
   disabled?: boolean;
 }) {
   const colors = useThemeColors();
-  const { reduceMotion } = useGlassAccessibility();
   return (
     <PressableScale
       onPress={onPress}
       disabled={disabled}
-      reduceMotion={reduceMotion}
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       style={disabled ? styles.disabled : undefined}
@@ -104,12 +100,10 @@ export function LumenTextButton({
   emphasis?: boolean;
 }) {
   const colors = useThemeColors();
-  const { reduceMotion } = useGlassAccessibility();
   return (
     <PressableScale
       onPress={onPress}
       disabled={disabled}
-      reduceMotion={reduceMotion}
       accessibilityLabel={title}
       accessibilityState={{ disabled }}
       style={[styles.textBtnFrame, disabled ? styles.disabled : undefined]}

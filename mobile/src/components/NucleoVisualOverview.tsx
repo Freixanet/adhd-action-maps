@@ -458,7 +458,6 @@ function ComparisonVisual({ visual, selectedId, onSelect, reduceMotion }: Visual
                 <PressableScale
                   key={item.id}
                   onPress={() => onSelect(item.id)}
-                  reduceMotion={reduceMotion}
                   accessibilityLabel={itemAccessibilityLabel(item, visual)}
                   accessibilityState={{ selected }}
                   style={styles.comparisonCellFrame}
@@ -658,7 +657,6 @@ function BarVisual({ visual, selectedId, onSelect, width, reduceMotion }: Visual
           <PressableScale
             key={item.id}
             onPress={() => onSelect(item.id)}
-            reduceMotion={reduceMotion}
             accessibilityLabel={itemAccessibilityLabel(item, visual)}
             accessibilityState={{ selected }}
             contentStyle={styles.barRow}
@@ -948,7 +946,6 @@ function SelectionDetail({
       {item.stepId && onOpenStep ? (
         <PressableScale
           onPress={() => onOpenStep(item.stepId!)}
-          reduceMotion={reduceMotion}
           accessibilityLabel={`Abrir paso relacionado: ${item.label}`}
           contentStyle={styles.openStep}
         >
