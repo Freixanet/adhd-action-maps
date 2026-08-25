@@ -3,9 +3,11 @@ import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Pressable } from 'react-native-gesture-handler';
 import { ArrowUp } from '../icons';
-import { PRESS_HIT_SLOP, usePressScale } from '../hooks/usePressScale';
+import { PRESS_HIT_SLOP } from '../hooks/usePressScale';
+import { useCalmPress } from '../hooks/useCalmPress';
 import { useTheme } from '../context/ThemeContext';
 import { control, radius } from '@shared/design-tokens';
+import { onAccent } from '@shared/uiTokens';
 import { COMPOSER_CONTROL_SIZE } from '../logic/composerText';
 
 const STOP_SIZE = 12;
@@ -27,8 +29,8 @@ export default function ComposerSendButton({
   mode = 'send',
   accessibilityLabel,
 }: ComposerSendButtonProps) {
-  const { isDark, colors } = useTheme();
-  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const { colors, isDark } = useTheme();
+  const { style: pressStyle, handlers } = useCalmPress();
   const isStop = mode === 'stop';
   const effectivelyDisabled = isStop ? false : disabled;
   const label = accessibilityLabel ?? (isStop ? 'Detener generación' : 'Enviar');
@@ -41,7 +43,7 @@ export default function ComposerSendButton({
 
   const iconColor = effectivelyDisabled
     ? colors.text.muted
-    : colors.text.onAccent;
+    : onAccent;
 
   const glyph = isStop ? (
     <View style={[styles.stopGlyph, { backgroundColor: iconColor }]} />
@@ -52,15 +54,15 @@ export default function ComposerSendButton({
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
+      onPressIn={handlers.onPressIn}
+      onPressOut={handlers.onPressOut}
       disabled={effectivelyDisabled}
       hitSlop={PRESS_HIT_SLOP}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: effectivelyDisabled }}
     >
-      <Animated.View style={animatedStyle}>
+      <Animated.View style={pressStyle}>
         <View style={[styles.shell, { backgroundColor: fill }]}>{glyph}</View>
       </Animated.View>
     </Pressable>

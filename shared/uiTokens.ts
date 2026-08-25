@@ -3,7 +3,7 @@
  * Dynamic UI must use `uiColorsFor(scheme)` or `useThemeColors()` from ThemeContext.
  * Do not treat these constants as theme-aware.
  */
-import { themeColor, type ColorSchemeName } from './design-tokens/generated/tokens';
+import { glass, primitive, themeColor, type ColorSchemeName } from './design-tokens/generated/tokens';
 
 const darkColor = themeColor.dark;
 
@@ -143,3 +143,50 @@ export function liquidGlassShellClasses(className = '', mode: 'perimeter' | 'bot
 export function liquidGlassFloatingShellClass(shapeClass: string): string {
   return `${shapeClass} overflow-hidden`;
 }
+
+const MOTION_CELEBRATION_MS = 450;
+
+/**
+ * Liquid Glass motion. `easing` is cubic-bezier(0.22, 1, 0.36, 1) —
+ * pass to `Easing.bezier(...motion.easing)` (do not import RN Easing here).
+ */
+export const motion = {
+  pressIn: primitive.duration.pressIn,
+  pressOut: 170,
+  small: primitive.duration.fast,
+  standard: GLASS_TOUCH_GLOW_FADE_IN_MS_COMPOSER,
+  progress: 380,
+  expand: primitive.duration.quizSettle,
+  celebration: MOTION_CELEBRATION_MS,
+  easing: [0.22, 1, 0.36, 1] as const,
+  spring: {
+    damping: primitive.spring.soft.damping,
+    stiffness: 260,
+    mass: 0.9,
+  },
+  staggerStep: 35,
+  staggerMaxElements: 7,
+  staggerTotalCapMs: MOTION_CELEBRATION_MS,
+} as const;
+
+export const accentLine = '#A9ADFF';
+export const barGradient = ['#7E82ED', '#9DA1FA'] as const;
+export const onAccent = '#14152A';
+export const success = '#8FA894';
+export const warn = '#C4A46A';
+export const hairline = darkColor.background.whiteFade10;
+export const hairlineStrong = darkColor.background.whiteFade14;
+export const specular = darkColor.background.whiteFade22;
+export const glassFill = darkColor.background.whiteFade05;
+export const glassFillPressed = darkColor.background.whiteFade09;
+export const surfaceSolid = '#17181F';
+export const textTertiarySafe = glass.blurWashLight;
+export const nodeCapsuleFill = 'rgba(22,24,34,0.92)';
+export const nodeSelectedBorder = 'rgba(169,173,255,0.45)';
+export const connectorActive = 'rgba(139,143,245,0.42)';
+export const statusOrbGlow = {
+  shadowColor: darkColor.action.primary,
+  shadowOffset: { width: 0, height: 0 },
+  shadowOpacity: 0.3,
+  shadowRadius: 8,
+} as const;

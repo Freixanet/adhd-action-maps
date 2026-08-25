@@ -5,7 +5,8 @@ import { useTheme, useThemeColors } from '../context/ThemeContext';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { shouldUseNativeMultiSegment } from '../logic/nativeGlassSegment';
 import { control, radius, space } from '@shared/design-tokens';
-import { PRESS_HIT_SLOP } from '../hooks/usePressScale';
+import { PRESS_HIT_SLOP } from '../hooks/usePressSpring';
+import PressableScale from '../components/PressableScale';
 import { lumenType } from './lumenType';
 
 export function LumenKicker({
@@ -36,30 +37,26 @@ export function LumenCard({
   accessibilityLabel?: string;
 }) {
   const colors = useThemeColors();
-  const inner = (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: colors.background.surfaceRaised,
-          borderColor: colors.border.subtle,
-        },
-      ]}
+  const { reduceMotion } = useGlassAccessibility();
+  const cardStyle = [
+    styles.card,
+    {
+      backgroundColor: colors.background.surfaceRaised,
+      borderColor: colors.border.subtle,
+    },
+  ];
+  if (!onPress) {
+    return <View style={cardStyle}>{children}</View>;
+  }
+  return (
+    <PressableScale
+      onPress={onPress}
+      reduceMotion={reduceMotion}
+      accessibilityLabel={accessibilityLabel}
+      contentStyle={cardStyle}
     >
       {children}
-    </View>
-  );
-  if (!onPress) return inner;
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      hitSlop={PRESS_HIT_SLOP}
-      style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
-    >
-      {inner}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -79,24 +76,19 @@ export function LumenIconButton({
   disabled?: boolean;
 }) {
   const colors = useThemeColors();
+  const { reduceMotion } = useGlassAccessibility();
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={disabled}
-      accessibilityRole="button"
+      reduceMotion={reduceMotion}
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
-      hitSlop={PRESS_HIT_SLOP}
-      style={({ pressed }) => [
-        styles.iconBtn,
-        {
-          backgroundColor: colors.background.surfaceRaised,
-          opacity: disabled ? 0.4 : pressed ? 0.92 : 1,
-        },
-      ]}
+      style={disabled ? styles.disabled : undefined}
+      contentStyle={[styles.iconBtn, { backgroundColor: colors.background.surfaceRaised }]}
     >
       <Text style={[styles.iconBtnLabel, { color: colors.text.primary }]}>{label}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -112,19 +104,19 @@ export function LumenTextButton({
   emphasis?: boolean;
 }) {
   const colors = useThemeColors();
+  const { reduceMotion } = useGlassAccessibility();
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={disabled}
-      accessibilityRole="button"
+      reduceMotion={reduceMotion}
       accessibilityLabel={title}
       accessibilityState={{ disabled }}
-      hitSlop={PRESS_HIT_SLOP}
-      style={({ pressed }) => [
+      style={[styles.textBtnFrame, disabled ? styles.disabled : undefined]}
+      contentStyle={[
         styles.textBtn,
         {
           backgroundColor: emphasis ? colors.action.primary : colors.background.surfaceRaised,
-          opacity: disabled ? 0.4 : pressed ? 0.92 : 1,
         },
       ]}
     >
@@ -137,7 +129,7 @@ export function LumenTextButton({
       >
         {title}
       </Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -299,6 +291,10 @@ const styles = StyleSheet.create({
   iconBtnLabel: {
     ...lumenType('lumenLead'),
   },
+  textBtnFrame: {
+    flex: 1,
+    minWidth: 0,
+  },
   textBtn: {
     flex: 1,
     minWidth: 0,
@@ -310,5 +306,8 @@ const styles = StyleSheet.create({
   },
   textBtnLabel: {
     ...lumenType('lumenCopy'),
+  },
+  disabled: {
+    opacity: 0.4,
   },
 });

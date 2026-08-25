@@ -29,6 +29,7 @@ import ComposerDock, {
   useComposerKeyboardTextFrameStyle,
 } from '../components/ComposerDock';
 import FloatingGlassButton from '../components/FloatingGlassButton';
+import HomeAmbientWash from '../components/HomeAmbientWash';
 import HomeSurfaceSegment from '../components/HomeSurfaceSegment';
 import type { HomeSurface } from '@shared/homeSurfaceModel';
 import JumpBackInSection from '../components/JumpBackInSection';
@@ -36,6 +37,7 @@ import GlassSurface from '../components/GlassSurface';
 import NativeGlassButton from '../components/NativeGlassButton';
 import ModelChip from '../components/ModelChip';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { useCalmPress } from '../hooks/useCalmPress';
 import { shouldUseNativeGlassButton, NATIVE_MENU_TWO_LINES } from '../logic/nativeGlassButtons';
 import SessionErrorBanner from '../components/SessionErrorBanner';
 import {
@@ -98,6 +100,7 @@ export default function InputScreen() {
   const { isDark, colors } = useTheme();
   const { font } = useTypography();
   const { reduceTransparency, reduceMotion } = useGlassAccessibility();
+  const exampleCtaPress = useCalmPress();
   const nativeGlassButtons = shouldUseNativeGlassButton(reduceTransparency);
   const canSend = session.canSubmit && session.phase !== 'loading';
   const askThreadOpen =
@@ -319,13 +322,11 @@ export default function InputScreen() {
                   onPress={dismissComposerFromOutside}
                 >
                   <Animated.View
-                    style={[heroFadeStyle, { width: '100%' }]}
+                    style={[heroFadeStyle, styles.homeRest]}
                     pointerEvents={composerFocused ? 'none' : 'auto'}
                   >
-                    <View
-                      style={{ paddingHorizontal: SIDEBAR_EDGE_INSET }}
-                      className="items-start pb-1"
-                    >
+                    <View style={styles.greetingBlock}>
+                      <HomeAmbientWash />
                       {/*
                         Style-only colors (same pattern as JumpBack heading).
                         Uniwind text-* classes can stay on the light palette
@@ -382,17 +383,18 @@ export default function InputScreen() {
                           ) : (
                             <Pressable
                               onPress={session.handleOpenDemoNucleo}
+                              onPressIn={exampleCtaPress.handlers.onPressIn}
+                              onPressOut={exampleCtaPress.handlers.onPressOut}
                               accessibilityRole="button"
                               accessibilityLabel="Ver un ejemplo"
                               className="mt-6"
                             >
-                              {({ pressed }) => (
+                              <Animated.View style={exampleCtaPress.style}>
                                 <GlassSurface
                                   liquid
                                   variant="composer"
                                   borderRadius={24}
                                   liquidBorder="perimeter"
-                                  overlayClassName={pressed ? 'bg-accent/8' : undefined}
                                 >
                                   <View className="px-4 py-2.5">
                                     <Text
@@ -407,7 +409,7 @@ export default function InputScreen() {
                                     </Text>
                                   </View>
                                 </GlassSurface>
-                              )}
+                              </Animated.View>
                             </Pressable>
                           )
                         ) : null}
@@ -675,6 +677,17 @@ const styles = StyleSheet.create({
   composerDismissOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 15,
+  },
+  homeRest: {
+    width: '100%',
+    position: 'relative',
+    overflow: 'visible',
+  },
+  greetingBlock: {
+    paddingHorizontal: SIDEBAR_EDGE_INSET,
+    paddingBottom: space.stack.xs,
+    overflow: 'visible',
+    zIndex: 0,
   },
   homeGreeting: {
     textAlign: 'left',

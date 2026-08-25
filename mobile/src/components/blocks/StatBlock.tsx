@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   Easing,
@@ -57,6 +57,11 @@ export default function StatBlock({ block, index = 0 }: Props) {
   const { isDark, colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
   const { visible, onLayout } = useInViewportOnce();
+  const reactId = useId();
+  const accentGradId = useMemo(() => {
+    const suffix = reactId.replace(/[^a-zA-Z0-9_-]/g, '');
+    return `statAccent-${suffix}`;
+  }, [reactId]);
   const emphasis = block.emphasis ?? 'normal';
   const isHero = emphasis === 'hero';
   const parsed = parseStatValue(block.value);
@@ -132,12 +137,12 @@ export default function StatBlock({ block, index = 0 }: Props) {
           <View style={styles.heroInner}>
             <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
               <Defs>
-                <LinearGradient id="statAccent" x1="0" y1="0" x2="1" y2="1">
+                <LinearGradient id={accentGradId} x1="0" y1="0" x2="1" y2="1">
                   <Stop offset="0" stopColor={colors.action.primary} stopOpacity="0.22" />
                   <Stop offset="1" stopColor={colors.action.primary} stopOpacity="0.02" />
                 </LinearGradient>
               </Defs>
-              <Rect x="0" y="0" width="100%" height="100%" fill="url(#statAccent)" />
+              <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${accentGradId})`} />
             </Svg>
             <Text
               style={[styles.heroValue, { color: colors.text.primary }]}

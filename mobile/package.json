@@ -17,6 +17,7 @@
     "@shopify/react-native-skia": "2.6.2",
     "@supabase/supabase-js": "^2.108.2",
     "babel-preset-expo": "~56.0.0",
+    "d3-shape": "^3.2.0",
     "expo": "~56.0.12",
     "expo-asset": "~56.0.17",
     "expo-blur": "~56.0.3",
@@ -56,6 +57,7 @@
     "uniwind": "^1.10.0"
   },
   "devDependencies": {
+    "@types/d3-shape": "^3.2.0",
     "@types/react": "~19.2.2",
     "eas-cli": "^20.4.0",
     "eslint": "^10.8.0",

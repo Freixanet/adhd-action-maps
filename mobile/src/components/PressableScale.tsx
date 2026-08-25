@@ -1,17 +1,26 @@
 import React from 'react';
-import { Pressable, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Pressable,
+  type AccessibilityState,
+  type Insets,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import Animated from 'react-native-reanimated';
 import {
   PRESS_HIT_SLOP,
   PRESS_RETENTION_OFFSET,
-  usePressScale,
-} from '../hooks/usePressScale';
+  usePressSpring,
+} from '../hooks/usePressSpring';
 
 type PressableScaleProps = {
   onPress: () => void;
   children: React.ReactNode;
   disabled?: boolean;
   accessibilityLabel?: string;
+  accessibilityState?: AccessibilityState;
+  hitSlop?: number | Insets;
+  reduceMotion?: boolean;
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
 };
@@ -22,25 +31,28 @@ export default function PressableScale({
   children,
   disabled = false,
   accessibilityLabel,
+  accessibilityState,
+  hitSlop = PRESS_HIT_SLOP,
+  reduceMotion,
   style,
   contentStyle,
 }: PressableScaleProps) {
-  const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const { style: pressStyle, handlers } = usePressSpring(reduceMotion);
 
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
+      onPressIn={handlers.onPressIn}
+      onPressOut={handlers.onPressOut}
       disabled={disabled}
-      hitSlop={PRESS_HIT_SLOP}
+      hitSlop={hitSlop}
       pressRetentionOffset={PRESS_RETENTION_OFFSET}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
+      accessibilityState={accessibilityState ?? { disabled }}
       style={style}
     >
-      <Animated.View style={[contentStyle, animatedStyle]}>{children}</Animated.View>
+      <Animated.View style={[contentStyle, pressStyle]}>{children}</Animated.View>
     </Pressable>
   );
 }
