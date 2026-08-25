@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useId, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { BG_BASE } from '@shared/uiTokens';
@@ -31,7 +31,12 @@ function buildTransparencyInjectedJavaScript(pageBg: string): string {
 })(); true;`;
 }
 
-function buildOrbIterationHtml(orbSize: number, reduceMotion: boolean, pageBg: string): string {
+function buildOrbIterationHtml(
+  orbSize: number,
+  reduceMotion: boolean,
+  pageBg: string,
+  ids: { fadeX: string; edgeFade: string; glowWide: string; glowTight: string },
+): string {
   const reduceClass = reduceMotion ? 'reduce-motion' : '';
 
   return `<!DOCTYPE html>
@@ -168,8 +173,8 @@ function buildOrbIterationHtml(orbSize: number, reduceMotion: boolean, pageBg: s
   .orbits { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
   .orbits svg { width: 100%; height: 100%; overflow: visible; mix-blend-mode: screen; }
   .o { fill: none; stroke-linecap: round; stroke-dasharray: ${ORBIT_DASH_SEG} ${ORBIT_DASH_GAP}; }
-  .o-halo { stroke: rgba(var(--accent), 0.22); stroke-width: 14; filter: url(#glowWide); }
-  .o-core { stroke: rgba(198, 201, 255, 0.85); stroke-width: 5; filter: url(#glowTight); }
+  .o-halo { stroke: rgba(var(--accent), 0.22); stroke-width: 14; filter: url(#${ids.glowWide}); }
+  .o-core { stroke: rgba(198, 201, 255, 0.85); stroke-width: 5; filter: url(#${ids.glowTight}); }
   .spin-a { animation: dashA 0.7s linear infinite; }
   .spin-b { animation: dashB 0.7s linear infinite; }
 
@@ -259,17 +264,17 @@ function buildOrbIterationHtml(orbSize: number, reduceMotion: boolean, pageBg: s
         <div class="orbits">
           <svg viewBox="0 0 200 200" aria-hidden="true">
             <defs>
-              <linearGradient id="fadeX" gradientUnits="userSpaceOnUse" x1="3" y1="0" x2="197" y2="0">
+              <linearGradient id="${ids.fadeX}" gradientUnits="userSpaceOnUse" x1="3" y1="0" x2="197" y2="0">
                 <stop offset="0" stop-color="#000"/>
                 <stop offset="0.10" stop-color="#fff"/>
                 <stop offset="0.90" stop-color="#fff"/>
                 <stop offset="1" stop-color="#000"/>
               </linearGradient>
-              <mask id="edgeFade"><rect x="-20" y="-20" width="240" height="240" fill="url(#fadeX)"/></mask>
-              <filter id="glowWide" x="-70%" y="-70%" width="240%" height="240%">
+              <mask id="${ids.edgeFade}"><rect x="-20" y="-20" width="240" height="240" fill="url(#${ids.fadeX})"/></mask>
+              <filter id="${ids.glowWide}" x="-70%" y="-70%" width="240%" height="240%">
                 <feGaussianBlur stdDeviation="6.5"/>
               </filter>
-              <filter id="glowTight" x="-50%" y="-50%" width="200%" height="200%">
+              <filter id="${ids.glowTight}" x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="2" result="b"/>
                 <feMerge>
                   <feMergeNode in="b"/>
@@ -278,19 +283,19 @@ function buildOrbIterationHtml(orbSize: number, reduceMotion: boolean, pageBg: s
               </filter>
             </defs>
             <g transform="rotate(35 100 100)">
-              <g mask="url(#edgeFade)">
+              <g mask="url(#${ids.edgeFade})">
                 <ellipse class="o o-halo spin-a" cx="100" cy="100" rx="97" ry="36"/>
                 <ellipse class="o o-core spin-a" cx="100" cy="100" rx="97" ry="36"/>
               </g>
             </g>
             <g transform="rotate(-45 100 100)">
-              <g mask="url(#edgeFade)">
+              <g mask="url(#${ids.edgeFade})">
                 <ellipse class="o o-halo spin-b" cx="100" cy="100" rx="97" ry="36"/>
                 <ellipse class="o o-core spin-b" cx="100" cy="100" rx="97" ry="36"/>
               </g>
             </g>
             <g transform="rotate(80 100 100)">
-              <g mask="url(#edgeFade)">
+              <g mask="url(#${ids.edgeFade})">
                 <ellipse class="o o-halo spin-a" cx="100" cy="100" rx="97" ry="36"/>
                 <ellipse class="o o-core spin-a" cx="100" cy="100" rx="97" ry="36"/>
               </g>
@@ -316,11 +321,21 @@ export default function OrbHtmlIterationWebView({
   interactive = true,
 }: OrbHtmlIterationWebViewProps) {
   const webViewRef = useRef<WebView>(null);
+  const reactId = useId();
+  const svgIds = useMemo(() => {
+    const suffix = reactId.replace(/[^a-zA-Z0-9_-]/g, '');
+    return {
+      fadeX: `fadeX-${suffix}`,
+      edgeFade: `edgeFade-${suffix}`,
+      glowWide: `glowWide-${suffix}`,
+      glowTight: `glowTight-${suffix}`,
+    };
+  }, [reactId]);
   const canvas = orbIterationCanvasDimension(size);
   const pageBg = BG_BASE;
   const html = useMemo(
-    () => buildOrbIterationHtml(size, reduceMotion, pageBg),
-    [reduceMotion, size, pageBg]
+    () => buildOrbIterationHtml(size, reduceMotion, pageBg, svgIds),
+    [reduceMotion, size, pageBg, svgIds]
   );
   const transparencyFixJS = useMemo(() => buildTransparencyInjectedJavaScript(pageBg), [pageBg]);
 

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useId, useMemo } from 'react';
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { BG_BASE } from '@shared/uiTokens';
@@ -14,7 +14,7 @@ function canvasDimension(orbSize: number): number {
   return Math.round(Math.max(orbSize * 2.6, orbSize + 140));
 }
 
-function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): string {
+function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string, energyGlowId: string): string {
   const reduceClass = reduceMotion ? 'reduce-motion' : '';
   return `<!DOCTYPE html>
 <html lang="es">
@@ -290,7 +290,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
         <div class="orbits">
           <svg viewBox="0 0 100 100" aria-hidden="true">
             <defs>
-              <filter id="energy-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <filter id="${energyGlowId}" x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="core" />
                 <feGaussianBlur in="SourceGraphic" stdDeviation="4.5" result="glow1" />
                 <feGaussianBlur in="SourceGraphic" stdDeviation="9" result="glow2" />
@@ -310,7 +310,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
               stroke-dasharray="60 80"
               stroke-linecap="round"
               transform="rotate(35 50 50)"
-              filter="url(#energy-glow)"
+              filter="url(#${energyGlowId})"
             />
             <ellipse
               class="orbit-2"
@@ -321,7 +321,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
               stroke-dasharray="60 80"
               stroke-linecap="round"
               transform="rotate(-45 50 50)"
-              filter="url(#energy-glow)"
+              filter="url(#${energyGlowId})"
             />
             <ellipse
               class="orbit-3"
@@ -332,7 +332,7 @@ function buildOrbHtml(orbSize: number, reduceMotion: boolean, pageBg: string): s
               stroke-dasharray="60 80"
               stroke-linecap="round"
               transform="rotate(80 50 50)"
-              filter="url(#energy-glow)"
+              filter="url(#${energyGlowId})"
             />
           </svg>
         </div>
@@ -354,7 +354,15 @@ export default function ExactLiquidOrbWebView({
 }: ExactLiquidOrbWebViewProps) {
   const canvas = canvasDimension(size);
   const pageBg = BG_BASE;
-  const html = useMemo(() => buildOrbHtml(size, reduceMotion, pageBg), [reduceMotion, size, pageBg]);
+  const reactId = useId();
+  const energyGlowId = useMemo(() => {
+    const suffix = reactId.replace(/[^a-zA-Z0-9_-]/g, '');
+    return `energy-glow-${suffix}`;
+  }, [reactId]);
+  const html = useMemo(
+    () => buildOrbHtml(size, reduceMotion, pageBg, energyGlowId),
+    [energyGlowId, reduceMotion, size, pageBg],
+  );
 
   const commonWebViewProps = {
     source: { html, baseUrl: '' },

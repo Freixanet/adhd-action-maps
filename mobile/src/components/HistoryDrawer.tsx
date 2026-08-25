@@ -130,7 +130,7 @@ export default function HistoryDrawer({
   const mainCanvasColor = colors.background.canvas;
   // Precompute for worklets — Hermes throws ReferenceError if `isDark` /
   // token objects are read as free identifiers inside useAnimatedStyle.
-  const drawerShadowPeak = isDark ? 0.55 : 0.22;
+  const drawerShadowPeak = Math.min(isDark ? 0.55 : 0.22, 0.32);
   const drawerLightenPeak = isDark ? 0.1 : 0.22;
   const drawerShadow = shadow.glassDrawer;
   const drawerShadowFlatElevation = shadow.none.elevation;

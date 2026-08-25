@@ -1,0 +1,22 @@
+---
+description: Liquid Glass design system rules for this ADHD-friendly Expo app
+alwaysApply: true
+---
+
+# Design System Constraints (Liquid Glass / calm / ADHD-friendly)
+
+- Dark theme, never pure #000. Base is near-black blue.
+- Every new animation MUST be gated by reduced-motion: if enabled → duration 0 OR a fade ≤150ms. Never leave a hard cut.
+- Never animate View width/height/blur; use transform/opacity. For SVG shape attrs (width/x/strokeDashoffset) direct animation is OK.
+- Max 1 live BlurView per screen. Never blur behind data/text, never inside list items.
+- Glow budget: max 1 glowing element per screen, shadowOpacity ≤ 0.32.
+- Press feedback: scale to 0.975 minimum (never deeper), entrance ≤120ms, spring release with damping ≥ 16. Label opacity never below 0.92.
+- Haptics: ImpactFeedbackStyle.Light on press/select; NotificationFeedbackType.Success ONLY when completing an action. Nothing on scroll.
+- No confetti, no particle bursts, no infinite loops (a breathing orb runs ONE cycle on mount, then rests).
+- Data viz language: pill/capsule shapes (borderRadius 999 or rx=half-height), monotone cubic curves (NEVER polyline, never overshooting curves), area gradient 0.16→0, only ONE active dot visible.
+- Interactive states must differ by SHAPE too (dot/ring/check), not color alone. Must survive grayscale.
+- Contrast measured on WORST-case background. Lavender text/strokes use #A9ADFF. Text on lavender fills uses #14152A.
+- Touch targets ≥ 44pt.
+- No new dependencies unless the task lists them explicitly.
+- After every task run: cd mobile && npx tsc --noEmit — FAIL the task if any error appears that is NOT already in tsc.baseline.txt.
+- Minimal diffs: never reformat, rename, or refactor code outside the task scope.
