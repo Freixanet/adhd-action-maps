@@ -19,8 +19,8 @@ src/components/NucleoCover.tsx(55,79): error TS2339: Property 'generatedCover' d
 src/components/NucleoOpenCover.tsx(142,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
 src/components/NucleoOpenCover.tsx(145,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
 src/components/ProfileMenu.tsx(27,5): error TS2820: Type '"gemini-3.7-flash"' is not assignable to type '"auto" | "gemini-3.6-flash" | "gemini-3.5-flash" | "gemini-3.5-flash-lite"'. Did you mean '"gemini-3.6-flash"'?
-src/components/RecentNucleoCard.tsx(107,28): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
-src/components/RecentNucleoCard.tsx(186,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/components/RecentNucleoCard.tsx(77,28): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/components/RecentNucleoCard.tsx(156,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
 src/components/ThinkingOrbWebView.tsx(184,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
 src/components/ThinkingOrbWebView.tsx(188,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
 src/context/AppSessionContext.tsx(167,3): error TS2724: '"../logic/history"' has no exported member named 'createChatEntry'. Did you mean 'createEntry'?

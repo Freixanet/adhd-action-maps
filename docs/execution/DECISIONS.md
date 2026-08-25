@@ -536,3 +536,20 @@ a Flash Lite y elige `guide` en artículos. Ante duda de kind, `explain`.
 
 **Evidencia:** `shared/design-tokens/canonical.json`, `docs/design-system/TYPOGRAPHY.md`, `shared/typography.test.ts`.
 
+---
+
+## ADR-030 — `reduceMotion` via `useGlassAccessibility` (async)
+
+**Fecha:** 2026-08-24  
+**Estado:** accepted
+
+**Contexto:** Press physics unified on `usePressSpring` / `useCalmPress`. Reanimated `useReducedMotion()` can resolve on the first frame. `useGlassAccessibility` reads `AccessibilityInfo` asynchronously and starts as `false`.
+
+**Decisión:** `reduceMotion` reads async via `useGlassAccessibility`; first frames may animate before the flag lands. Accepted.
+
+**Alternativas:** Keep Reanimated’s sync hook for press; gate press until the accessibility flag resolves (extra frame of no feedback).
+
+**Consecuencias:** Reduced-motion users can see one press-in before the flag arrives. All press aliases share that behavior.
+
+**Evidencia:** `mobile/src/hooks/usePressSpring.ts`, `mobile/src/hooks/useGlassAccessibility.ts`.
+
