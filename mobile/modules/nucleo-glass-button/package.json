@@ -1,0 +1,14 @@
+{
+  "name": "nucleo-glass-button",
+  "version": "1.0.0",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "scripts": {},
+  "keywords": ["react-native", "expo", "nucleo-glass-button"],
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

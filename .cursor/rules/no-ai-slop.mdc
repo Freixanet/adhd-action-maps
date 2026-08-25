@@ -1,0 +1,23 @@
+---
+description: Product and generation copy must follow no-ai-slop
+alwaysApply: true
+---
+
+# No AI slop (product)
+
+All user-facing writing in this product — UI strings, generation prompts, Núcleo
+content, chat replies, demos, and agent-authored copy — must follow
+`.cursor/skills/no-ai-slop/SKILL.md` and `shared/noAiSlopWriting.ts`.
+
+When writing or editing copy:
+
+- Lead with the point. Cut throat-clearing and empty setup.
+- Prefer concrete facts, numbers, and mechanisms over abstractions.
+- Use active voice and direct verbs.
+- Ban puffery, binary contrasts, colon reveals, faux-insight setups,
+  weasel attribution, synonym cycling, dramatic fragments, and summary kickers
+  (see the skill for the full list, including Spanish equivalents).
+- Keep Núcleo’s adult, sober voice — never coachy, celebratory, or commercial.
+
+Generation backends must keep `NO_AI_SLOP_WRITING_CONTRACT` in system/user
+prompts. Do not reintroduce the AI-slop demo Núcleo.

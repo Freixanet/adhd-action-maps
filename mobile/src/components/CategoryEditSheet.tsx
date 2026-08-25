@@ -8,12 +8,14 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, X } from 'lucide-react-native';
+import { Check, X } from '../icons';
 import {
   getCategoryEditSections,
   sanitizeUserCategory,
 } from '@shared/categories';
 import { FEATURES } from '@shared/features';
+import { type } from '@shared/design-tokens';
+import { useThemeColors } from '../context/ThemeContext';
 
 type CategoryEditSheetProps = {
   visible: boolean;
@@ -34,6 +36,7 @@ function CategoryRow({
   selected: boolean;
   onPress: () => void;
 }) {
+  const colors = useThemeColors();
   return (
     <Pressable
       onPress={onPress}
@@ -48,7 +51,7 @@ function CategoryRow({
       >
         {category}
       </Text>
-      {selected ? <Check size={18} color="#525252" /> : null}
+      {selected ? <Check size={18} color={colors.icon.muted} /> : null}
     </Pressable>
   );
 }
@@ -62,6 +65,7 @@ export default function CategoryEditSheet({
   onClose,
   onSave,
 }: CategoryEditSheetProps) {
+  const colors = useThemeColors();
   const insets = useSafeAreaInsets();
   const [customValue, setCustomValue] = useState('');
   const allowCreate = FEATURES.customCategories;
@@ -104,7 +108,7 @@ export default function CategoryEditSheet({
             accessibilityLabel="Cerrar"
             className="h-10 w-10 items-center justify-center active:opacity-70"
           >
-            <X size={18} color="#737373" />
+            <X size={18} color={colors.icon.muted} />
           </Pressable>
         </View>
         {mapTitle ? (
@@ -115,10 +119,15 @@ export default function CategoryEditSheet({
           <View className="mb-4" />
         )}
 
-        <ScrollView className="max-h-80" keyboardShouldPersistTaps="handled">
+        <ScrollView
+          className="max-h-80"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+        >
           {used.length ? (
             <View className="mb-2">
-              <Text className="pb-2 text-[11px] font-bold uppercase tracking-widest text-secondary">
+              <Text className="pb-2 text-meta font-bold uppercase tracking-widest text-secondary">
                 En tus Núcleos
               </Text>
               {used.map((category) => (
@@ -134,7 +143,7 @@ export default function CategoryEditSheet({
 
           {suggested.length ? (
             <View>
-              <Text className="pb-2 text-[11px] font-bold uppercase tracking-widest text-secondary">
+              <Text className="pb-2 text-meta font-bold uppercase tracking-widest text-secondary">
                 {used.length ? 'Otras sugeridas' : 'Sugeridas'}
               </Text>
               {suggested.map((category) => (
@@ -155,7 +164,7 @@ export default function CategoryEditSheet({
               value={customValue}
               onChangeText={setCustomValue}
               placeholder="Nueva categoría"
-              placeholderTextColor="#a3a3a3"
+              placeholderTextColor={colors.text.secondary}
               className="flex-1 border-b border-neutral-300 py-2 text-base text-primary dark:border-white/15 text-primary"
               onSubmitEditing={handleCreate}
             />

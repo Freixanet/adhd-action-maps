@@ -1,0 +1,22 @@
+{
+  "package": "pdfjs-dist",
+  "version": "5.4.296",
+  "minSafeVersion": "4.2.67",
+  "license": "Apache-2.0",
+  "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+  "cveFixed": ["CVE-2024-4367", "GHSA-wgrm-67xf-hhpq"],
+  "assets": [
+    {
+      "assetName": "pdf.min.mjs.txt",
+      "packagePath": "build/pdf.min.mjs",
+      "sha256": "343b4166b06716a55a8f87175b83223cb1a9ab701eb8a96b2577509d47fbaf4a"
+    },
+    {
+      "assetName": "pdf.worker.min.mjs.txt",
+      "packagePath": "build/pdf.worker.min.mjs",
+      "sha256": "dbcae78a691b3c501508f74b774c6066a57a14a76cefdc9e25ad86b651bb75d5"
+    }
+  ],
+  "sessionMain": "pdf.min.mjs",
+  "sessionWorker": "pdf.worker.min.mjs"
+}

@@ -1,3 +1,4 @@
+.data/
 node_modules/
 build/
 dist/
@@ -22,3 +23,22 @@ ios/DerivedData/
 ios/**/*.xcuserstate
 ios/App/Pods/
 ios/App/App/public/
+logs/
+
+# Local dev runtime (Metro/backend service logs and state)
+.local-runtime/
+
+# Local Supabase dump artifacts (may contain user data; never commit)
+backups/
+
+# Tesseract language data, downloaded on first OCR run
+*.traineddata
+.originkit/
+
+# Local artifacts (screenshots, prompts, orb-web scratch builds)
+.tmp/
+PROMPT_MAESTRO_GROK45.md
+README_USO_CURSOR.md
+docs/design-system/evidence/
+docs/editorial/captures/
+mobile/orb-web/dist-round-carousel/

@@ -3,18 +3,25 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import Animated from 'react-native-reanimated';
 import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
-import { usePressScale } from '../hooks/usePressScale';
+import NativeGlassButton from './NativeGlassButton';
+import { PRESS_HIT_SLOP, PRESS_RETENTION_OFFSET, usePressScale } from '../hooks/usePressScale';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
 import { useTheme } from '../context/ThemeContext';
+import { type } from '@shared/design-tokens';
 
 type CompletionGlassButtonProps = {
   label: string;
   onPress: () => void;
   icon?: React.ReactNode;
+  /** `accent` = the single primary CTA on that surface (prominentGlass). */
   variant?: 'neutral' | 'accent';
   accessibilityLabel?: string;
   disabled?: boolean;
   loading?: boolean;
   loadingLabel?: string;
+  /** SF Symbol drawn inside UIButton when native. */
+  systemImage?: string;
 };
 
 export default function CompletionGlassButton({
@@ -26,23 +33,62 @@ export default function CompletionGlassButton({
   disabled = false,
   loading = false,
   loadingLabel,
+  systemImage,
 }: CompletionGlassButtonProps) {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const { reduceTransparency } = useGlassAccessibility();
   const isAccent = variant === 'accent';
 
-  const accentTint = isDark ? 'rgba(139, 143, 245, 0.52)' : 'rgba(139, 143, 245, 0.46)';
-  const accentOverlay = isDark ? 'bg-accent/100/32' : 'bg-accent/28';
   const neutralOverlay = isDark ? 'bg-white/[0.05]' : 'bg-white/45';
 
   const showLoading = loading;
   const isButtonDisabled = disabled || loading;
 
   const spinnerColor = isAccent
-    ? '#ffffff'
-    : isDark
-      ? '#d4d4d4'
-      : '#525252';
+    ? colors.text.onAccent
+    : colors.icon.muted;
+
+  const labelNode = (
+    <Text
+      className={
+        isAccent
+          ? 'text-center font-semibold text-white'
+          : 'text-center font-semibold text-body'
+      }
+    >
+      {showLoading ? (loadingLabel ?? label) : label}
+    </Text>
+  );
+
+  const content = (
+    <View style={styles.content}>
+      {showLoading ? <ActivityIndicator size="small" color={spinnerColor} /> : icon}
+      {labelNode}
+    </View>
+  );
+
+  const resolvedLabel = accessibilityLabel ?? (showLoading ? (loadingLabel ?? label) : label);
+  const native = shouldUseNativeGlassButton(reduceTransparency);
+  const displayLabel = showLoading ? (loadingLabel ?? label) : label;
+  // Light-mode prominentGlass washes out on pale surfaces — keep the CTA solid.
+  const useNativeChrome = native && !(isAccent && !isDark);
+
+  if (useNativeChrome) {
+    return (
+      <NativeGlassButton
+        onPress={onPress}
+        accessibilityLabel={resolvedLabel}
+        variant={isAccent ? 'prominentGlass' : 'glass'}
+        title={displayLabel}
+        systemImage={showLoading ? undefined : systemImage}
+        cornerRadius={RADII.lg}
+        disabled={isButtonDisabled}
+        loading={showLoading}
+        style={styles.nativeShell}
+      />
+    );
+  }
 
   return (
     <Pressable
@@ -51,40 +97,26 @@ export default function CompletionGlassButton({
       onPressOut={onPressOut}
       disabled={isButtonDisabled}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? (showLoading ? (loadingLabel ?? label) : label)}
-      style={({ pressed }) => [
-        styles.pressable,
-        pressed && !isButtonDisabled ? styles.pressedOpacity : null,
-        isButtonDisabled ? styles.disabled : null,
-      ]}
+      accessibilityLabel={resolvedLabel}
+      hitSlop={PRESS_HIT_SLOP}
+      pressRetentionOffset={PRESS_RETENTION_OFFSET}
+      style={[styles.pressable, isButtonDisabled ? styles.disabled : null]}
     >
       <Animated.View style={[styles.pressableInner, animatedStyle]}>
-      <GlassSurface
-        liquid
-        liquidBorder="none"
-        borderRadius={RADII.md}
-        style={styles.shell}
-        tintColor={isAccent ? accentTint : undefined}
-        overlayClassName={isAccent ? accentOverlay : neutralOverlay}
-        contentClassName="w-full items-center justify-center"
-      >
-        <View style={styles.content}>
-          {showLoading ? (
-            <ActivityIndicator size="small" color={spinnerColor} />
-          ) : (
-            icon
-          )}
-          <Text
-            className={
-              isAccent
-                ? 'text-center font-semibold text-white'
-                : 'text-center font-semibold text-body'
-            }
+        {isAccent ? (
+          <View style={[styles.accentShell, { backgroundColor: colors.action.cta }]}>{content}</View>
+        ) : (
+          <GlassSurface
+            liquid
+            liquidBorder="none"
+            borderRadius={RADII.lg}
+            style={styles.shell}
+            overlayClassName={neutralOverlay}
+            contentClassName="w-full items-center justify-center"
           >
-            {showLoading ? (loadingLabel ?? label) : label}
-          </Text>
-        </View>
-      </GlassSurface>
+            {content}
+          </GlassSurface>
+        )}
       </Animated.View>
     </Pressable>
   );
@@ -100,8 +132,20 @@ const styles = StyleSheet.create({
   },
   shell: {
     width: '100%',
-    borderRadius: RADII.md,
+    borderRadius: RADII.lg,
     overflow: 'hidden',
+  },
+  nativeShell: {
+    width: '100%',
+    alignSelf: 'stretch',
+    minHeight: 52,
+  },
+  accentShell: {
+    width: '100%',
+    borderRadius: RADII.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flexDirection: 'row',
@@ -111,9 +155,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 14,
     minHeight: 52,
-  },
-  pressedOpacity: {
-    opacity: 0.88,
   },
   disabled: {
     opacity: 0.55,

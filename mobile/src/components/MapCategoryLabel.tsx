@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text } from 'react-native';
+import { type } from '@shared/design-tokens';
 
 type MapCategoryLabelProps = {
   category: string;
@@ -9,8 +10,8 @@ type MapCategoryLabelProps = {
 export default function MapCategoryLabel({ category, size = 'sm' }: MapCategoryLabelProps) {
   const textClass =
     size === 'md'
-      ? 'text-[13px] font-medium tracking-wide text-body'
-      : 'text-[11px] font-medium uppercase tracking-[0.14em] text-secondary';
+      ? 'text-label font-medium tracking-wide text-body'
+      : 'text-meta font-medium uppercase text-secondary';
 
   return (
     <Text className={textClass} numberOfLines={1}>

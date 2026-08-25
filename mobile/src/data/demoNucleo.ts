@@ -6,26 +6,80 @@ export const DEMO_NUCLEO_DATA: ActionMapData = {
   title: 'La atención como recurso limitado',
   category: 'Aprendizaje',
   intent: 'understand',
-  coreIdea: 'Tu atención no falla por flojera: se agota cuando el entorno exige cambios de foco sin pausa.',
+  layer0: {
+    what: 'Un mapa para proteger el foco cuando el entorno lo agota.',
+    why: 'Ordena qué cambiar primero para terminar lecturas sin pelear contra avisos.',
+    actions: [
+      { id: 'demo-a1', label: 'Silencia avisos 25 minutos' },
+      { id: 'demo-a2', label: 'Cierra una pestaña que no uses' },
+      { id: 'demo-a3', label: 'Marca dónde quedaste al cortar' },
+    ],
+  },
+  // Idea central title: aim to fill 2 lines (symmetry). Prefer ~55–60 chars at
+  // text-2xl in the demo card; do not spill into a 3rd line or truncate with ….
+  coreIdea: 'La atención se agota con cada cambio de foco del entorno.',
+  // Support: aim to fill 3 lines at text-lg (~110–125 chars). Same rule — fill
+  // lines for symmetry; never a 4th line; never ellipsis truncation.
   coreSupport:
-    'Cada interrupción obliga al cerebro a reorientarse, y ese coste acumulado es lo que deja las lecturas largas a medias.',
+    'Cada interrupción obliga a reconstruir el contexto mental. Ese coste acumulado es lo que deja las lecturas a medias.',
+  deliveryMessage:
+    'De tus notas sobre productividad saqué 5 pasos (avisos, contexto, cierre). Lo que queda: la atención se agota con cada cambio de foco del entorno.',
   tldr: [
     {
       title: 'Foco finito',
-      desc: 'La atención sostenida consume energía cognitiva; no es infinita en una misma sesión.',
+      desc: 'La atención sostenida se agota antes de que acabe la sesión.',
     },
     {
       title: 'Coste del cambio',
-      desc: 'Saltar entre tareas deja un rastro que tarda minutos en disiparse.',
+      desc: 'Volver a una tarea interrumpida cuesta varios minutos de foco.',
     },
     {
       title: 'Diseño del entorno',
-      desc: 'Reducir interrupciones recupera más rendimiento que forzar la voluntad.',
+      desc: 'Quitar los avisos del entorno rinde más que forzar la voluntad.',
     },
   ],
+  visualization: {
+    version: 2,
+    kind: 'concept',
+    title: 'El entorno decide cuánto foco queda disponible',
+    summary:
+      'La atención es la idea central: los cambios de tarea la drenan y un entorno protegido conserva recursos para terminar.',
+    items: [
+      {
+        id: 'attention',
+        label: 'Atención disponible',
+        detail: 'Recurso central que debe sostener la comprensión durante toda la lectura.',
+        stepId: 'demo-step-1',
+      },
+      {
+        id: 'switching',
+        label: 'Cambios de foco',
+        detail: 'Cada interrupción exige abandonar y reconstruir el contexto mental.',
+        stepId: 'demo-step-2',
+      },
+      {
+        id: 'environment',
+        label: 'Entorno protegido',
+        detail: 'Menos avisos y pestañas dejan más atención para la tarea elegida.',
+        stepId: 'demo-step-3',
+      },
+      {
+        id: 'finish',
+        label: 'Final claro',
+        detail: 'Un alcance breve y delimitado convierte la intención en una sesión acabable.',
+        stepId: 'demo-step-4',
+      },
+    ],
+    links: [
+      { source: 'attention', target: 'switching', label: 'se drena con' },
+      { source: 'attention', target: 'environment', label: 'se protege con' },
+      { source: 'attention', target: 'finish', label: 'se orienta hacia' },
+    ],
+  },
   sourceMetadata: {
-    kind: 'text',
+    kind: 'link',
     label: 'Artículo empaquetado',
+    url: 'https://ejemplo.com/articulo-sobre-foco',
     detected: ['Artículo breve sobre atención y hábitos de lectura.'],
     limitations: ['Contenido pedagógico empaquetado con la app; no sustituye la fuente original.'],
   },
@@ -53,6 +107,22 @@ export const DEMO_NUCLEO_DATA: ActionMapData = {
       shortNav: 'Cambio',
       title: 'Cada cambio de tarea deja residuo cognitivo',
       time: '~2 min',
+      visualization: {
+        version: 2,
+        kind: 'flow',
+        title: 'El coste oculto de una interrupción',
+        summary:
+          'Una alerta rompe el contexto, deja residuo mental y obliga a reconstruir la comprensión.',
+        items: [
+          { id: 'alert', label: 'Interrupción', detail: 'Una alerta desplaza la tarea elegida.' },
+          { id: 'residue', label: 'Residuo', detail: 'Parte de la atención sigue ligada al cambio.' },
+          { id: 'return', label: 'Reorientación', detail: 'Volver exige reconstruir dónde estabas.' },
+        ],
+        links: [
+          { source: 'alert', target: 'residue' },
+          { source: 'residue', target: 'return' },
+        ],
+      },
       content: [
         {
           type: 'prose',

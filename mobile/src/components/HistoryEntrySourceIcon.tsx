@@ -1,38 +1,10 @@
 import React from 'react';
 import { View } from 'react-native';
-import {
-  File,
-  FileText,
-  Image as ImageIcon,
-  Link2,
-  CirclePlay,
-  Upload,
-  Video,
-  type LucideIcon,
-} from 'lucide-react-native';
 import { getEntrySourceLabel } from '@shared/categories';
-import type { SourceType } from '@shared/contracts';
+import { resolveEntrySourceIcon } from '../logic/entrySourceIcon';
 import type { HistoryEntry } from '../logic/history';
-
-type SourceVisual = SourceType | 'image' | 'video';
-
-const SOURCE_ICONS: Record<SourceVisual, LucideIcon> = {
-  text: FileText,
-  link: Link2,
-  youtube: CirclePlay,
-  file: Upload,
-  pdf: File,
-  image: ImageIcon,
-  video: Video,
-};
-
-function resolveSourceVisual(entry: HistoryEntry): SourceVisual {
-  const kind = (entry.session.data as { sourceMetadata?: { kind?: string } } | undefined)
-    ?.sourceMetadata?.kind;
-  if (kind === 'image') return 'image';
-  if (kind === 'video') return 'video';
-  return entry.sourceType;
-}
+import { TEXT_SECONDARY } from '@shared/uiTokens';
+import { color, type } from '@shared/design-tokens';
 
 type HistoryEntrySourceIconProps = {
   entry: HistoryEntry;
@@ -43,10 +15,9 @@ type HistoryEntrySourceIconProps = {
 export default function HistoryEntrySourceIcon({
   entry,
   size = 12,
-  color = '#a3a3a3',
+  color = TEXT_SECONDARY,
 }: HistoryEntrySourceIconProps) {
-  const visual = resolveSourceVisual(entry);
-  const Icon = SOURCE_ICONS[visual] ?? FileText;
+  const Icon = resolveEntrySourceIcon(entry);
   const label = getEntrySourceLabel(entry);
 
   return (

@@ -1,4 +1,6 @@
 export const LONG_SOURCE_WORD_THRESHOLD = 15_000;
+/** Hard cap so a book does not enqueue 15–20 profundo maps in one go. */
+export const MAX_COLLECTION_PARTS = 8;
 export const SINGLE_NUCLEO_SYNTHESIS_NOTICE =
   'Fuente sintetizada en un único Núcleo de 9 pasos por decisión del usuario.';
 
@@ -22,6 +24,11 @@ export type SourceAnalysisResult = {
   totalWords: number;
   collectionTitle: string;
 };
+
+export function capCollectionParts<T>(parts: T[]): T[] {
+  if (parts.length <= MAX_COLLECTION_PARTS) return parts;
+  return parts.slice(0, MAX_COLLECTION_PARTS);
+}
 
 const CHAPTER_LINE =
   /^(?:cap[ií]tulo|chapter|parte|part|section|secci[oó]n)\s+([\dIVXLC]+(?:[.\-]\d+)*)\s*(?:[:\.\-\u2013\u2014]\s*)?(.*)$/i;
@@ -91,8 +98,9 @@ export function analyzeSourceText(text: string, sourceLabel?: string): SourceAna
   const normalized = text.trim();
   const totalWords = countWords(normalized);
   const chapterParts = detectChapterParts(normalized);
-  const parts =
-    chapterParts.length >= 2 ? chapterParts : splitLongTextIntoParts(normalized);
+  const parts = capCollectionParts(
+    chapterParts.length >= 2 ? chapterParts : splitLongTextIntoParts(normalized)
+  );
   const hasDetectableChapters = chapterParts.length >= 2;
   const shouldProposeSplit =
     parts.length >= 2 && (totalWords >= LONG_SOURCE_WORD_THRESHOLD || hasDetectableChapters);

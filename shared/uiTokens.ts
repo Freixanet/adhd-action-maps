@@ -1,18 +1,91 @@
-export const BG_BASE = '#181A1F';
-export const BG_SURFACE = '#24262D';
-export const BG_SURFACE_2 = '#2C2E37';
-export const TEXT_PRIMARY = '#FAFAFA';
-export const TEXT_BODY = '#D4D4DC';
-export const TEXT_SECONDARY = '#9CA0AB';
-export const ACCENT = '#8B8FF5';
-export const ACCENT_PRESSED = '#7A7EE0';
-export const SEM_CLAVE = '#8B8FF5';
-export const SEM_MATIZ = '#E0B45C';
-export const SEM_EJEMPLO = '#6FBF8F';
-export const SEM_ALERTA = '#E07A6B';
+/**
+ * Static color aliases resolve to the **dark** theme for backward compatibility.
+ * Dynamic UI must use `uiColorsFor(scheme)` or `useThemeColors()` from ThemeContext.
+ * Do not treat these constants as theme-aware.
+ */
+import { glass, primitive, themeColor, type ColorSchemeName } from './design-tokens/generated/tokens';
+
+const darkColor = themeColor.dark;
+
+export const BG_BASE = darkColor.background.canvas;
+export const BG_SURFACE = darkColor.background.surface;
+export const BG_SURFACE_2 = darkColor.background.surfaceRaised;
+export const TEXT_PRIMARY = darkColor.text.primary;
+export const TEXT_BODY = darkColor.text.body;
+export const TEXT_SECONDARY = darkColor.text.secondary;
+export const ACCENT = darkColor.action.primary;
+export const ACCENT_PRESSED = darkColor.action.primaryPressed;
+/** Primary reading CTA fill (Siguiente / Completar) — distinct from brand accent. */
+export const CTA_FILL = darkColor.action.cta;
+export const CTA_FILL_PRESSED = darkColor.action.ctaPressed;
+/** Callout accents — dark defaults; use uiColorsFor(scheme) for theme-aware. */
+export const SEM_CLAVE = darkColor.text.accent;
+export const SEM_MATIZ = darkColor.text.warning;
+export const SEM_EJEMPLO = darkColor.text.success;
+export const SEM_ALERTA = darkColor.text.danger;
+export const VIZ_GRID = darkColor.viz.grid;
+export const VIZ_MUTED = darkColor.viz.muted;
+export const VIZ_SERIES = [
+  darkColor.viz.series0,
+  darkColor.viz.series1,
+  darkColor.viz.series2,
+  darkColor.viz.series3,
+] as const;
 
 export const APP_DARK_BACKGROUND = BG_BASE;
 export const APP_DARK_BACKGROUND_RGB = '24, 26, 31';
+
+/** Theme-resolved aliases matching the legacy uiTokens names. Prefer `themeColor[scheme]`. */
+export function uiColorsFor(scheme: ColorSchemeName) {
+  const c = themeColor[scheme];
+  return {
+    BG_BASE: c.background.canvas,
+    BG_SURFACE: c.background.surface,
+    BG_SURFACE_2: c.background.surfaceRaised,
+    TEXT_PRIMARY: c.text.primary,
+    TEXT_BODY: c.text.body,
+    TEXT_SECONDARY: c.text.secondary,
+    ACCENT: c.action.primary,
+    ACCENT_PRESSED: c.action.primaryPressed,
+    CTA_FILL: c.action.cta,
+    CTA_FILL_PRESSED: c.action.ctaPressed,
+    SEM_CLAVE: c.text.accent,
+    SEM_MATIZ: c.text.warning,
+    SEM_EJEMPLO: c.text.success,
+    SEM_ALERTA: c.text.danger,
+    VIZ_GRID: c.viz.grid,
+    VIZ_MUTED: c.viz.muted,
+    VIZ_SERIES: [c.viz.series0, c.viz.series1, c.viz.series2, c.viz.series3] as const,
+  } as const;
+}
+
+/** Editorial reading sheet — see `@shared/editorial/colors`. */
+export {
+  EDITORIAL_SHEET_BG,
+  EDITORIAL_SHEET_BG_WARM,
+  EDITORIAL_TEXT,
+  EDITORIAL_TEXT_BODY,
+  EDITORIAL_TEXT_MUTED,
+  EDITORIAL_GRAPHIC_YELLOW,
+  EDITORIAL_TEXT_OCHRE,
+  EDITORIAL_ACCENT_YELLOW,
+  EDITORIAL_ACCENT_LAVENDER,
+  EDITORIAL_CALLOUT_DARK,
+  EDITORIAL_CALLOUT_DARK_TEXT,
+  EDITORIAL_PHRASE_BG,
+  EDITORIAL_BORDER_SOFT,
+  EDITORIAL_YELLOW_BORDER,
+} from './editorial/colors';
+
+export {
+  EDITORIAL_GUTTER,
+  EDITORIAL_GUTTER_NARROW,
+  EDITORIAL_NARROW_BREAKPOINT,
+  EDITORIAL_MAX_READ_WIDTH,
+  EDITORIAL_SPACE,
+  editorialGutter,
+  editorialContentWidth,
+} from './editorial/space';
 
 export const RADII = { sm: 12, md: 16, lg: 24, pill: 9999 } as const;
 export const HAIRLINE = 1;
@@ -70,3 +143,55 @@ export function liquidGlassShellClasses(className = '', mode: 'perimeter' | 'bot
 export function liquidGlassFloatingShellClass(shapeClass: string): string {
   return `${shapeClass} overflow-hidden`;
 }
+
+const MOTION_CELEBRATION_MS = 450;
+
+/**
+ * Liquid Glass motion. `easing` is cubic-bezier(0.22, 1, 0.36, 1) —
+ * pass to `Easing.bezier(...motion.easing)` (do not import RN Easing here).
+ */
+export const motion = {
+  pressIn: primitive.duration.pressIn,
+  pressOut: 170,
+  small: primitive.duration.fast,
+  standard: GLASS_TOUCH_GLOW_FADE_IN_MS_COMPOSER,
+  progress: 380,
+  expand: primitive.duration.quizSettle,
+  celebration: MOTION_CELEBRATION_MS,
+  easing: [0.22, 1, 0.36, 1] as const,
+  spring: {
+    damping: primitive.spring.soft.damping,
+    stiffness: 260,
+    mass: 0.9,
+  },
+  staggerStep: 35,
+  staggerMaxElements: 7,
+  staggerTotalCapMs: MOTION_CELEBRATION_MS,
+} as const;
+
+export const accentLine = '#A9ADFF';
+export const barGradient = ['#7E82ED', '#9DA1FA'] as const;
+export const onAccent = '#14152A';
+export const success = '#8FA894';
+export const warn = '#C4A46A';
+export const hairline = darkColor.background.whiteFade10;
+export const hairlineStrong = darkColor.background.whiteFade14;
+export const specular = darkColor.background.whiteFade22;
+export const glassFill = darkColor.background.whiteFade05;
+export const glassFillPressed = darkColor.background.whiteFade09;
+export const surfaceSolid = '#17181F';
+export const textTertiarySafe = glass.blurWashLight;
+export const nodeCapsuleFill = 'rgba(22,24,34,0.92)';
+/** Solid reading surface — same fill/hairline as node capsules. Border width is RN hairline. */
+export const elevatedSurface = {
+  backgroundColor: nodeCapsuleFill,
+  borderColor: hairline,
+} as const;
+export const nodeSelectedBorder = 'rgba(169,173,255,0.45)';
+export const connectorActive = 'rgba(139,143,245,0.42)';
+export const statusOrbGlow = {
+  shadowColor: darkColor.action.primary,
+  shadowOffset: { width: 0, height: 0 },
+  shadowOpacity: 0.3,
+  shadowRadius: 8,
+} as const;

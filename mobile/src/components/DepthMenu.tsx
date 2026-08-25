@@ -1,20 +1,7 @@
 import React from 'react';
 import { type MenuAction, type NativeActionEvent } from '@react-native-menu/menu';
-import type { DepthPreference } from '../logic/depthPreference';
-import { useAppSession } from '../context/AppSessionContext';
+import { DEPTH_OPTIONS, type DepthPreference } from '../logic/depthPreference';
 import ComposerMenuTrigger from './ComposerMenuTrigger';
-
-type DepthMenuItem = {
-  id: DepthPreference;
-  title: string;
-  subtitle: string;
-};
-
-const DEPTH_ITEMS: DepthMenuItem[] = [
-  { id: 'rapido', title: 'Rápido', subtitle: '3 pasos · ~1 min' },
-  { id: 'estandar', title: 'Estándar', subtitle: '4-6 pasos · ~3 min' },
-  { id: 'profundo', title: 'Profundo', subtitle: '7-9 pasos · ~6 min' },
-];
 
 type DepthMenuProps = {
   value: DepthPreference;
@@ -27,29 +14,22 @@ type DepthMenuProps = {
 export default function DepthMenu({
   value,
   onChange,
-  onOpenPaywall,
   disabled = false,
   children,
 }: DepthMenuProps) {
-  const { isPro } = useAppSession();
+  const selectedId: DepthPreference =
+    value === 'rapido' || value === 'estandar' ? value : 'estandar';
 
-  const actions: MenuAction[] = DEPTH_ITEMS.map((item) => {
-    const locked = item.id === 'profundo' && !isPro;
-    return {
-      id: item.id,
-      title: item.title,
-      subtitle: locked ? `${item.subtitle} · Pro` : item.subtitle,
-      state: item.id === value ? 'on' : 'off',
-    };
-  });
+  const actions: MenuAction[] = DEPTH_OPTIONS.map((item) => ({
+    id: item.id,
+    title: item.label,
+    state: item.id === selectedId ? 'on' : 'off',
+  }));
 
   const handlePress = ({ nativeEvent }: NativeActionEvent) => {
     const id = nativeEvent.event as DepthPreference;
-    if (id === 'profundo' && !isPro) {
-      onOpenPaywall?.();
-      return;
-    }
-    if (id === value) return;
+    if (id !== 'rapido' && id !== 'estandar') return;
+    if (id === selectedId) return;
     onChange(id);
   };
 

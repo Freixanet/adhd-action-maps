@@ -1,0 +1,14 @@
+{
+  "name": "nucleo-ui-menu",
+  "version": "1.0.0",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "scripts": {},
+  "keywords": ["react-native", "expo", "nucleo-ui-menu"],
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

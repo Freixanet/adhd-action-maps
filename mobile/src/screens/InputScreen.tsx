@@ -1,178 +1,251 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Image,
-  Alert,
   Keyboard,
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { File, X } from 'lucide-react-native';
+import { X, MenuTwoLines, SquarePen, File, FileText, BookOpen, Video } from '../icons';
 import InlineGenerationThread from '../components/InlineGenerationThread';
+import { preloadThinkingOrbHtml } from '../components/ThinkingOrbWebView';
 import AttachMenu from '../components/AttachMenu';
+import HyperspacePreview from '../components/HyperspaceView';
 import ComposerDismissScroll from '../components/ComposerDismissScroll';
 import ComposerSendButton from '../components/ComposerSendButton';
 import ComposerSurface from '../components/ComposerSurface';
-import ComposerDock, { useComposerKeyboardLift } from '../components/ComposerDock';
-import ContinueChip, { getContinueChipLabel } from '../components/ContinueChip';
+import ComposerSwipeDismiss from '../components/ComposerSwipeDismiss';
+import ComposerDock, {
+  COMPOSER_DOCK_GAP,
+  useComposerKeyboardInset,
+  useComposerKeyboardInputHeight,
+  useComposerKeyboardLift,
+  useComposerKeyboardTextFrameStyle,
+} from '../components/ComposerDock';
 import FloatingGlassButton from '../components/FloatingGlassButton';
+import HomeAmbientWash from '../components/HomeAmbientWash';
+import HomeSurfaceSegment from '../components/HomeSurfaceSegment';
+import type { HomeSurface } from '@shared/homeSurfaceModel';
+import JumpBackInSection from '../components/JumpBackInSection';
 import GlassSurface from '../components/GlassSurface';
-import IntentSelector from '../components/IntentSelector';
-import MenuTwoLines from '../components/MenuTwoLines';
-import GenerationModeChip from '../components/GenerationModeChip';
+import NativeGlassButton from '../components/NativeGlassButton';
 import ModelChip from '../components/ModelChip';
-import LoadingPreviewButton from '../components/LoadingPreviewButton';
-import OrbSkiaCompare from '../components/OrbSkiaCompare';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { useCalmPress } from '../hooks/useCalmPress';
+import { shouldUseNativeGlassButton, NATIVE_MENU_TWO_LINES } from '../logic/nativeGlassButtons';
 import SessionErrorBanner from '../components/SessionErrorBanner';
-import { SIDEBAR_HEADER_BUTTON_SIZE } from '../components/sidebarLayout';
-import { ComposerKeyboardProvider } from '../context/ComposerKeyboardContext';
-import { useTheme } from '../context/ThemeContext';
-import { useAppSession } from '../context/AppSessionContext';
-import EngravedNucleoMark from '../components/EngravedNucleoMark';
-import { KeyboardDismissBackdrop } from '../logic/keyboardDismiss';
-import { CONTINUE_CHIP_FADE_MS } from '../logic/continueTransition';
 import {
+  MAIN_CONTENT_GUTTER,
+  SIDEBAR_EDGE_INSET,
+  SIDEBAR_TOGGLE_BUTTON_SIZE,
+} from '../components/sidebarLayout';
+import { ComposerKeyboardProvider } from '../context/ComposerKeyboardContext';
+import { useHomeSheetGestureLock } from '../context/HomeSheetGestureLock';
+import { useAppSession } from '../context/AppSessionContext';
+import { useTheme } from '../context/ThemeContext';
+import { KeyboardDismissBackdrop } from '../logic/keyboardDismiss';
+import {
+  markComposerNativeMenuEnded,
+  registerComposerInputFocus,
+  restoreComposerInputFocus,
+  shouldSuppressKeyboardDismissForComposerMenu,
+} from '../logic/composerNativeMenuSession';
+import {
+  COMPOSER_CONTROL_SIZE,
+  COMPOSER_FOCUSED_INPUT_HEIGHT,
   COMPOSER_LINE_HEIGHT,
-  COMPOSER_MAX_VIEWPORT_RATIO,
+  COMPOSER_PLUS_ICON_SIZE,
   COMPOSER_REST_INPUT_HEIGHT,
+  COMPOSER_REST_TEXT_PAD_BOTTOM,
+  COMPOSER_REST_TEXT_PAD_TOP,
   formatPastedTextChipLabel,
 } from '../logic/composerText';
-
-const STATIC_PLACEHOLDER = 'Pega texto, un enlace o adjunta un archivo';
+import { resolveAttachmentImagePreviewUri, type UploadedFile } from '../logic/attachments';
+import { space, type } from '@shared/design-tokens';
+import { useTypography } from '../context/TypographyContext';
+import { hapticCommit } from '../logic/haptics';
+const DEV = false;
 const HERO_FADE_MS = 150;
+/** Same offset as the old header `pt-2.5` — toggle floats, no header bar. */
+const SIDEBAR_TOGGLE_TOP = 10; // design-token-ignore: matches prior header pt-2.5
+/** Extra space under the Chat/Núcleo bar before the greeting (was 56). */
+const HOME_REST_BELOW_CHROME = space.stack.xl * 3 + space.stack.lg;
+/** Left of the plus inside the 38pt hit target, plus icon inner padding. */
+const COMPOSER_PLUS_GLYPH_INSET =
+  (COMPOSER_CONTROL_SIZE - COMPOSER_PLUS_ICON_SIZE) / 2 + space.stack.xs;
+const COMPOSER_TEXT_BESIDE_CONTROL = COMPOSER_CONTROL_SIZE + space.stack.xs;
+/** Square image chip — large enough that radius.composer does not read as a circle. */
+const ATTACHMENT_IMAGE_SIZE = 112;
+const ATTACHMENT_FILE_ICON_SIZE = 32; // design-token-ignore: sits in the 112pt file chip
+
+function ComposerFileKindIcon({ file, color }: { file: UploadedFile; color: string }) {
+  if (file.isEpub) return <BookOpen size={ATTACHMENT_FILE_ICON_SIZE} color={color} />;
+  if (file.isVideo) return <Video size={ATTACHMENT_FILE_ICON_SIZE} color={color} />;
+  if (file.isPdf) return <File size={ATTACHMENT_FILE_ICON_SIZE} color={color} />;
+  return <FileText size={ATTACHMENT_FILE_ICON_SIZE} color={color} />;
+}
 
 function dismissKeyboard() {
   Keyboard.dismiss();
 }
 
-const FIRST_USE_EXAMPLES = [
-  'https://www.youtube.com/watch?v=example',
-  'Pega un artículo sobre hábitos o atención…',
-  'https://ejemplo.com/articulo-sobre-foco',
-] as const;
-
 export default function InputScreen() {
   const session = useAppSession();
-  const { isDark } = useTheme();
-  const { height: windowHeight } = useWindowDimensions();
-  const maxComposerInputHeight = Math.round(windowHeight * COMPOSER_MAX_VIEWPORT_RATIO);
+  const { isDark, colors } = useTheme();
+  const { font } = useTypography();
+  const { reduceTransparency, reduceMotion } = useGlassAccessibility();
+  const exampleCtaPress = useCalmPress();
+  const nativeGlassButtons = shouldUseNativeGlassButton(reduceTransparency);
   const canSend = session.canSubmit && session.phase !== 'loading';
-  const inlineActive = session.inlineGenerationStatus !== 'idle';
-  const composerDisabled = inlineActive;
-  const navIconColor = isDark ? '#d4d4d4' : '#525252';
-  const mutedIcon = isDark ? '#a3a3a3' : '#737373';
-  const [composerHeight, setComposerHeight] = useState(176);
+  const askThreadOpen =
+    session.inlineUserTurn?.kind === 'ask' ||
+    (session.inlineAskPriorTurns?.length ?? 0) > 0 ||
+    Boolean(session.activeChatId);
+  const inlineActive = session.inlineGenerationStatus !== 'idle' || askThreadOpen;
+  const askComposerOpen =
+    askThreadOpen &&
+    (session.inlineGenerationStatus === 'ready' ||
+      session.inlineGenerationStatus === 'error' ||
+      session.inlineGenerationStatus === 'cancelled' ||
+      session.inlineGenerationStatus === 'idle');
+  const isGenerating =
+    session.inlineGenerationStatus === 'generating' ||
+    session.inlineGenerationStatus === 'partial' ||
+    session.isStreamGenerating ||
+    Boolean(session.collectionGenerationProgress) ||
+    session.phase === 'loading';
+  const composerDisabled =
+    inlineActive && !askComposerOpen && session.inlineGenerationStatus !== 'cancelled';
+  // Núcleo ready: dim the dock so “Abrir Núcleo” stays the action. Ask chats stay live.
+  const composerDimmed =
+    inlineActive &&
+    !isGenerating &&
+    !askComposerOpen &&
+    session.inlineGenerationStatus !== 'cancelled';
+  const navIconColor = colors.icon.primary;
+  const mutedIcon = colors.icon.muted;
+  const [composerHeight, setComposerHeight] = useState(64);
   const [composerFocused, setComposerFocused] = useState(false);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [exampleIndex, setExampleIndex] = useState(0);
-  const [examplesFinished, setExamplesFinished] = useState(false);
-  const [orbCompareVisible, setOrbCompareVisible] = useState(false);
+  const [hyperspacePreviewOpen, setHyperspacePreviewOpen] = useState(false);
   const composerInputRef = useRef<TextInput>(null);
-  const continueChipRef = useRef<View>(null);
-  const continueChipOpacity = useSharedValue(1);
   const heroOpacity = useSharedValue(1);
-  const keyboardLiftStyle = useComposerKeyboardLift();
+  const keyboardLiftStyle = useComposerKeyboardLift(COMPOSER_DOCK_GAP, composerFocused);
+  const composerKeyboardInsetStyle = useComposerKeyboardInset(space.stack.lg, composerFocused);
+  const composerInputGrowStyle = useComposerKeyboardInputHeight(
+    COMPOSER_REST_INPUT_HEIGHT,
+    COMPOSER_FOCUSED_INPUT_HEIGHT,
+    composerFocused
+  );
+  const composerTextFrameStyle = useComposerKeyboardTextFrameStyle(
+    {
+      paddingLeft: COMPOSER_TEXT_BESIDE_CONTROL,
+      paddingRight: COMPOSER_TEXT_BESIDE_CONTROL,
+      paddingTop: COMPOSER_REST_TEXT_PAD_TOP,
+      paddingBottom: COMPOSER_REST_TEXT_PAD_BOTTOM,
+    },
+    {
+      paddingLeft: COMPOSER_PLUS_GLYPH_INSET,
+      paddingRight: space.stack.sm,
+      paddingTop: space.stack.sm,
+      paddingBottom: COMPOSER_CONTROL_SIZE,
+    },
+    composerFocused
+  );
+  const scrollBottomPad = composerHeight + 16;
 
   const isFirstUse = !session.hasAnyNucleo;
-  const showHero =
-    !composerDisabled &&
-    !session.canSubmit &&
-    !composerFocused &&
-    !session.uploadedFile &&
-    !session.pastedText;
-
-  const inputPlaceholder =
-    session.uploadedFile || session.hasAnyNucleo || examplesFinished
-      ? session.composerPlaceholder
-      : FIRST_USE_EXAMPLES[exampleIndex] ?? STATIC_PLACEHOLDER;
+  const showHero = !inlineActive;
 
   useEffect(() => {
-    heroOpacity.value = withTiming(inlineActive ? 0 : 1, { duration: HERO_FADE_MS });
-  }, [heroOpacity, inlineActive]);
+    heroOpacity.value = withTiming(inlineActive || composerFocused ? 0 : 1, {
+      duration: reduceMotion ? 0 : HERO_FADE_MS,
+    });
+  }, [composerFocused, heroOpacity, inlineActive, reduceMotion]);
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    registerComposerInputFocus(() => {
+      composerInputRef.current?.focus();
+    });
     return () => {
-      showSub.remove();
-      hideSub.remove();
+      registerComposerInputFocus(null);
     };
   }, []);
 
   useEffect(() => {
-    if (!isFirstUse || examplesFinished || composerFocused || session.inputText.trim()) return;
-    const timer = setInterval(() => {
-      setExampleIndex((current) => {
-        if (current >= FIRST_USE_EXAMPLES.length - 1) {
-          setExamplesFinished(true);
-          return current;
-        }
-        return current + 1;
-      });
-    }, 3200);
-    return () => clearInterval(timer);
-  }, [composerFocused, examplesFinished, isFirstUse, session.inputText]);
-
-  useEffect(() => {
-    if (session.continueTransition?.mode === 'expand') {
-      continueChipOpacity.value = withTiming(0, { duration: CONTINUE_CHIP_FADE_MS });
-      return;
-    }
-    continueChipOpacity.value = withTiming(1, { duration: CONTINUE_CHIP_FADE_MS });
-  }, [continueChipOpacity, session.continueTransition?.mode]);
-
-  const continueChipFadeStyle = useAnimatedStyle(() => ({
-    opacity: continueChipOpacity.value,
-  }));
+    preloadThinkingOrbHtml();
+  }, []);
 
   const heroFadeStyle = useAnimatedStyle(() => ({
     opacity: heroOpacity.value,
   }));
 
   const composerDisabledStyle = useAnimatedStyle(() => ({
-    opacity: composerDisabled ? 0.5 : 1,
+    opacity: composerDimmed ? 0.5 : 1,
   }));
 
-  const composerDismissPan = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(keyboardVisible && !composerDisabled)
-        .activeOffsetY(18)
-        .failOffsetY(-18)
-        .failOffsetX([-16, 16])
-        .onChange((event) => {
-          if (event.translationY > 56) {
-            runOnJS(dismissKeyboard)();
-          }
-        })
-        .onEnd((event) => {
-          if (event.translationY > 32 || event.velocityY > 450) {
-            runOnJS(dismissKeyboard)();
-          }
-        }),
-    [composerDisabled, keyboardVisible]
+  /** Home rest: greeting + jump-back; stays under the composer dock. */
+  const showHomeRestContent = !inlineActive;
+  const homeFirstName =
+    session.cloudUserDisplayName?.trim().split(/\s+/)[0] || null;
+  const showJumpBackIn = showHomeRestContent;
+
+  const handleSelectHistory = session.handleSelectHistory;
+  const handleSelectJumpBack = useCallback(
+    (id: string) => {
+      handleSelectHistory(id);
+    },
+    [handleSelectHistory]
   );
 
-  const handleContinuePress = () => {
-    const entry = session.continueEntry;
-    if (!entry) return;
-    continueChipRef.current?.measureInWindow((x, y, width, height) => {
-      session.beginContinueTransition(
-        entry.id,
-        { x, y, width, height, borderRadius: 999 },
-        getContinueChipLabel(entry)
-      );
-    });
-  };
+  const handleHomeSurfaceChange = useCallback(
+    (next: HomeSurface) => {
+      if (next === session.homeSurface) return;
+      if (inlineActive) session.handleNewMap();
+      session.setHomeSurface(next);
+    },
+    [inlineActive, session]
+  );
+
+  const dismissComposerFromOutside = useCallback(() => {
+    if (shouldSuppressKeyboardDismissForComposerMenu()) {
+      markComposerNativeMenuEnded();
+      restoreComposerInputFocus();
+      return;
+    }
+    Keyboard.dismiss();
+    composerInputRef.current?.blur();
+    setComposerFocused(false);
+  }, []);
+
+  const attachMenuProps = {
+    onPickCamera: () => void session.handlePickCamera(),
+    onPickImage: () => void session.handlePickImage(),
+    onPickFile: () => void session.handlePickFile(),
+    onLoadQaMultipagePdf:
+      session.devToolsEnabled || __DEV__
+        ? (intent: Parameters<NonNullable<typeof session.handleLoadQaMultipagePdf>>[0]) =>
+            void session.handleLoadQaMultipagePdf(intent)
+        : undefined,
+    onPreviewChatThinking:
+      session.devToolsEnabled || __DEV__ ? () => session.previewChatThinking?.() : undefined,
+    onPreviewHyperspace:
+      session.devToolsEnabled || __DEV__ ? () => setHyperspacePreviewOpen(true) : undefined,
+    onEditorialDemo:
+      session.devToolsEnabled || __DEV__
+        ? (fixtureId: 'procrastination' | 'attention') => session.openEditorialDemo(fixtureId)
+        : undefined,
+    modelPreference: session.modelPreference,
+    onSelectModel:
+      session.devToolsEnabled || __DEV__ ? session.setModelPreference : undefined,
+    disabled: session.phase === 'loading' || composerDisabled,
+    darkSurface: isDark,
+  } as const;
 
   const handleCancelAutoOpen = () => {
     if (session.inlineGenerationStatus === 'ready') {
@@ -180,284 +253,552 @@ export default function InputScreen() {
     }
   };
 
-  const menusBlockScroll = session.historyOpen;
+  const sheetGestureLock = useHomeSheetGestureLock();
+  const menusBlockScroll = session.historyOpen || Boolean(sheetGestureLock?.locked);
 
   return (
     <ComposerKeyboardProvider>
-      <SafeAreaView edges={['top', 'left', 'right']} className="flex-1 bg-base">
+      {/*
+        Uniwind does not patch SafeAreaView from react-native-safe-area-context,
+        so className flex-1 is a no-op here. Without an explicit style flex:1 the
+        screen collapses and the absolute composer docks to the top of the phone.
+      */}
+      <SafeAreaView
+        edges={['top', 'left', 'right']}
+        style={{ flex: 1, backgroundColor: colors.background.canvas }}
+        className="flex-1 bg-base"
+      >
         <View
-          className="flex-1 px-3"
-          style={{ position: 'relative' }}
+          className="flex-1"
+          style={{ flex: 1, position: 'relative' }}
           onTouchStart={handleCancelAutoOpen}
         >
-          <View className="flex-row items-center justify-between pt-2.5 pb-3">
-            <FloatingGlassButton
-              onPress={() => session.toggleHistoryDrawer()}
-              accessibilityLabel={session.historyOpen ? 'Cerrar navegacion' : 'Abrir navegacion'}
-              shape="circle"
-              size={SIDEBAR_HEADER_BUTTON_SIZE}
-            >
-              <MenuTwoLines size={17} color={navIconColor} />
-            </FloatingGlassButton>
-            <IntentSelector
-              value={session.intent}
-              onChange={session.setIntent}
-              disabled={session.phase === 'loading' || composerDisabled}
-            />
-            <View className="w-9" />
-          </View>
-
-          {session.inlineGenerationStatus === 'idle' ? <SessionErrorBanner /> : null}
-
           <Animated.View style={[{ flex: 1 }, keyboardLiftStyle]}>
             <ScrollView
               className="flex-1 bg-transparent"
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-              keyboardShouldPersistTaps="handled"
+              keyboardShouldPersistTaps="always"
               scrollEnabled={!menusBlockScroll}
-              alwaysBounceVertical={Platform.OS === 'ios' && keyboardVisible}
-              contentContainerClassName="px-1"
+              directionalLockEnabled
+              alwaysBounceVertical={Platform.OS === 'ios'}
+              showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={{
                 flexGrow: 1,
-                justifyContent: inlineActive ? 'flex-start' : undefined,
-                paddingTop: inlineActive ? 44 : 0,
-                paddingBottom: composerHeight + 16,
+                justifyContent: inlineActive
+                  ? 'flex-start'
+                  : showHomeRestContent || showJumpBackIn || showHero
+                    ? 'flex-start'
+                    : 'center',
+                paddingTop:
+                  SIDEBAR_TOGGLE_TOP +
+                  SIDEBAR_TOGGLE_BUTTON_SIZE +
+                  space.stack.md +
+                  (inlineActive ? 12 : showHomeRestContent ? HOME_REST_BELOW_CHROME : 0),
+                paddingBottom: scrollBottomPad,
               }}
             >
-              {inlineActive ? (
-                <View className="w-full flex-1">
-                  <InlineGenerationThread />
+              {session.inlineGenerationStatus === 'idle' ? (
+                <View style={{ paddingHorizontal: MAIN_CONTENT_GUTTER }}>
+                  <SessionErrorBanner />
                 </View>
-              ) : (
-              <View className="w-full flex-1 justify-center py-2">
-                <Animated.View
-                  style={heroFadeStyle}
-                  pointerEvents={!showHero ? 'none' : 'auto'}
-                  className="w-full items-center px-2"
+              ) : null}
+              {inlineActive ? (
+                <KeyboardDismissBackdrop
+                  className="w-full flex-1"
+                  onPress={dismissComposerFromOutside}
                 >
-                  {showHero ? (
-                    <KeyboardDismissBackdrop className="w-full items-center justify-center">
-                      <View className="w-full items-center px-2" style={{ marginTop: -24 }}>
-                        <Pressable
-                          onLongPress={() => {
-                            if (!__DEV__) return;
-                            if (session.devHistoryHidden) {
-                              Alert.alert(
-                                'Restaurar historial (dev)',
-                                '¿Recuperar tu historial guardado?',
-                                [
-                                  { text: 'Cancelar', style: 'cancel' },
-                                  {
-                                    text: 'Restaurar',
-                                    onPress: () => session.devRestoreHistory?.(),
-                                  },
-                                ]
-                              );
-                              return;
-                            }
-                            if (!session.devHideHistory) return;
-                            Alert.alert(
-                              'Ocultar historial (dev)',
-                              'La app parecerá vacía, pero tu historial queda guardado en el dispositivo. Mantén pulsado nucleo de nuevo para restaurar.',
-                              [
-                                { text: 'Cancelar', style: 'cancel' },
-                                {
-                                  text: 'Ocultar',
-                                  onPress: () => session.devHideHistory?.(),
-                                },
-                              ]
-                            );
-                          }}
-                          delayLongPress={700}
-                          accessibilityRole="button"
-                          accessibilityLabel="nucleo"
+                  <View
+                    className="w-full flex-1"
+                    style={{ paddingHorizontal: SIDEBAR_EDGE_INSET }}
+                    pointerEvents={composerFocused ? 'none' : 'auto'}
+                  >
+                    <InlineGenerationThread />
+                  </View>
+                </KeyboardDismissBackdrop>
+              ) : (
+                <KeyboardDismissBackdrop
+                  className="w-full flex-1"
+                  onPress={dismissComposerFromOutside}
+                >
+                  <Animated.View
+                    style={[heroFadeStyle, styles.homeRest]}
+                    pointerEvents={composerFocused ? 'none' : 'auto'}
+                  >
+                    <View style={styles.greetingBlock}>
+                      <HomeAmbientWash />
+                      {/*
+                        Style-only colors (same pattern as JumpBack heading).
+                        Uniwind text-* classes can stay on the light palette
+                        while the canvas is dark — ink then vanishes.
+                      */}
+                      <Text
+                        style={[
+                          styles.homeGreeting,
+                          { color: colors.text.primary, fontFamily: font.family },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.homeGreetingItalic,
+                            { color: colors.text.primary, fontFamily: font.italicFamily },
+                          ]}
                         >
-                          <EngravedNucleoMark style={{ marginBottom: 24 }} />
-                        </Pressable>
-                        <Text className="text-center text-[15px] leading-6 text-secondary">
-                          Separa lo importante del ruido.
+                          Sapere aude
+                        </Text>
+                        {homeFirstName ? (
+                          <>
+                            {', '}
+                            <Text
+                              style={[styles.homeGreetingName, { color: colors.text.primary, fontFamily: font.family }]}
+                            >
+                              {homeFirstName}
+                            </Text>
+                          </>
+                        ) : null}
+                      </Text>
+                    </View>
+                    {showHero ? (
+                      <View
+                        style={{ paddingHorizontal: SIDEBAR_EDGE_INSET }}
+                        className="items-start"
+                      >
+                        <Text
+                          style={[
+                            styles.homeTagline,
+                            { color: colors.text.body, fontFamily: font.family },
+                          ]}
+                        >
+                          Separa lo importante del ruido
                         </Text>
                         {isFirstUse ? (
-                          <Pressable
-                            onPress={session.handleOpenDemoNucleo}
-                            accessibilityRole="button"
-                            accessibilityLabel="Ver un ejemplo"
-                            className="mt-6"
-                          >
-                            {({ pressed }) => (
-                              <GlassSurface
-                                liquid
-                                variant="composer"
-                                borderRadius={24}
-                                liquidBorder="perimeter"
-                                overlayClassName={pressed ? 'bg-accent/8' : undefined}
-                              >
-                                <View className="px-4 py-2.5">
-                                  <Text className="text-[15px] font-normal text-body">
-                                    Ver un ejemplo
-                                  </Text>
-                                </View>
-                              </GlassSurface>
-                            )}
-                          </Pressable>
+                          nativeGlassButtons ? (
+                            <NativeGlassButton
+                              onPress={session.handleOpenDemoNucleo}
+                              accessibilityLabel="Ver un ejemplo"
+                              title="Ver un ejemplo"
+                              cornerRadius={24}
+                              style={styles.demoCtaNative}
+                            />
+                          ) : (
+                            <Pressable
+                              onPress={session.handleOpenDemoNucleo}
+                              onPressIn={exampleCtaPress.handlers.onPressIn}
+                              onPressOut={exampleCtaPress.handlers.onPressOut}
+                              accessibilityRole="button"
+                              accessibilityLabel="Ver un ejemplo"
+                              className="mt-6"
+                            >
+                              <Animated.View style={exampleCtaPress.style}>
+                                <GlassSurface
+                                  liquid
+                                  variant="composer"
+                                  borderRadius={24}
+                                  liquidBorder="perimeter"
+                                >
+                                  <View className="px-4 py-2.5">
+                                    <Text
+                                      style={{
+                                        fontSize: type.body.fontSize,
+                                        lineHeight: type.body.lineHeight,
+                                        fontFamily: font.family,
+                                        color: colors.text.body,
+                                      }}
+                                    >
+                                      Ver un ejemplo
+                                    </Text>
+                                  </View>
+                                </GlassSurface>
+                              </Animated.View>
+                            </Pressable>
+                          )
                         ) : null}
                       </View>
-                    </KeyboardDismissBackdrop>
-                  ) : null}
-                </Animated.View>
-              </View>
+                    ) : null}
+                    {showJumpBackIn ? (
+                      <JumpBackInSection
+                        onSelect={handleSelectJumpBack}
+                        spacing="lead"
+                      />
+                    ) : null}
+                  </Animated.View>
+                </KeyboardDismissBackdrop>
               )}
             </ScrollView>
           </Animated.View>
 
-          <ComposerDock onHeightChange={setComposerHeight}>
-            {__DEV__ && session.phase !== 'loading' ? (
-              <View className="mb-2 w-full items-center gap-1">
-                <LoadingPreviewButton
-                  onPress={() => session.previewInlineGeneration?.()}
-                  onLongPress={() => session.previewLoadingScreen?.()}
-                />
-                <Pressable
-                  onPress={() => setOrbCompareVisible(true)}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel="Comparar orbe WebView y Skia"
-                  className="opacity-30 active:opacity-50"
-                >
-                  <Text className="text-[11px] font-medium tracking-wide text-secondary">
-                    Compare orb
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null}
-            <OrbSkiaCompare visible={orbCompareVisible} onClose={() => setOrbCompareVisible(false)} />
-            {!composerDisabled && session.continueEntry ? (
-              <Animated.View style={continueChipFadeStyle} className="mb-3 w-full items-center">
-                <ContinueChip
-                  ref={continueChipRef}
-                  entry={session.continueEntry}
-                  onPress={handleContinuePress}
-                  onDismiss={session.dismissContinueChip}
-                />
-              </Animated.View>
-            ) : null}
+          {composerFocused ? (
+            <Pressable
+              accessible={false}
+              onPress={dismissComposerFromOutside}
+              style={styles.composerDismissOverlay}
+            />
+          ) : null}
+
+          <ComposerDock hold={composerFocused} onHeightChange={setComposerHeight}>
             <ComposerDismissScroll>
-              <Animated.View style={composerDisabledStyle}>
-                <GestureDetector gesture={composerDismissPan}>
-                  <ComposerSurface focused={composerFocused && !composerDisabled} inputRef={composerInputRef}>
-                    <View pointerEvents={composerDisabled ? 'none' : 'auto'}>
-                      {session.uploadedFile ? (
-                        <View className="px-5 pt-4 pb-1">
-                          {session.uploadedFile.isImage && session.uploadedFile.previewUri ? (
-                            <View className="relative self-start">
-                              <Image
-                                source={{ uri: session.uploadedFile.previewUri }}
-                                accessibilityLabel={session.uploadedFile.name}
-                                className="w-16 h-16 rounded-xl border border-white/10"
-                              />
-                              <Pressable
-                                onPress={session.removeUploadedFile}
-                                className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-surface-2 items-center justify-center"
-                              >
-                                <X size={12} color="#fff" />
-                              </Pressable>
-                            </View>
+              <ComposerSwipeDismiss
+                enabled={composerFocused && !composerDisabled}
+                onDismiss={dismissComposerFromOutside}
+                style={[composerDisabledStyle, composerKeyboardInsetStyle]}
+              >
+                <ComposerSurface focused={composerFocused && !composerDisabled} inputRef={composerInputRef}>
+                  <View pointerEvents={composerDisabled ? 'box-none' : 'auto'}>
+                    {session.uploadedFile ? (
+                      <View style={styles.composerImageSlot}>
+                        <View style={styles.composerImagePreviewWrap}>
+                          {resolveAttachmentImagePreviewUri(session.uploadedFile) ? (
+                            <Image
+                              source={{
+                                uri: resolveAttachmentImagePreviewUri(session.uploadedFile)!,
+                              }}
+                              accessibilityLabel={session.uploadedFile.name}
+                              resizeMode="cover"
+                              style={[
+                                styles.composerImagePreview,
+                                { borderColor: colors.background.whiteFade10 },
+                              ]}
+                            />
                           ) : (
-                            <View className="flex-row items-center gap-2 self-start max-w-full px-3 py-1.5 rounded-full bg-white/10">
-                              <File size={16} color={mutedIcon} />
-                              <Text className="text-sm shrink text-primary" numberOfLines={1}>
+                            <View
+                              accessibilityLabel={session.uploadedFile.name}
+                              style={[
+                                styles.composerImagePreview,
+                                styles.composerFilePreview,
+                                {
+                                  borderColor: colors.background.whiteFade10,
+                                  backgroundColor: colors.background.surface,
+                                },
+                              ]}
+                            >
+                              <ComposerFileKindIcon
+                                file={session.uploadedFile}
+                                color={colors.icon.primary}
+                              />
+                              <Text
+                                numberOfLines={2}
+                                style={[
+                                  styles.composerFileName,
+                                  { color: colors.text.primary, fontFamily: font.family },
+                                ]}
+                              >
                                 {session.uploadedFile.name}
                               </Text>
-                              <Pressable
-                                onPress={session.removeUploadedFile}
-                                className="p-0.5 rounded-full"
-                              >
-                                <X size={14} color={mutedIcon} />
-                              </Pressable>
                             </View>
                           )}
+                          <Pressable
+                            onPress={session.removeUploadedFile}
+                            accessibilityLabel="Quitar archivo"
+                            style={styles.composerImageRemove}
+                            className="w-6 h-6 rounded-full bg-surface-2 items-center justify-center"
+                          >
+                            <X size={12} color={colors.text.primary} />
+                          </Pressable>
                         </View>
-                      ) : null}
-
-                      {session.pastedText ? (
-                        <View className="px-5 pt-4 pb-1">
-                          <View className="flex-row items-center gap-2 self-start max-w-full px-3 py-1.5 rounded-full bg-white/10">
-                            <File size={16} color={mutedIcon} />
-                            <Text className="text-sm shrink text-primary" numberOfLines={1}>
-                              {formatPastedTextChipLabel(session.pastedText)}
-                            </Text>
-                            <Pressable onPress={session.removePastedText} className="p-0.5 rounded-full">
-                              <X size={14} color={mutedIcon} />
-                            </Pressable>
-                          </View>
-                        </View>
-                      ) : null}
-
-                      {!session.hideTextInput ? (
-                        <TextInput
-                          key={session.pastedText ? 'composer-collapsed' : 'composer-input'}
-                          ref={composerInputRef}
-                          value={session.inputText}
-                          onChangeText={session.handleComposerTextChange}
-                          onFocus={() => setComposerFocused(true)}
-                          onBlur={() => {
-                            setComposerFocused(false);
-                            session.persistComposerDraft();
-                          }}
-                          editable={!composerDisabled}
-                          placeholder={inputPlaceholder}
-                          placeholderTextColor={isDark ? '#9CA0AB' : '#737373'}
-                          multiline
-                          textAlignVertical="top"
-                          style={{
-                            minHeight: COMPOSER_REST_INPUT_HEIGHT,
-                            maxHeight: maxComposerInputHeight,
-                            paddingHorizontal: 20,
-                            paddingVertical: 16,
-                            fontSize: 16,
-                            lineHeight: COMPOSER_LINE_HEIGHT,
-                            color: isDark ? '#FAFAFA' : '#171717',
-                          }}
-                        />
-                      ) : null}
-                    </View>
-
-                    <View className="flex-row items-center justify-between px-3 pb-4 pt-1.5 gap-2">
-                      <View className="flex-row items-center gap-2 shrink">
-                        <AttachMenu
-                          onPickCamera={() => void session.handlePickCamera()}
-                          onPickImage={() => void session.handlePickImage()}
-                          onPickFile={() => void session.handlePickFile()}
-                          disabled={session.phase === 'loading' || composerDisabled}
-                          darkSurface={isDark}
-                        />
-                        <ModelChip
-                          value={session.depthPreference}
-                          onChange={session.setDepthPreference}
-                          onOpenPaywall={session.openPaywall}
-                          disabled={session.phase === 'loading' || composerDisabled}
-                        />
-                        <GenerationModeChip
-                          value={session.generationMode}
-                          onChange={session.setGenerationMode}
-                          disabled={session.phase === 'loading' || composerDisabled}
-                        />
                       </View>
-                      <ComposerSendButton
-                        onPress={() => {
-                          Keyboard.dismiss();
-                          void session.handleTransform();
-                        }}
-                        disabled={!canSend}
-                      />
+                    ) : null}
+
+                    {session.pastedText ? (
+                      <View className="px-5 pt-4 pb-1">
+                        <View className="flex-row items-center gap-2 self-start max-w-full px-3 py-1.5 rounded-full bg-white/10">
+                          <File size={16} color={mutedIcon} />
+                          <Text className="text-sm shrink text-primary" numberOfLines={1}>
+                            {formatPastedTextChipLabel(session.pastedText)}
+                          </Text>
+                          <Pressable onPress={session.removePastedText} className="p-0.5 rounded-full">
+                            <X size={14} color={mutedIcon} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {/* + / send stay on the rest row. Expanded text starts at the + glyph’s x, on the top line. */}
+                    <View pointerEvents="box-none" style={styles.composerRow}>
+                      <Animated.View
+                        pointerEvents="box-none"
+                        style={[styles.composerInputHost, composerInputGrowStyle]}
+                      >
+                        <Pressable
+                          accessibilityRole="none"
+                          onPressIn={() => composerInputRef.current?.focus()}
+                          pointerEvents={composerDisabled || composerFocused ? 'none' : 'auto'}
+                          style={styles.composerFocusHit}
+                        />
+                        {!session.hideTextInput ? (
+                          <Animated.View
+                            pointerEvents={composerDisabled ? 'none' : 'box-none'}
+                            style={[styles.composerTextFrame, composerTextFrameStyle]}
+                          >
+                            <TextInput
+                              key={session.pastedText ? 'composer-collapsed' : 'composer-input'}
+                              ref={composerInputRef}
+                              value={session.inputText}
+                              onChangeText={session.handleComposerTextChange}
+                              onFocus={() => {
+                                setComposerFocused(true);
+                              }}
+                              onBlur={() => {
+                                // iOS can resign first responder for a beat while typing.
+                                requestAnimationFrame(() => {
+                                  if (composerInputRef.current?.isFocused()) {
+                                    setComposerFocused(true);
+                                    return;
+                                  }
+                                  setComposerFocused(false);
+                                  session.persistComposerDraft();
+                                });
+                              }}
+                              editable={!composerDisabled}
+                              placeholder={session.composerPlaceholder}
+                              placeholderTextColor={colors.text.secondary}
+                              multiline
+                              scrollEnabled={composerFocused}
+                              showSoftInputOnFocus
+                              textAlignVertical="top"
+                              style={[
+                                styles.composerInput,
+                                {
+                                  fontSize: type.input.fontSize,
+                                  lineHeight: COMPOSER_LINE_HEIGHT,
+                                  fontFamily: font.family,
+                                  color: colors.text.primary,
+                                  backgroundColor: 'transparent',
+                                },
+                              ]}
+                            />
+                          </Animated.View>
+                        ) : (
+                          <View pointerEvents="none" style={styles.composerInputSpacer} />
+                        )}
+                        <View
+                          pointerEvents={composerDisabled ? 'none' : 'auto'}
+                          style={styles.composerPlus}
+                        >
+                          <AttachMenu {...attachMenuProps} />
+                          {DEV ? (
+                            <ModelChip
+                              value={session.depthPreference}
+                              onChange={session.setDepthPreference}
+                              onOpenPaywall={session.openPaywall}
+                              disabled={session.phase === 'loading' || composerDisabled}
+                            />
+                          ) : null}
+                        </View>
+                        <View pointerEvents="auto" style={styles.composerSend}>
+                          <ComposerSendButton
+                            mode={isGenerating ? 'stop' : 'send'}
+                            onPress={() => {
+                              Keyboard.dismiss();
+                              if (isGenerating) {
+                                hapticCommit();
+                                session.handleCancelLoading();
+                                return;
+                              }
+                              hapticCommit();
+                              void session.handleComposerSubmit();
+                            }}
+                            disabled={!canSend}
+                          />
+                        </View>
+                      </Animated.View>
                     </View>
-                  </ComposerSurface>
-                </GestureDetector>
-              </Animated.View>
+                  </View>
+                </ComposerSurface>
+              </ComposerSwipeDismiss>
             </ComposerDismissScroll>
           </ComposerDock>
+
+          <View pointerEvents="box-none" style={styles.homeTopBar}>
+            <FloatingGlassButton
+              onPress={() => session.toggleHistoryDrawer()}
+              accessibilityLabel={session.historyOpen ? 'Cerrar navegacion' : 'Abrir navegacion'}
+              shape="circle"
+              size={SIDEBAR_TOGGLE_BUTTON_SIZE}
+              systemImage={NATIVE_MENU_TWO_LINES}
+              symbolPointSize={20}
+            >
+              <MenuTwoLines size={20} color={navIconColor} />
+            </FloatingGlassButton>
+            <View pointerEvents="box-none" style={styles.homeSurfaceCenter}>
+              <HomeSurfaceSegment
+                value={session.homeSurface}
+                onChange={handleHomeSurfaceChange}
+                disabled={isGenerating}
+              />
+            </View>
+            <View pointerEvents="box-none" style={styles.homeTopBarSide}>
+              {askThreadOpen ? (
+                <FloatingGlassButton
+                  onPress={() => session.handleNewMap()}
+                  accessibilityLabel="Nuevo chat"
+                  shape="circle"
+                  size={SIDEBAR_TOGGLE_BUTTON_SIZE}
+                  systemImage="square.and.pencil"
+                  symbolPointSize={17}
+                >
+                  <SquarePen size={20} color={navIconColor} />
+                </FloatingGlassButton>
+              ) : null}
+            </View>
+          </View>
         </View>
       </SafeAreaView>
+      <HyperspacePreview
+        visible={hyperspacePreviewOpen}
+        onClose={() => setHyperspacePreviewOpen(false)}
+      />
     </ComposerKeyboardProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  homeTopBar: {
+    position: 'absolute',
+    top: SIDEBAR_TOGGLE_TOP, // design-token-ignore: matches prior header pt-2.5
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SIDEBAR_EDGE_INSET,
+    height: SIDEBAR_TOGGLE_BUTTON_SIZE,
+    overflow: 'visible',
+  },
+  homeTopBarSide: {
+    width: SIDEBAR_TOGGLE_BUTTON_SIZE,
+    height: SIDEBAR_TOGGLE_BUTTON_SIZE,
+  },
+  homeSurfaceCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+  },
+  composerDismissOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 15,
+  },
+  homeRest: {
+    width: '100%',
+    position: 'relative',
+    overflow: 'visible',
+  },
+  greetingBlock: {
+    paddingHorizontal: SIDEBAR_EDGE_INSET,
+    paddingBottom: space.stack.xs,
+    overflow: 'visible',
+    zIndex: 0,
+  },
+  homeGreeting: {
+    textAlign: 'left',
+    fontSize: type.titleExtrabold.fontSize,
+    lineHeight: type.titleExtrabold.lineHeight,
+    fontWeight: type.body.fontWeight,
+    letterSpacing: type.titleExtrabold.letterSpacing,
+  },
+  homeGreetingItalic: {
+    fontStyle: 'italic',
+    fontWeight: type.body.fontWeight,
+  },
+  homeGreetingName: {
+    fontWeight: type.continueTitle.fontWeight,
+  },
+  homeTagline: {
+    textAlign: 'left',
+    fontSize: type.sectionTitle.fontSize,
+    lineHeight: type.sectionTitle.lineHeight,
+    fontWeight: type.body.fontWeight,
+    letterSpacing: type.sectionTitle.letterSpacing,
+  },
+  /** Native button sizes to content; mirrors the JS px-4 py-2.5 pill. */
+  demoCtaNative: {
+    marginTop: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  composerImageSlot: {
+    paddingHorizontal: space.stack.sm,
+    paddingTop: space.stack.sm,
+    paddingBottom: space.stack.xs,
+  },
+  composerImagePreviewWrap: {
+    position: 'relative',
+    alignSelf: 'flex-start',
+    overflow: 'hidden',
+    borderRadius: 20, // design-token-ignore: matches composerImagePreview
+  },
+  composerImagePreview: {
+    width: ATTACHMENT_IMAGE_SIZE, // design-token-ignore: Image ignores className size
+    height: ATTACHMENT_IMAGE_SIZE, // design-token-ignore: square preview
+    borderRadius: 20, // design-token-ignore: slightly tighter than radius.composer (24)
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  composerImageRemove: {
+    position: 'absolute',
+    top: space.stack.sm,
+    right: space.stack.sm,
+    zIndex: 2,
+  },
+  composerFilePreview: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.stack.sm,
+    paddingVertical: space.stack.sm,
+    gap: space.stack.sm,
+  },
+  composerFileName: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight as '400',
+    letterSpacing: type.caption.letterSpacing,
+    textAlign: 'center',
+  },
+  composerRow: {
+    position: 'relative',
+    paddingHorizontal: space.stack.sm,
+    paddingVertical: space.stack.sm,
+    zIndex: 30,
+  },
+  composerInputHost: {
+    position: 'relative',
+    alignSelf: 'stretch',
+    minWidth: 0,
+  },
+  composerFocusHit: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  composerTextFrame: {
+    ...StyleSheet.absoluteFillObject,
+    minWidth: 0,
+    zIndex: 2,
+    overflow: 'visible',
+  },
+  composerInput: {
+    width: '100%',
+    height: '100%',
+    margin: 0,
+    padding: 0,
+    includeFontPadding: false,
+    overflow: 'visible',
+  },
+  composerInputSpacer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  composerPlus: {
+    position: 'absolute',
+    left: 0,
+    bottom: 0,
+    zIndex: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.stack.sm,
+  },
+  composerSend: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    zIndex: 3,
+  },
+});

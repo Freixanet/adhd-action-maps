@@ -159,13 +159,10 @@ export default function GlassSurface({
   }, [interactive, touchGlow, touchGlowProp]);
 
   if (liquid && !continuePreview) {
+    // Native Liquid Glass in light mode: no white tint — UIKit adapts to content.
     const resolvedTint =
       tintColor ??
-      (variant === 'composer'
-        ? isDark
-          ? COMPOSER_DARK_SURFACE
-          : 'rgba(255, 255, 255, 0.45)'
-        : undefined);
+      (variant === 'composer' && isDark ? COMPOSER_DARK_SURFACE : undefined);
 
     const innerRadius = Math.max(0, borderRadius - glassInset);
     const showPerimeterHighlight = liquidBorder === 'perimeter';
@@ -234,7 +231,7 @@ export default function GlassSurface({
     overlayClassName ??
     (variant === 'composer'
       ? isDark
-        ? 'bg-[#3E4041]'
+        ? 'bg-composer'
         : 'bg-base'
       : isDark
         ? 'bg-base'

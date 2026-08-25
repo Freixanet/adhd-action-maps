@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  type LayoutChangeEvent,
+  InteractionManager,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { initialWindowMetrics, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  FadeIn,
   FadeOut,
   runOnJS,
   useAnimatedStyle,
@@ -20,68 +21,201 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   CheckCircle2,
-  Clock,
-} from 'lucide-react-native';
-import AppIcon from '../components/AppIcon';
+} from '../icons';
 import CompletionGlassButton from '../components/CompletionGlassButton';
 import CompletionOverflowMenu from '../components/CompletionOverflowMenu';
-import IncompleteTransformBanner from '../components/IncompleteTransformBanner';
-import SessionErrorBanner from '../components/SessionErrorBanner';
+import ResultNoticesZone from '../components/ResultNoticesZone';
 import MapChatSheet from '../components/MapChatSheet';
-import ReadingProgressBar, { mapContentTopPadding } from '../components/ReadingProgressBar';
+import ReadingProgressBar, {
+  READING_PROGRESS_BAR_HEIGHT,
+  READING_PROGRESS_LINE_HEIGHT,
+} from '../components/ReadingProgressBar';
 import { useMapHeaderAutoHide } from '../hooks/useMapHeaderAutoHide';
-import SourceMetadataGlassCard from '../components/SourceMetadataGlassCard';
 import StepContentBlocks from '../components/StepContentBlocks';
+import BlockReferences from '../components/BlockReferences';
+import SourceViewerSheet from '../components/SourceViewerSheet';
+import { SourceViewerProvider } from '../context/SourceViewerContext';
 import StepFooterNav from '../components/StepFooterNav';
 import StepSlideTransition from '../components/StepSlideTransition';
 import SourceCoverageCard from '../components/SourceCoverageCard';
+import EvidenceClaimChips from '../components/EvidenceClaimChips';
+import ApplicationPlanView from '../components/ApplicationPlanView';
+import ApplicationContextEditor from '../components/ApplicationContextEditor';
 import TakeawaysGlassCard from '../components/TakeawaysGlassCard';
 import KnowledgeSectionsList from '../components/KnowledgeSectionsList';
-import SectionCompleteCue from '../components/SectionCompleteCue';
-import StepSelfCheck from '../components/StepSelfCheck';
-import { stepHaptic, useAppSession } from '../context/AppSessionContext';
+import TldrBentoGrid from '../components/TldrBentoGrid';
+import NucleoCover from '../components/NucleoCover';
+import NucleoOpenCover from '../components/NucleoOpenCover';
+import { SIDEBAR_EDGE_INSET } from '../components/sidebarLayout';
+// F3: re-spec pending — NucleoVisualOverview disconnected from ResultScreen.
+// import NucleoVisualOverview from '../components/NucleoVisualOverview';
+import NucleoVisualizeWebView from '../components/NucleoVisualizeWebView';
+import VisualizeRunHost from '../visualize/VisualizeRunHost';
+import { ensureVisualizeArtifact } from '@shared/visualizeCompiler';
+import { useAppSession } from '../context/AppSessionContext';
+import { resolvePdfDocumentUrl } from '../logic/resolvePdfDocumentUrl';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
 import { useViewAllScrollSpy } from '../hooks/useViewAllScrollSpy';
-import { getIntentLabel, getSourceTypeLabel } from '@shared/categories';
-import { formatReadingProgressLabel, getReadingSectionForStep } from '@shared/nucleoPipeline';
-import type { SourceReference, StepContentBlock } from '../logic/contracts';
+import { formatReadingProgressLabel } from '@shared/nucleoPipeline';
+import { hapticToggle } from '../logic/haptics';
+// F3: re-spec pending — NucleoVisualSpec normalize unused while channel is off.
+// import { normalizeNucleoVisual } from '@shared/nucleoVisual';
+import type { SourceReference } from '../logic/contracts';
 import { debugTransitionLog } from '../logic/debugTransitionLog';
+import { ACCENT, EDITORIAL_SHEET_BG } from '@shared/uiTokens';
+import { useThemeColors } from '../context/ThemeContext';
+import EditorialPlanHost from '../editorial/EditorialPlanHost';
+import LumenCanvasHost from '../lumen/LumenCanvasHost';
+import LumenWorkspaceHeader from '../lumen/LumenWorkspaceHeader';
+import LumenKindBanner from '../lumen/LumenKindBanner';
+import LumenAskDock from '../lumen/LumenAskDock';
+import ComposerDock from '../components/ComposerDock';
+import { motion, reading, space } from '@shared/design-tokens';
+import { contentEntering } from '../motion/contentEnter';
+import type { HistoryEntry } from '@shared/history';
 
 const PREVIEW_TOP_INSET = initialWindowMetrics?.insets.top ?? 0;
+/** Ignore 1px float noise when comparing content vs viewport. */
+const SCROLL_OVERFLOW_EPSILON = 1;
+/** Suggestion chips appear when the last canvas content is in view (dock spacer ignored). */
+const ASK_SUGGESTIONS_END_THRESHOLD = 24;
 
-function parseTotalMinutes(steps: Array<{ time?: string }> | undefined): number | null {
-  if (!steps?.length) return null;
-  let total = 0;
-  let found = false;
-  for (const step of steps) {
-    const match = String(step.time || '').match(/(\d+)\s*min/i);
-    if (match) {
-      total += parseInt(match[1] ?? '0', 10);
-      found = true;
-    }
-  }
-  return found ? total : null;
+function isAskScrollAtEnd(
+  y: number,
+  contentH: number,
+  layoutH: number,
+  dockSpacer: number
+): boolean {
+  if (layoutH <= 0) return false;
+  if (contentH <= layoutH + 1) return true;
+  return y + layoutH >= contentH - dockSpacer - ASK_SUGGESTIONS_END_THRESHOLD;
+}
+/** Chrome toggle must be a still tap — anything draggier belongs to the page swipe. */
+const CHROME_TAP_MAX_DISTANCE = 8;
+const CHROME_TAP_MAX_DURATION_MS = 300;
+
+function useScrollOnlyWhenNeeded(scrollableOverhead = 0) {
+  const [viewportH, setViewportH] = useState(0);
+  const [contentH, setContentH] = useState(0);
+  // Top/bottom padding that only exists to align the resting layout must not
+  // count as overflow — otherwise Idea central always enables scroll.
+  const needsScroll =
+    viewportH > 0 && contentH - scrollableOverhead > viewportH + SCROLL_OVERFLOW_EPSILON;
+
+  const onViewportLayout = useCallback((event: LayoutChangeEvent) => {
+    setViewportH(event.nativeEvent.layout.height);
+  }, []);
+
+  const onContentSizeChange = useCallback((_width: number, height: number) => {
+    setContentH(height);
+  }, []);
+
+  return { needsScroll, onViewportLayout, onContentSizeChange };
+}
+
+type AdaptiveStepScrollProps = {
+  scrollRef?: React.Ref<Animated.ScrollView>;
+  historyOpen: boolean;
+  onOuterLayout?: (event: LayoutChangeEvent) => void;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onPressChrome: () => void;
+  children: React.ReactNode;
+  /** Gap that scrolls with the content, so the cut-off stays at the header edge. */
+  contentTopInset?: number;
+};
+
+/** Step-mode page scroll: disabled (no bounce) when the page fits the viewport. */
+function AdaptiveStepScroll({
+  scrollRef,
+  historyOpen,
+  onOuterLayout,
+  onScroll,
+  onPressChrome,
+  children,
+  contentTopInset = 0,
+}: AdaptiveStepScrollProps) {
+  // Resting alignment padding (top inset + content bottom pad) is not overflow.
+  const scrollableOverhead = contentTopInset + 16;
+  const { needsScroll, onViewportLayout, onContentSizeChange } =
+    useScrollOnlyWhenNeeded(scrollableOverhead);
+
+  // A deliberate tap, not the tail of a page swipe: Pressable fires even after
+  // drags that never reach the swipe threshold.
+  const chromeTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDistance(CHROME_TAP_MAX_DISTANCE)
+        .maxDuration(CHROME_TAP_MAX_DURATION_MS)
+        .onEnd((_event, success) => {
+          'worklet';
+          if (success) runOnJS(onPressChrome)();
+        }),
+    [onPressChrome]
+  );
+
+  return (
+    <Animated.ScrollView
+      ref={scrollRef}
+      style={styles.adaptiveScroll}
+      contentContainerStyle={[
+        styles.adaptiveScrollContent,
+        contentTopInset ? { paddingTop: contentTopInset } : null,
+      ]}
+      keyboardShouldPersistTaps="handled"
+      nestedScrollEnabled
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      scrollEnabled={!historyOpen && needsScroll}
+      bounces={needsScroll}
+      alwaysBounceVertical={needsScroll}
+      overScrollMode={needsScroll ? 'auto' : 'never'}
+      onLayout={(event) => {
+        onViewportLayout(event);
+        onOuterLayout?.(event);
+      }}
+      onContentSizeChange={onContentSizeChange}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+    >
+      <GestureDetector gesture={chromeTapGesture}>
+        <View
+          style={[
+            styles.readingColumn,
+            styles.stepReadingColumn,
+            styles.tapChromeTarget,
+          ]}
+        >
+          {children}
+        </View>
+      </GestureDetector>
+    </Animated.ScrollView>
+  );
 }
 
 function ReferencesChips({ references }: { references?: SourceReference[] }) {
-  if (!references?.length) return null;
+  return <BlockReferences references={references} />;
+}
+
+/** Extra clearance under the status bar / Dynamic Island on Idea central. */
+const MAP_COVER_ISLAND_EXTRA = 4;
+
+function ResultMapCover({ entry }: { entry: HistoryEntry }) {
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const contentInsetTop = insets.top + MAP_COVER_ISLAND_EXTRA;
+  // 16:9 art plane, extended downward by the top safe-area so the illustration
+  // clears the Dynamic Island while the wash still bleeds edge-to-edge.
+  const artHeight = Math.round(windowWidth * (9 / 16));
+  const totalHeight = artHeight + contentInsetTop;
 
   return (
-    <View className="mt-4 flex-row flex-wrap gap-2">
-      {references.slice(0, 3).map((reference, idx) => (
-        <View
-          key={`${reference.label}-${reference.locator}-${idx}`}
-          className="max-w-full flex-row items-center gap-1.5 rounded-full bg-white/6 px-3 py-1.5"
-          style={{ flexShrink: 1 }}
-        >
-          <Text className="text-xs text-secondary shrink" numberOfLines={1}>
-            {reference.label}
-          </Text>
-          <Text className="text-xs text-body shrink" numberOfLines={1}>
-            {reference.locator}
-          </Text>
-        </View>
-      ))}
+    <View style={[styles.mapCover, { width: windowWidth, height: totalHeight }]}>
+      <NucleoCover
+        entry={entry}
+        width={windowWidth}
+        height={totalHeight}
+        contentInsetTop={contentInsetTop}
+      />
     </View>
   );
 }
@@ -102,8 +236,20 @@ export default function ResultScreen({
   onHandoffLayout,
 }: ResultScreenProps = {}) {
   const session = useAppSession();
+  const colors = useThemeColors();
   const { data } = session;
+  const activeHistoryEntry = useMemo(
+    () =>
+      session.historyStore.entries.find(
+        (entry) => entry.id === session.historyStore.activeId
+      ) ?? null,
+    [session.historyStore.activeId, session.historyStore.entries]
+  );
   const safeInsets = useSafeAreaInsets();
+  const [askFocused, setAskFocused] = useState(false);
+  const [askDockHeight, setAskDockHeight] = useState(72);
+  const [askSuggestionsVisible, setAskSuggestionsVisible] = useState(false);
+  const askScrollMetricsRef = React.useRef({ y: 0, contentH: 0, layoutH: 0 });
   const handoffReportedRef = React.useRef(false);
   const rootLaidOutRef = React.useRef(false);
 
@@ -131,14 +277,28 @@ export default function ResultScreen({
   }, [onHandoffLayout, previewMode]);
 
   const scrollProgress = useSharedValue(0);
+  const {
+    needsScroll: viewAllNeedsScroll,
+    onViewportLayout: onViewAllViewportLayout,
+    onContentSizeChange: onViewAllContentSizeChange,
+  } = useScrollOnlyWhenNeeded();
 
-  const hideProgressLine =
-    (!session.viewAll && !session.isComplete && session.currentStep === 0) ||
-    session.isComplete;
+  const syncAskSuggestions = useCallback(() => {
+    const { y, contentH, layoutH } = askScrollMetricsRef.current;
+    setAskSuggestionsVisible(isAskScrollAtEnd(y, contentH, layoutH, askDockHeight));
+  }, [askDockHeight]);
 
-  const mapHeaderResetKey = session.viewAll
-    ? `${session.viewAll}:${session.isComplete}`
-    : `${session.viewAll}:${session.currentStep}:${session.isComplete}`;
+  useEffect(() => {
+    syncAskSuggestions();
+  }, [syncAskSuggestions]);
+
+  const isIntroStep =
+    !session.viewAll && !session.isComplete && session.currentStep === 0;
+  const isLumenCanvas = Boolean(data?.lumenCanvas);
+  const hideProgressLine = isLumenCanvas || isIntroStep || session.isComplete;
+
+  // Do not include currentStep — chrome hide should persist across step changes.
+  const mapHeaderResetKey = `${session.viewAll}:${session.isComplete}`;
 
   const syncReadingStep = useCallback(
     (step: number) => session.syncReadingStep(step),
@@ -164,13 +324,48 @@ export default function ResultScreen({
     [handleScroll, session.viewAll]
   );
 
-  const { scrollRef, headerVisible, handleMapMetaAnchorLayout, scrollHandler } = useMapHeaderAutoHide({
+  const {
+    scrollRef,
+    headerVisible,
+    handleMapMetaAnchorLayout,
+    scrollHandler,
+    preserveBottomAfterFooterReveal,
+  } = useMapHeaderAutoHide({
     hideProgressLine,
     mapKey: session.historyStore.activeId ?? 'none',
     resetKey: mapHeaderResetKey,
     scrollProgress,
     onScrollReport: reportScrollSpy,
   });
+
+  const resumeTargetRef = React.useRef<{
+    mapId: string;
+    step: number;
+  } | null>(null);
+  const resumeTargetKeyRef = React.useRef('');
+  const activeMapId = session.historyStore.activeId ?? 'none';
+  const resumeTargetKey = `${activeMapId}:${session.viewAll}:${session.resumeBannerVisible}`;
+  if (resumeTargetKeyRef.current !== resumeTargetKey) {
+    resumeTargetKeyRef.current = resumeTargetKey;
+    resumeTargetRef.current =
+      session.viewAll && session.resumeBannerVisible
+        ? { mapId: activeMapId, step: session.currentStep }
+        : null;
+  }
+
+  const registerResumeSectionLayout = useCallback(
+    (step: number, event: LayoutChangeEvent) => {
+      registerSectionLayout(step, event);
+      const target = resumeTargetRef.current;
+      if (!target || target.mapId !== activeMapId || target.step !== step) return;
+      const y = Math.max(0, event.nativeEvent.layout.y);
+      resumeTargetRef.current = null;
+      InteractionManager.runAfterInteractions(() => {
+        scrollRef.current?.scrollTo({ y, animated: false });
+      });
+    },
+    [activeMapId, registerSectionLayout, scrollRef]
+  );
 
   useEffect(() => {
     if (!session.viewAll) resetSpy();
@@ -182,7 +377,14 @@ export default function ResultScreen({
     }
   }, [scrollProgress, session.viewAll]);
 
-  const totalMinutes = useMemo(() => parseTotalMinutes(data?.steps), [data?.steps]);
+  // F3: re-spec pending — classic NucleoVisualSpec overview off.
+  const openVisualStep = useCallback(
+    (stepId: string) => {
+      const stepIndex = data?.steps.findIndex((step) => step.id === stepId) ?? -1;
+      if (stepIndex >= 0) session.goToStep(stepIndex + 1, true);
+    },
+    [data?.steps, session]
+  );
 
   const { reduceMotion } = useGlassAccessibility();
   const completionCheckScale = useSharedValue(1);
@@ -227,14 +429,7 @@ export default function ResultScreen({
     transform: [{ scale: completionCheckScale.value }],
   }));
 
-  const remainingMinutes = useMemo(() => {
-    if (session.viewAll || session.isComplete || session.currentStep < 2) return null;
-    return parseTotalMinutes(data?.steps?.slice(session.currentStep - 1));
-  }, [data?.steps, session.currentStep, session.isComplete, session.viewAll]);
-  const remainingLabel =
-    remainingMinutes && remainingMinutes > 0 ? `~${remainingMinutes} min restantes` : undefined;
-
-  const isStepMode = !session.isComplete && !session.viewAll;
+  const isStepMode = !isLumenCanvas && !session.isComplete && !session.viewAll;
   const swipeEnabled = isStepMode && !session.historyOpen && !session.isStreamGenerating;
 
   const navDir = useSharedValue(1);
@@ -243,7 +438,7 @@ export default function ResultScreen({
 
   useEffect(() => {
     canPrev.value = swipeEnabled && session.currentStep > 0;
-    canNext.value = swipeEnabled && session.currentStep < session.totalSteps + 1;
+    canNext.value = swipeEnabled && session.currentStep < session.totalSteps;
   }, [canNext, canPrev, session.currentStep, session.totalSteps, swipeEnabled]);
 
   const commitStep = useCallback(
@@ -259,6 +454,14 @@ export default function ResultScreen({
     if (!session.canReverseContinueTransition()) return;
     session.startReverseContinueTransition();
   }, [previewMode, session]);
+
+  const openAsk = useCallback(() => {
+    if (!session.isPro) {
+      session.openPaywall();
+      return;
+    }
+    session.setChatOpen(true);
+  }, [session]);
 
   const handleRootLayout = useCallback(
     (event: import('react-native').LayoutChangeEvent) => {
@@ -289,7 +492,7 @@ export default function ResultScreen({
   const backHomeGesture = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!previewMode)
+        .enabled(!previewMode && !isLumenCanvas)
         .activeOffsetX(24)
         .failOffsetY([-24, 24])
         .onTouchesDown((event, stateManager) => {
@@ -305,15 +508,15 @@ export default function ResultScreen({
             runOnJS(tryReverseContinue)();
           }
         }),
-    [previewMode, tryReverseContinue]
+    [isLumenCanvas, previewMode, tryReverseContinue]
   );
 
   const swipeGesture = useMemo(
     () =>
       Gesture.Pan()
         .enabled(swipeEnabled)
-        .activeOffsetX([-15, 15])
-        .failOffsetY([-20, 20])
+        .activeOffsetY([-28, 28])
+        .failOffsetX([-14, 14])
         .onTouchesDown((event, stateManager) => {
           'worklet';
           const touch = event.allTouches[0];
@@ -323,14 +526,21 @@ export default function ResultScreen({
         })
         .onEnd((event) => {
           'worklet';
-          const { translationX, velocityX } = event;
-          if ((translationX < -40 || velocityX < -500) && canNext.value) {
+          const { translationY, velocityY } = event;
+          // Swipe up → next page; swipe down → previous.
+          if ((translationY < -40 || velocityY < -500) && canNext.value) {
             runOnJS(commitStep)(1);
-          } else if ((translationX > 40 || velocityX > 500) && canPrev.value) {
+          } else if ((translationY > 40 || velocityY > 500) && canPrev.value) {
             runOnJS(commitStep)(-1);
           }
         }),
     [canNext, canPrev, commitStep, swipeEnabled]
+  );
+
+  const verticalScrollGesture = useMemo(() => Gesture.Native(), []);
+  const stepGesture = useMemo(
+    () => Gesture.Simultaneous(swipeGesture, verticalScrollGesture),
+    [swipeGesture, verticalScrollGesture]
   );
 
   const contentModeKey = useMemo(() => {
@@ -354,55 +564,103 @@ export default function ResultScreen({
     if (isStepMode) {
       headerVisible.value = true;
     }
-  }, [headerVisible, isStepMode, session.currentStep]);
-
-  const toggleStepHeader = useCallback(() => {
-    if (!isStepMode) return;
-    headerVisible.value = !headerVisible.value;
-    stepHaptic();
   }, [headerVisible, isStepMode]);
 
-  const stepHeaderVisibleTopPadding = mapContentTopPadding(hideProgressLine);
-  const stepHeaderHiddenTopPadding = 20;
-  const stepPageChromeStyle = useAnimatedStyle(() => ({
-    paddingTop: withTiming(
-      headerVisible.value ? stepHeaderVisibleTopPadding : stepHeaderHiddenTopPadding,
-      { duration: reduceMotion ? 0 : 220 }
-    ),
-  }), [reduceMotion, stepHeaderHiddenTopPadding, stepHeaderVisibleTopPadding]);
+  const toggleStepFooterChrome = useCallback(() => {
+    if (!isStepMode) return;
+    const next = !headerVisible.value;
+    headerVisible.value = next;
+    hapticToggle(next);
+  }, [headerVisible, isStepMode]);
+
+  const handleStepFooterRevealLayout = useCallback(
+    (height: number) => {
+      preserveBottomAfterFooterReveal(height);
+    },
+    [preserveBottomAfterFooterReveal]
+  );
+
+  // No fixed header band. Chrome floats over the page; only scroll content
+  // insets keep copy readable under the button (and scroll away with the page).
+  const stepScrollTopInset = isIntroStep
+    ? 0
+    : safeInsets.top + READING_PROGRESS_BAR_HEIGHT + 10;
+
+  const floatingChromeContentPad =
+    safeInsets.top + READING_PROGRESS_BAR_HEIGHT + 12;
 
   if (!data) return null;
 
-  const isIntroStep = !session.isComplete && !session.viewAll && session.currentStep === 0;
+  const DEV = false;
   const isStudyDocBeta = data.generationMode === 'study-doc-beta';
+  const isVisualizeHtmlTest = data.generationMode === 'visualize-html-test';
+  const isEditorialV1 = data.generationMode === 'editorial-v1' && Boolean(data.editorialPlan);
+  const isLumenHost = Boolean(data.lumenCanvas);
+  // Editorial owns the whole reading surface — never application / classic steps.
+  const showApplicationPlan =
+    !isEditorialV1 && !isLumenHost && Boolean(data.application && data.intent === 'apply');
+  const visualizeArtifact = isVisualizeHtmlTest
+    ? ensureVisualizeArtifact(data.visualizeArtifact, {
+        coreIdea: data.coreIdea,
+        tldr: data.tldr,
+        visualization: data.visualization,
+      })
+    : null;
+  /** Shadow opt-in: prefer v2 RN render when persisted run exists. */
+  const visualizeRun = isVisualizeHtmlTest ? data.visualizeRun ?? null : null;
+
+  const renderVisualOverview = (options?: { compact?: boolean; showTitle?: boolean }) => {
+    // F3: re-spec pending — only Visualize compiler test path; never NucleoVisualOverview.
+    if (isVisualizeHtmlTest && visualizeRun) {
+      return <VisualizeRunHost run={visualizeRun} />;
+    }
+    if (isVisualizeHtmlTest && visualizeArtifact) {
+      return (
+        <NucleoVisualizeWebView
+          artifact={visualizeArtifact}
+          compact={options?.compact}
+          onOpenStep={openVisualStep}
+        />
+      );
+    }
+    return null;
+  };
+
+  const renderTldrList = () => {
+    const items = data.tldr ?? [];
+    if (!items.length) return null;
+    return (
+      <View className="mt-6">
+        <TldrBentoGrid items={items} />
+      </View>
+    );
+  };
 
   const renderMapMeta = () => (
-    <View onLayout={handleMapMetaAnchorLayout} collapsable={false} className="mb-10">
+    <View
+      onLayout={handleMapMetaAnchorLayout}
+      collapsable={false}
+      className="mb-20"
+    >
       <View className="flex-row items-center gap-2">
-        <Text className="text-xs font-bold uppercase tracking-[0.16em] text-secondary text-body shrink">
+        <Text className="text-xs font-bold uppercase text-secondary text-body shrink">
           {data.title}
         </Text>
-        {isStudyDocBeta ? (
+        {DEV && isStudyDocBeta ? (
           <View className="rounded-full bg-accent/12 px-2 py-0.5">
-            <Text className="text-[10px] font-bold uppercase tracking-[0.12em] text-accent">
+            <Text className="text-micro font-bold uppercase text-accent">
               StudyDoc beta
             </Text>
           </View>
         ) : null}
+        {isVisualizeHtmlTest ? (
+          <View className="rounded-full bg-accent/12 px-2 py-0.5">
+            <Text className="text-micro font-bold uppercase text-accent">
+              Visualize compiler
+            </Text>
+          </View>
+        ) : null}
       </View>
-      <Text className="mt-2 text-xs text-secondary">
-        {[
-          getSourceTypeLabel(
-            session.historyStore.entries.find(
-              (entry) => entry.id === session.historyStore.activeId
-            )?.sourceType ?? 'text',
-            data.sourceMetadata?.kind
-          ),
-          data.intent ? getIntentLabel(data.intent) : null,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      </Text>
     </View>
   );
 
@@ -411,127 +669,36 @@ export default function ResultScreen({
     options: { includeTldr?: boolean } = {}
   ) => {
     const includeTldr = options.includeTldr ?? true;
-
-    return (
-    <Pressable
-      disabled={!interactive}
-      onPress={interactive ? () => session.goToStep(0, true) : undefined}
-      className={interactive ? VIEW_ALL_SECTION_DIVIDER : 'mb-8'}
-    >
-      <View className="flex-row items-center flex-wrap gap-x-3 gap-y-2 mb-4">
-        <View className="flex-row items-center gap-2">
-          <AppIcon size={20} />
-          <Text className="text-sm font-bold tracking-widest uppercase text-primary">
+    const ideaCentral = (
+      <>
+        {activeHistoryEntry ? <ResultMapCover entry={activeHistoryEntry} /> : null}
+        <View className="mb-4">
+          <Text className="text-body font-extrabold uppercase tracking-widest text-primary">
             Idea central
           </Text>
         </View>
-        {!session.isComplete && totalMinutes !== null ? (
-          <View className="flex-row items-center gap-1.5">
-            <Clock size={16} color="#4338ca" />
-            <Text className="text-sm font-semibold text-accent">
-              ~{totalMinutes} min
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <Text className="text-2xl font-bold text-primary leading-9">{data.coreIdea}</Text>
-      {data.coreSupport ? (
-        <Text className="mt-4 text-lg leading-7 text-body text-secondary">{data.coreSupport}</Text>
-      ) : null}
-
-      {data.sourceMetadata ? (
-        <SourceMetadataGlassCard sourceMetadata={data.sourceMetadata} />
-      ) : null}
-
-      {includeTldr && data.tldr?.length ? (
-        <View className="mt-8 pt-8 border-t border-neutral-200 border-white/10">
-          <Text className="text-xs font-bold uppercase tracking-widest text-secondary mb-6">
-            En 60 segundos
-          </Text>
-          {data.tldr.map((item, i) => (
-            <View key={i} className="flex-row gap-4 items-start mb-6">
-              <View className="w-8 h-8 rounded-full border-2 border-neutral-200 border-white/10 items-center justify-center">
-                <Text className="text-sm font-bold text-secondary">{i + 1}</Text>
-              </View>
-              <View className="flex-1">
-                <Text className="text-lg font-bold text-primary mb-2">
-                  {item.title}
-                </Text>
-                <Text className="text-base leading-6 text-body">{item.desc}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : null}
-    </Pressable>
+        <Text className="text-lg leading-8 text-primary">{data.coreIdea}</Text>
+      </>
     );
-  };
-
-  const renderHighlightCard = (
-    label: string,
-    text: string,
-    kind: StepContentBlock['kind'] = 'info'
-  ) => {
-    const accent =
-      kind === 'alert'
-        ? '#DC2626'
-        : kind === 'action'
-          ? '#0F766E'
-          : '#4338CA';
 
     return (
-      <View className="rounded-card overflow-hidden bg-surface p-4" style={styles.fixedHighlightCard}>
-        <View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: accent, opacity: 0.06 }]}
-        />
-        <Text
-          className="text-[13px] font-semibold uppercase tracking-[0.08em]"
-          style={{ color: accent }}
-        >
-          {label}
-        </Text>
-        <Text className="mt-2 text-[17px] leading-[25px] text-body">{text}</Text>
-      </View>
+    <View className={interactive ? VIEW_ALL_SECTION_DIVIDER : undefined}>
+      {ideaCentral}
+      {interactive ? renderMapMeta() : null}
+
+      {includeTldr && (visualizeRun || visualizeArtifact || (data.tldr?.length ?? 0) > 0) ? (
+        <View className="mt-10">
+          {!isVisualizeHtmlTest ? (
+            <Text className="text-body font-extrabold uppercase tracking-widest text-primary">
+              En 60 segundos
+            </Text>
+          ) : null}
+          {isVisualizeHtmlTest ? renderVisualOverview({ compact: true }) : renderTldrList()}
+        </View>
+      ) : null}
+    </View>
     );
   };
-
-  const renderTldrPage = () => (
-    <View style={styles.fixedPage}>
-      <View>
-        <Text className="text-sm font-bold uppercase tracking-widest text-accent">
-          En 60 segundos
-        </Text>
-        <Text className="mt-3 text-2xl font-bold text-primary leading-9">
-          El mapa antes de entrar en los pasos
-        </Text>
-      </View>
-
-      <View style={styles.fixedTldrList}>
-        {data.tldr?.map((item, i) => (
-          <View key={`${item.title}-${i}`} className="flex-row gap-4 items-start">
-            <View className="w-8 h-8 rounded-full border-2 border-neutral-200 border-white/10 items-center justify-center">
-              <Text className="text-sm font-bold text-secondary">{i + 1}</Text>
-            </View>
-            <View className="flex-1">
-              <Text className="text-lg font-bold text-primary mb-1" numberOfLines={2}>
-                {item.title}
-              </Text>
-              <Text className="text-[15px] leading-[22px] text-body" numberOfLines={3}>
-                {item.desc}
-              </Text>
-            </View>
-          </View>
-        ))}
-      </View>
-
-      {renderHighlightCard(
-        'Idea clave',
-        data.coreSupport || data.coreIdea,
-        'info'
-      )}
-    </View>
-  );
 
   const renderStep = (stepIndex: number, interactive = false, isLastStep = false) => {
     const step = data.steps[stepIndex - 1];
@@ -547,28 +714,13 @@ export default function ResultScreen({
       session.totalSteps,
       data.readingSections ?? null
     );
-    const completedSection =
-      session.sectionCompleteCue != null
-        ? getReadingSectionForStep(session.sectionCompleteCue, data.readingSections ?? null)
-        : null;
-    const hasCallout = step.content?.some(
-      (block) => String(block.type || '').toLowerCase() === 'callout'
-    );
 
     return (
-      <Pressable
+      <View
         key={step.id || stepIndex}
-        disabled={!interactive}
-        onPress={interactive ? () => session.goToStep(stepIndex + 1, true) : undefined}
         className={stepDividerClass}
-        style={!interactive ? styles.fixedPage : undefined}
+        style={!interactive ? styles.stepPage : undefined}
       >
-        {!interactive && session.sectionCompleteCue != null ? (
-          <SectionCompleteCue
-            visible
-            sectionTitle={completedSection?.title}
-          />
-        ) : null}
         <View className="flex-row flex-wrap items-center gap-2 mb-4">
           <Text className="text-sm font-bold uppercase tracking-widest text-accent dark:text-accent">
             {stepLabel}
@@ -577,31 +729,24 @@ export default function ResultScreen({
         </View>
         <Text
           className="text-2xl font-bold text-primary leading-9 mb-4"
-          numberOfLines={!interactive ? 2 : undefined}
         >
           {step.title}
         </Text>
         {step.purpose ? (
           <Text
-            className="text-[17px] leading-[26px] text-body mb-4"
-            numberOfLines={!interactive ? 3 : undefined}
+            className="text-input text-body mb-4"
           >
             {step.purpose}
           </Text>
         ) : null}
-        {!interactive && !hasCallout && (step.purpose || step.content?.[0]?.text) ? (
-          renderHighlightCard(
-            'Idea clave',
-            step.purpose || step.content?.[0]?.text || '',
-            'info'
-          )
-        ) : null}
-        <View style={!interactive ? styles.fixedStepBody : undefined}>
+        {/* F3: re-spec pending — step.visualization / NucleoVisualOverview disconnected.
+            Idea clave: no fallback from purpose (was duplicating the paragraph above).
+            Real callouts render via StepContentBlocks only. */}
+        <View>
           <StepContentBlocks blocks={step.content} />
         </View>
-        {step.selfCheck ? <StepSelfCheck question={step.selfCheck} /> : null}
         <ReferencesChips references={step.references} />
-      </Pressable>
+      </View>
     );
   };
 
@@ -623,49 +768,47 @@ export default function ResultScreen({
               onPress={() => session.setEssentialsReview(false)}
             />
           </View>
-          <View style={styles.completionActionFullWidthSlot}>
-            <CompletionGlassButton
-              label="Volver al inicio"
-              onPress={() => {
-                session.setEssentialsReview(false);
-                session.goToStep(0);
-              }}
-            />
-          </View>
         </View>
       </View>
     );
   };
 
-  const renderCompletionActions = () => (
-    <View className="mt-10 flex-row flex-wrap gap-3" style={styles.completionActions}>
-      <View style={styles.completionActionFullWidthSlot}>
-        <CompletionGlassButton
-          label="Núcleo"
-          variant="accent"
-          onPress={session.handleNewMap}
-        />
-      </View>
-      <View className="flex-row gap-3 w-full items-center">
-        <View style={styles.completionActionSlot}>
+  const renderCompletionActions = () => {
+    return (
+      <View className="mt-10 gap-3" style={styles.completionActions}>
+        <View className="flex-row gap-3 w-full items-center">
+          <View style={styles.completionActionSlot}>
+            <CompletionGlassButton
+              label="Repasar lo esencial"
+              onPress={() => session.setEssentialsReview(true)}
+            />
+          </View>
+          <View style={styles.completionActionSlot}>
+            <CompletionGlassButton label="Preguntar" onPress={openAsk} />
+          </View>
+        </View>
+        <View style={styles.completionActionFullWidthSlot}>
           <CompletionGlassButton
-            label="Repasar lo esencial"
-            onPress={() => session.setEssentialsReview(true)}
+            label="Guardar ficha PDF"
+            onPress={() => void session.handleDownloadPdf()}
+            disabled={!session.historyStore.activeId || session.isPdfGenerating}
           />
         </View>
-        <CompletionOverflowMenu
-            onExportPdf={() => void session.handleDownloadPdf()}
-            onAsk={() => {
-              session.setChatOpen(true);
-              stepHaptic();
-            }}
-            onViewAll={session.enterCompletedViewAll}
-            pdfDisabled={!session.historyStore.activeId}
-            pdfLoading={session.isPdfGenerating}
+        <View style={styles.completionActionFullWidthSlot}>
+          <CompletionGlassButton
+            label="Nuevo Núcleo"
+            variant="accent"
+            onPress={session.handleNewMap}
           />
+        </View>
+        <View className="w-full items-end">
+          <CompletionOverflowMenu
+            onViewAll={session.enterCompletedViewAll}
+          />
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderCompletionBody = (plainTakeaways = true) => (
     <>
@@ -679,6 +822,7 @@ export default function ResultScreen({
         knowledgeSectionsCount={data.knowledgeSections?.length}
         plain
       />
+      <EvidenceClaimChips claims={data.evidence?.claims} links={data.evidence?.links} />
       <KnowledgeSectionsList sections={data.knowledgeSections} />
     </>
   );
@@ -687,13 +831,13 @@ export default function ResultScreen({
     <View className="py-6">
       <View className="flex-row items-center gap-2 mb-4">
         <Animated.View style={completionCheckStyle}>
-          <CheckCircle2 size={16} color="#8B8FF5" />
+          <CheckCircle2 size={16} color={ACCENT} filled />
         </Animated.View>
         <Text className="text-xs font-bold uppercase tracking-widest text-secondary">Núcleo completado</Text>
       </View>
       {ceremonyTitleReady ? (
         <Animated.Text
-          entering={FadeIn.duration(reduceMotion ? 150 : 250)}
+          entering={reduceMotion ? undefined : contentEntering()}
           className="text-3xl font-extrabold text-primary"
         >
           {data.completionCard?.title || 'Has terminado esta lectura'}
@@ -725,7 +869,7 @@ export default function ResultScreen({
       })}
       <View className={VIEW_ALL_COMPLETION_SECTION}>
         <View className="flex-row items-center gap-2 mb-4">
-          <CheckCircle2 size={16} color="#8B8FF5" />
+          <CheckCircle2 size={16} color={ACCENT} filled />
           <Text className="text-xs font-bold uppercase tracking-widest text-secondary">Núcleo completado</Text>
         </View>
         <Text className="text-3xl font-extrabold text-primary">
@@ -740,7 +884,7 @@ export default function ResultScreen({
   const renderViewAllCompletion = () => (
     <View className={VIEW_ALL_COMPLETION_SECTION}>
       <View className="flex-row items-center gap-2 mb-4">
-        <CheckCircle2 size={16} color="#8B8FF5" />
+        <CheckCircle2 size={16} color={ACCENT} filled />
         <Text className="text-xs font-bold uppercase tracking-widest text-secondary">Núcleo completado</Text>
       </View>
       <Text className="text-3xl font-extrabold text-primary">
@@ -754,7 +898,7 @@ export default function ResultScreen({
         <CompletionGlassButton
           label="Completar Núcleo"
           onPress={session.handleCompleteMap}
-          icon={<CheckCircle2 size={16} color="#fff" />}
+          systemImage="checkmark.circle.fill"
           variant="accent"
         />
       </View>
@@ -762,9 +906,35 @@ export default function ResultScreen({
   );
 
   const renderStepModeReading = (step: number) => {
-    if (step === 0) return renderResumen(false, { includeTldr: false });
-    if (step === 1) return renderTldrPage();
-    return renderStep(step - 1, false);
+    if (step === 0) return renderResumen(false, { includeTldr: true });
+    return renderStep(step, false);
+  };
+
+  const renderAdaptiveStepPage = (step: number) => {
+    if (step === 0) {
+      return (
+        <NucleoOpenCover
+          entry={activeHistoryEntry}
+          title={data.title}
+          subtitle={data.coreIdea}
+          modelUsed={data.modelUsed}
+          showDevModel={session.devToolsEnabled}
+          onExplore={() => session.goToStep(1)}
+        />
+      );
+    }
+    return (
+      <AdaptiveStepScroll
+        scrollRef={step === session.currentStep ? scrollRef : undefined}
+        historyOpen={session.historyOpen}
+        onOuterLayout={step === session.currentStep ? handleScrollViewLayout : undefined}
+        onScroll={step === session.currentStep ? scrollHandler : undefined}
+        onPressChrome={toggleStepFooterChrome}
+        contentTopInset={stepScrollTopInset}
+      >
+        {renderStepModeReading(step)}
+      </AdaptiveStepScroll>
+    );
   };
 
   const renderModeBody = () => {
@@ -777,7 +947,7 @@ export default function ResultScreen({
     if (session.viewAll) {
       return (
         <>
-          <View onLayout={(event) => registerSectionLayout(0, event)}>
+          <View onLayout={(event) => registerResumeSectionLayout(0, event)}>
             {renderResumen(true)}
           </View>
           {data.steps.map((_, idx) => {
@@ -786,7 +956,7 @@ export default function ResultScreen({
             return (
               <View
                 key={data.steps[idx]?.id ?? stepIndex}
-                onLayout={(event) => registerSectionLayout(stepIndex, event)}
+                onLayout={(event) => registerResumeSectionLayout(stepIndex, event)}
               >
                 {renderStep(stepIndex, true, isLastStep)}
               </View>
@@ -800,88 +970,211 @@ export default function ResultScreen({
     return renderStepModeReading(session.currentStep);
   };
 
-  const resultShell = (
+  const resultShell = isEditorialV1 && data.editorialPlan ? (
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: EDITORIAL_SHEET_BG }}
+      edges={['bottom']}
+    >
+      <EditorialPlanHost plan={data.editorialPlan} onClose={session.closeEditorialDemo} />
+    </SafeAreaView>
+  ) : (
     <GestureDetector gesture={backHomeGesture}>
-      <View className="flex-1 relative overflow-hidden">
+      <View className="flex-1 relative overflow-hidden bg-base">
+      {isLumenHost ? null : (
       <ReadingProgressBar
         viewAll={session.viewAll}
-        isComplete={session.isComplete}
         stepProgress={session.stepProgress}
-        progressLabel={session.progressLabel}
         scrollProgressShared={scrollProgress}
-        headerVisibleShared={headerVisible}
         hideProgressLine={hideProgressLine}
-        remainingLabel={remainingLabel}
+        topInset={safeInsets.top}
         onToggleSidebar={() => session.toggleHistoryDrawer()}
-        onToggleViewMode={session.isComplete ? undefined : session.toggleViewMode}
+      />
+      )}
+
+      <ResultNoticesZone
+        hideProgressLine={hideProgressLine}
+        reserveHeaderSpace={false}
       />
 
-      <SessionErrorBanner className="px-5" />
-
-      <IncompleteTransformBanner />
-
-      <View className="flex-1">
-        {isStepMode ? (
-          <GestureDetector gesture={swipeGesture}>
-            <Animated.View className="flex-1 px-5" style={stepPageChromeStyle}>
-              <Pressable className="flex-1" onPress={toggleStepHeader}>
-                {renderMapMeta()}
-                <Animated.View style={[styles.readingColumn, styles.fixedReadingColumn]}>
-                  {showStepSlide ? (
-                    <StepSlideTransition step={session.currentStep} reduceMotion={reduceMotion}>
-                      {renderStepModeReading}
-                    </StepSlideTransition>
-                  ) : (
-                    <Animated.View
-                      key={contentModeKey}
-                      entering={
-                        suppressStepTransitions || session.isStreamGenerating
-                          ? undefined
-                          : FadeIn.duration(reduceMotion ? 150 : 220)
-                      }
-                      exiting={
-                        suppressStepTransitions
-                          ? undefined
-                          : FadeOut.duration(reduceMotion ? 150 : 180)
-                      }
-                    >
-                      {renderModeBody()}
-                    </Animated.View>
-                  )}
+      <View className="flex-1 bg-base">
+        {showApplicationPlan && data.application ? (
+          <Animated.ScrollView
+            className="flex-1"
+            contentContainerStyle={{
+              paddingTop: floatingChromeContentPad,
+              paddingBottom: 48,
+              paddingHorizontal: SIDEBAR_EDGE_INSET,
+            }}
+            showsVerticalScrollIndicator={false}
+          >
+            <ApplicationPlanView
+              application={data.application}
+              onStartAction={() => {
+                void session.startActiveApplicationAction();
+              }}
+              onEditContext={() => {
+                session.openApplicationContextEditor();
+              }}
+              onSubmitReview={({
+                outcome,
+                privateNote,
+                failedAssumptionId,
+                wantsAdjust,
+                wantsRepeat,
+              }) => {
+                void session.submitActiveApplicationReview({
+                  outcome,
+                  privateNote,
+                  failedAssumptionId,
+                  wantsAdjust,
+                  wantsRepeat,
+                });
+              }}
+            />
+            <ApplicationContextEditor
+              visible={session.applicationContextEditorOpen}
+              initial={
+                data.application.context ?? session.applicationContext
+              }
+              assumptions={data.application.plan.assumptions}
+              onClose={session.closeApplicationContextEditor}
+              onSave={(ctx, assumptionEdits) => {
+                void session.replanActiveApplication(ctx, assumptionEdits);
+              }}
+              title="Editar contexto"
+            />
+          </Animated.ScrollView>
+        ) : isLumenHost && data.lumenCanvas ? (
+          <>
+            <LumenWorkspaceHeader
+              title={data.lumenCanvas.title}
+              topInset={safeInsets.top}
+            />
+            <Animated.ScrollView
+              ref={scrollRef}
+              className="flex-1"
+              contentContainerStyle={{
+                paddingBottom: space.section.gap + space.stack.xl + space.stack.xl + askDockHeight,
+              }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              scrollEventThrottle={16}
+              onLayout={(event) => {
+                askScrollMetricsRef.current.layoutH = event.nativeEvent.layout.height;
+                syncAskSuggestions();
+              }}
+              onContentSizeChange={(_w, h) => {
+                askScrollMetricsRef.current.contentH = h;
+                syncAskSuggestions();
+              }}
+              onScroll={(event) => {
+                const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+                askScrollMetricsRef.current = {
+                  y: contentOffset.y,
+                  contentH: contentSize.height,
+                  layoutH: layoutMeasurement.height,
+                };
+                syncAskSuggestions();
+              }}
+            >
+              <LumenKindBanner kind={data.lumenCanvas.kind} />
+              <View
+                style={{
+                  paddingHorizontal: SIDEBAR_EDGE_INSET,
+                  paddingTop: space.section.gap,
+                  paddingBottom: space.section.gap,
+                }}
+              >
+                <LumenCanvasHost
+                  canvas={data.lumenCanvas}
+                  onTabChange={() => {
+                    askScrollMetricsRef.current.y = 0;
+                    syncAskSuggestions();
+                    scrollRef.current?.scrollTo({ y: 0, animated: false });
+                  }}
+                />
+              </View>
+            </Animated.ScrollView>
+            {previewMode || !session.historyStore.activeId ? null : (
+              <ComposerDock hold={askFocused} onHeightChange={setAskDockHeight}>
+                <LumenAskDock
+                  prompts={data.lumenCanvas.prompts}
+                  mapId={session.historyStore.activeId}
+                  mapData={data}
+                  isPro={session.isPro}
+                  onPaywall={session.openPaywall}
+                  onFocusChange={setAskFocused}
+                  showSuggestions={askSuggestionsVisible}
+                />
+              </ComposerDock>
+            )}
+          </>
+        ) : isStepMode ? (
+          <GestureDetector gesture={stepGesture}>
+            <Animated.View className="flex-1 bg-base">
+              {showStepSlide ? (
+                <StepSlideTransition step={session.currentStep} reduceMotion={reduceMotion}>
+                  {renderAdaptiveStepPage}
+                </StepSlideTransition>
+              ) : (
+                <Animated.View
+                  key={contentModeKey}
+                  style={styles.adaptiveHost}
+                  entering={
+                    suppressStepTransitions || session.isStreamGenerating || reduceMotion
+                      ? undefined
+                      : contentEntering()
+                  }
+                  exiting={
+                    suppressStepTransitions || reduceMotion
+                      ? undefined
+                      : FadeOut.duration(motion.exit.duration)
+                  }
+                >
+                  {renderAdaptiveStepPage(session.currentStep)}
                 </Animated.View>
-              </Pressable>
+              )}
             </Animated.View>
           </GestureDetector>
         ) : (
           <Animated.ScrollView
             ref={scrollRef}
             className="flex-1"
-            contentContainerClassName="px-5"
             contentContainerStyle={{
-              paddingTop: mapContentTopPadding(hideProgressLine),
+              // Intro cover in view-all bleeds under the floating button; other
+              // modes keep a scrollable inset so copy stays readable.
+              paddingTop: session.viewAll && !session.isComplete ? 0 : floatingChromeContentPad,
               paddingBottom: 128,
+              paddingHorizontal: SIDEBAR_EDGE_INSET,
             }}
             keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={!isIntroStep}
-            scrollEnabled={!session.historyOpen}
-            onLayout={handleScrollViewLayout}
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={!session.historyOpen && viewAllNeedsScroll}
+            bounces={viewAllNeedsScroll}
+            alwaysBounceVertical={viewAllNeedsScroll}
+            overScrollMode={viewAllNeedsScroll ? 'auto' : 'never'}
+            onLayout={(event) => {
+              onViewAllViewportLayout(event);
+              handleScrollViewLayout(event);
+            }}
+            onContentSizeChange={onViewAllContentSizeChange}
             onScroll={scrollHandler}
             scrollEventThrottle={16}
           >
             <View>
-              {renderMapMeta()}
               <Animated.View style={styles.readingColumn}>
                 <Animated.View
                   key={contentModeKey}
                   entering={
-                    suppressStepTransitions || session.isStreamGenerating
+                    suppressStepTransitions || session.isStreamGenerating || reduceMotion
                       ? undefined
-                      : FadeIn.duration(reduceMotion ? 150 : 220)
+                      : contentEntering()
                   }
                   exiting={
-                    suppressStepTransitions || session.viewAll
+                    suppressStepTransitions || session.viewAll || reduceMotion
                       ? undefined
-                      : FadeOut.duration(reduceMotion ? 150 : 180)
+                      : FadeOut.duration(motion.exit.duration)
                   }
                 >
                   {renderModeBody()}
@@ -891,10 +1184,15 @@ export default function ResultScreen({
           </Animated.ScrollView>
         )}
 
-        <StepFooterNav />
+        {!isLumenHost ? (
+          <StepFooterNav
+            chromeVisibleShared={headerVisible}
+            onRevealLayout={handleStepFooterRevealLayout}
+          />
+        ) : null}
       </View>
 
-      {!previewMode && session.historyStore.activeId ? (
+      {!previewMode && session.historyStore.activeId && !isLumenHost ? (
         <MapChatSheet
           visible={session.chatOpen}
           onClose={() => session.setChatOpen(false)}
@@ -906,54 +1204,78 @@ export default function ResultScreen({
     </GestureDetector>
   );
 
+  const resolveDocumentUrl = useCallback(async () => {
+    const activeId = session.historyStore.activeId;
+    if (!activeId) return { status: 'not_applicable' as const };
+    const entry = session.historyStore.entries.find((e) => e.id === activeId);
+    return resolvePdfDocumentUrl({ sourceMeta: entry?.sourceMeta });
+  }, [session.historyStore.activeId, session.historyStore.entries]);
+
   return previewMode ? (
-    <View
-      className="flex-1 bg-base"
-      style={{ paddingTop: PREVIEW_TOP_INSET }}
-      onLayout={handleRootLayout}
-      pointerEvents="none"
+    <SourceViewerProvider
+      citedChunks={data?.citedChunks}
+      sourceTitle={data?.sourceMetadata?.title || data?.sourceMetadata?.label || data?.title}
+      resolveDocumentUrl={resolveDocumentUrl}
     >
-      {resultShell}
-    </View>
+      <View
+        className="flex-1 bg-base"
+        style={{ paddingTop: PREVIEW_TOP_INSET }}
+        onLayout={handleRootLayout}
+        pointerEvents="none"
+      >
+        {resultShell}
+      </View>
+      <SourceViewerSheet />
+    </SourceViewerProvider>
   ) : (
-    <SafeAreaView
-      className="flex-1 bg-base"
-      edges={['top', 'left', 'right']}
-      onLayout={handleRootLayout}
-      pointerEvents="auto"
+    <SourceViewerProvider
+      citedChunks={data?.citedChunks}
+      sourceTitle={data?.sourceMetadata?.title || data?.sourceMetadata?.label || data?.title}
+      resolveDocumentUrl={resolveDocumentUrl}
     >
-      {resultShell}
-    </SafeAreaView>
+      <SafeAreaView
+        className="flex-1 bg-base"
+        style={{ flex: 1, backgroundColor: colors.background.canvas }}
+        edges={['left', 'right']}
+        onLayout={handleRootLayout}
+        pointerEvents="auto"
+      >
+        {resultShell}
+      </SafeAreaView>
+      <SourceViewerSheet />
+    </SourceViewerProvider>
   );
 }
 
 const styles = StyleSheet.create({
   readingColumn: {
     width: '100%',
-    maxWidth: 640,
+    maxWidth: reading.maxWidth,
     alignSelf: 'center',
   },
-  fixedReadingColumn: {
-    flex: 1,
+  mapCover: {
+    alignSelf: 'center',
+    marginBottom: 40,
     overflow: 'hidden',
   },
-  fixedPage: {
+  stepReadingColumn: {
+    paddingHorizontal: SIDEBAR_EDGE_INSET,
+  },
+  adaptiveHost: {
     flex: 1,
-    justifyContent: 'space-between',
-    overflow: 'hidden',
+  },
+  adaptiveScroll: {
+    flex: 1,
+  },
+  adaptiveScrollContent: {
+    flexGrow: 1,
     paddingBottom: 16,
   },
-  fixedStepBody: {
-    flexShrink: 1,
-    overflow: 'hidden',
+  tapChromeTarget: {
+    flexGrow: 1,
   },
-  fixedTldrList: {
-    gap: 18,
-    marginTop: 24,
-    marginBottom: 24,
-  },
-  fixedHighlightCard: {
-    marginTop: 12,
+  stepPage: {
+    paddingBottom: 16,
   },
   completionActions: {
     width: '100%',

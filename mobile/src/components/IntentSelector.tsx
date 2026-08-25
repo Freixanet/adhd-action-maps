@@ -1,311 +1,324 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  clamp,
-  interpolate,
-  interpolateColor,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import GlassSurface from './GlassSurface';
-import LiquidGlassSurface from './LiquidGlassSurface';
+import { hapticSegment } from '../logic/haptics';
+import type { MapIntent } from '@shared/contracts';
+import {
+  INTENT_SELECTOR_LAYOUT,
+  INTENT_SELECTOR_TEST_IDS,
+  INTENT_SELECTOR_THUMB_HEIGHT,
+  INTENT_SELECTOR_THUMB_TRAVEL,
+  INTENT_SELECTOR_TRACK_WIDTH,
+  INTENT_SELECTOR_OPTIONS,
+  intentSelectorAccessibilityLabel,
+  intentToSelectorIndex,
+  resolveIntentSelectorCommit,
+  shouldAnimateIntentThumb,
+  type IntentSelectorOptionId,
+} from '@shared/intentSelectorModel';
+import { NucleoGlassSegment } from '../../modules/nucleo-glass-segment/src';
+import { shouldUseNativeGlassSegment } from '../logic/nativeGlassSegment';
 import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
-import { useGlassTouchGlow } from '../hooks/useGlassTouchGlow';
-import { SIDEBAR_HEADER_BUTTON_SIZE } from './sidebarLayout';
 import { useTheme } from '../context/ThemeContext';
-import type { MapIntent } from '../logic/contracts';
+import { SIDEBAR_TOGGLE_BUTTON_SIZE } from './sidebarLayout';
+import { motion, type } from '@shared/design-tokens';
 
 type IntentSelectorProps = {
   value: MapIntent;
-  onChange: (intent: MapIntent) => void;
+  onChange: (intent: IntentSelectorOptionId) => void;
   disabled?: boolean;
 };
 
-const OPTIONS: Array<{ id: Extract<MapIntent, 'understand' | 'apply'>; label: string }> = [
-  { id: 'understand', label: 'Entender' },
-  { id: 'apply', label: 'Aplicar' },
-];
+/** Outer track width — system control owns indicator metrics. */
+const NATIVE_OUTER_WIDTH = 196;
+/**
+ * Extra space so the press-expanded Liquid Glass lens is not clipped by the
+ * Expo/RN host. Negative margin keeps the header row from growing.
+ */
+const NATIVE_OVERFLOW_PAD = 24;
+/** Align optical center with sidebar toggle. */
+const NATIVE_HOST_HEIGHT = SIDEBAR_TOGGLE_BUTTON_SIZE;
 
-/** Original shell: 4pt pad ×2 + 36pt segment = 44pt — scale to match sidebar header button. */
-const LEGACY_PAD = 4;
-const LEGACY_SEGMENT = 36;
-const LEGACY_SHELL = LEGACY_SEGMENT + LEGACY_PAD * 2;
-const SHELL_SCALE = SIDEBAR_HEADER_BUTTON_SIZE / LEGACY_SHELL;
+const SPRING = { damping: 26, stiffness: 380, mass: 0.72 } as const;
 
-const PADDING = LEGACY_PAD * SHELL_SCALE;
-const SEGMENT_HEIGHT = LEGACY_SEGMENT * SHELL_SCALE;
-const MIN_SEGMENT_WIDTH = 96 * SHELL_SCALE;
-const LABEL_FONT_SIZE = 14 * SHELL_SCALE;
-const THUMB_EDGE_INSET = 6 * SHELL_SCALE;
-const SPRING = { damping: 24, stiffness: 360, mass: 0.78 };
-const PRESS_SPRING = { damping: 20, stiffness: 460, mass: 0.62 };
-
-function selectedIndex(value: MapIntent): number {
-  return value === 'apply' ? 1 : 0;
-}
-
-function triggerHaptic() {
-  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-}
-
-function IntentSelector({ value, onChange, disabled = false }: IntentSelectorProps) {
-  const { isDark } = useTheme();
+/**
+ * Entender / Aplicar.
+ * Product path (iOS 26+): system SwiftUI Picker(.segmented) at controlSize.large.
+ * The system owns the expanding Liquid Glass thumb on press.
+ * Solid RN capsule only when the native module is absent.
+ */
+export default function IntentSelector({
+  value,
+  onChange,
+  disabled = false,
+}: IntentSelectorProps) {
+  const { isDark, colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
-  const touchGlow = useGlassTouchGlow(reduceMotion, isDark);
-  const activeIndex = selectedIndex(value);
-  const [segmentWidth, setSegmentWidth] = useState(0);
+  const useNative = shouldUseNativeGlassSegment(false);
+  const selectedIntent: IntentSelectorOptionId =
+    value === 'apply' ? 'apply' : 'understand';
 
-  const thumbX = useSharedValue(0);
-  const thumbScale = useSharedValue(1);
-  const thumbStretch = useSharedValue(1);
-  const dragStartX = useSharedValue(0);
-  const hoverIndex = useSharedValue(activeIndex);
-  const segmentWidthShared = useSharedValue(0);
-
-  const activeColor = isDark ? '#c7d2fe' : '#312e81';
-  const mutedColor = isDark ? '#a3a3a3' : '#525252';
-
-  const commitIndex = useCallback(
-    (index: number) => {
-      const option = OPTIONS[index];
-      if (!option) return;
-      if (selectedIndex(value) !== index) {
-        onChange(option.id);
-        triggerHaptic();
-      }
-    },
-    [onChange, value]
-  );
-
-  const selectSegment = useCallback(
-    (index: number) => {
-      const max = segmentWidthShared.value || segmentWidth;
-      if (max <= 0) return;
-      hoverIndex.value = index;
-      thumbX.value = withSpring(index * max, SPRING);
-      commitIndex(index);
-    },
-    [commitIndex, hoverIndex, segmentWidth, segmentWidthShared, thumbX]
-  );
-
-  useEffect(() => {
-    hoverIndex.value = activeIndex;
-    if (segmentWidth > 0) {
-      thumbX.value = withSpring(activeIndex * segmentWidth, SPRING);
-    }
-  }, [activeIndex, hoverIndex, segmentWidth, thumbX]);
-
-  const handleTrackLayout = (event: LayoutChangeEvent) => {
-    const width = event.nativeEvent.layout.width / OPTIONS.length;
-    const nextWidth = Math.max(MIN_SEGMENT_WIDTH, width);
-    setSegmentWidth(nextWidth);
-    segmentWidthShared.value = nextWidth;
-    thumbX.value = withSpring(activeIndex * nextWidth, SPRING);
+  const handleNativeChange = (next: string) => {
+    if (next !== 'understand' && next !== 'apply') return;
+    const commit = resolveIntentSelectorCommit({
+      current: value,
+      nextIndex: next === 'apply' ? 1 : 0,
+    });
+    if (commit.changed) onChange(commit.intent);
   };
 
-  const glowAt = useCallback(
-    (x: number, y: number) => {
-      touchGlow.onPressIn(x, y);
+  if (useNative) {
+    return (
+      <View
+        testID={INTENT_SELECTOR_TEST_IDS.root}
+        style={[styles.nativeHost, disabled ? styles.disabled : null]}
+        pointerEvents="box-none"
+      >
+        <NucleoGlassSegment
+          selectedIntent={selectedIntent}
+          isEnabled={!disabled}
+          themeVariant={isDark ? 'dark' : 'light'}
+          reduceMotion={reduceMotion}
+          onIntentChange={(event) => {
+            handleNativeChange(event.nativeEvent.intent);
+          }}
+          style={styles.nativeView}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <SolidCapsuleFallback
+      value={value}
+      selectedIndex={intentToSelectorIndex(value)}
+      disabled={disabled}
+      isDark={isDark}
+      reduceMotion={reduceMotion}
+      onChange={onChange}
+    />
+  );
+}
+
+function SolidCapsuleFallback({
+  value,
+  selectedIndex,
+  disabled,
+  isDark,
+  reduceMotion,
+  onChange,
+}: {
+  value: MapIntent;
+  selectedIndex: 0 | 1;
+  disabled: boolean;
+  isDark: boolean;
+  reduceMotion: boolean;
+  onChange: (intent: IntentSelectorOptionId) => void;
+}) {
+  const { colors } = useTheme();
+  const progress = useSharedValue<number>(selectedIndex);
+  const dragOrigin = useSharedValue<number>(selectedIndex);
+  const mountedGen = useRef(0);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
+  useEffect(() => {
+    const gen = ++mountedGen.current;
+    return () => {
+      mountedGen.current = gen + 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (shouldAnimateIntentThumb(reduceMotion)) {
+      progress.value = withSpring(selectedIndex, SPRING);
+    } else {
+      progress.value = withTiming(selectedIndex, { duration: motion.instant.duration });
+    }
+  }, [progress, reduceMotion, selectedIndex]);
+
+  const commitIndex = useCallback(
+    (nextIndex: number) => {
+      const gen = mountedGen.current;
+      const commit = resolveIntentSelectorCommit({
+        current: valueRef.current,
+        nextIndex,
+      });
+      if (shouldAnimateIntentThumb(reduceMotion)) {
+        progress.value = withSpring(commit.index, SPRING);
+      } else {
+        progress.value = commit.index;
+      }
+      if (!commit.changed) return;
+      if (gen !== mountedGen.current) return;
+      hapticSegment();
+      onChange(commit.intent);
     },
-    [touchGlow]
+    [onChange, progress, reduceMotion]
   );
 
-  const releaseGlow = useCallback(() => {
-    touchGlow.onPressOut();
-  }, [touchGlow]);
-
-  const segmentTapGestures = OPTIONS.map((_, index) =>
-    Gesture.Tap()
-      .enabled(!disabled)
-      .onBegin((event) => {
-        runOnJS(glowAt)(event.x, event.y);
-      })
-      .onEnd(() => {
-        runOnJS(selectSegment)(index);
-      })
-      .onFinalize(() => {
-        runOnJS(releaseGlow)();
-      })
-  );
-
-  const panGesture = Gesture.Pan()
+  const pan = Gesture.Pan()
     .enabled(!disabled)
-    .minDistance(8)
-    .onBegin((event) => {
-      runOnJS(glowAt)(event.x, event.y);
-      dragStartX.value = thumbX.value;
-      thumbScale.value = withSpring(1.08, PRESS_SPRING);
-      runOnJS(triggerHaptic)();
+    .activeOffsetX([-6, 6])
+    .failOffsetY([-12, 12])
+    .onBegin(() => {
+      'worklet';
+      dragOrigin.value = progress.value;
     })
     .onUpdate((event) => {
-      const max = segmentWidthShared.value;
-      if (max <= 0) return;
-
-      const next = clamp(dragStartX.value + event.translationX, 0, max);
-      thumbX.value = next;
-
-      const nextIndex = next >= max * 0.5 ? 1 : 0;
-      if (nextIndex !== hoverIndex.value) {
-        hoverIndex.value = nextIndex;
-        runOnJS(triggerHaptic)();
-      }
-
-      const velocityStretch = Math.min(Math.abs(event.velocityX) / 2600, 0.14);
-      const edgeStretch =
-        next <= THUMB_EDGE_INSET || next >= max - THUMB_EDGE_INSET ? 0.06 : 0;
-      thumbStretch.value = 1 + velocityStretch + edgeStretch;
+      'worklet';
+      const next = dragOrigin.value + event.translationX / INTENT_SELECTOR_THUMB_TRAVEL;
+      progress.value = next < 0 ? 0 : next > 1 ? 1 : next;
     })
     .onEnd((event) => {
-      const max = segmentWidthShared.value;
-      if (max <= 0) return;
-
-      let index = thumbX.value >= max * 0.5 ? 1 : 0;
-
-      if (Math.abs(event.velocityX) > 450) {
-        index = event.velocityX > 0 ? 1 : 0;
-      }
-
-      hoverIndex.value = index;
-      thumbX.value = withSpring(index * max, SPRING);
-      thumbScale.value = withSpring(1, SPRING);
-      thumbStretch.value = withSpring(1, SPRING);
+      'worklet';
+      const projected = progress.value + event.velocityX / 2400;
+      const index: 0 | 1 = projected >= 0.5 ? 1 : 0;
       runOnJS(commitIndex)(index);
-    })
-    .onFinalize(() => {
-      thumbScale.value = withSpring(1, SPRING);
-      thumbStretch.value = withSpring(1, SPRING);
-      runOnJS(releaseGlow)();
     });
 
   const thumbStyle = useAnimatedStyle(() => ({
-    width: segmentWidthShared.value,
-    height: SEGMENT_HEIGHT,
-    transform: [
-      { translateX: thumbX.value },
-      { scale: thumbScale.value },
-      { scaleX: thumbStretch.value },
-    ],
+    transform: [{ translateX: progress.value * INTENT_SELECTOR_THUMB_TRAVEL }],
   }));
 
-  const understandLabelStyle = useAnimatedStyle(() => {
-    const max = segmentWidthShared.value || 1;
-    const blend = 1 - thumbX.value / max;
-    return {
-      color: interpolateColor(blend, [0, 1], [mutedColor, activeColor]),
-      opacity: interpolate(blend, [0, 1], [0.72, 1]),
-    };
-  });
-
-  const applyLabelStyle = useAnimatedStyle(() => {
-    const max = segmentWidthShared.value || 1;
-    const blend = thumbX.value / max;
-    return {
-      color: interpolateColor(blend, [0, 1], [mutedColor, activeColor]),
-      opacity: interpolate(blend, [0, 1], [0.72, 1]),
-    };
-  });
-
-  const labelStyles = [understandLabelStyle, applyLabelStyle];
+  const trackBg = colors.background.whiteFade10;
+  const trackBorder = colors.border.subtle;
+  const thumbBg = isDark ? colors.background.whiteFade22 : colors.background.whiteFade96;
+  const thumbBorder = colors.border.subtle;
+  const activeColor = isDark ? colors.background.lightSendFillAlt : colors.background.intentTrack;
+  const mutedColor = colors.text.secondary;
 
   return (
-    <GestureDetector gesture={panGesture}>
+    <GestureDetector gesture={pan}>
       <View
-        style={[styles.shell, disabled ? styles.disabled : null]}
+        testID={INTENT_SELECTOR_TEST_IDS.root}
         accessibilityRole="tablist"
+        accessibilityLabel="Modo"
+        style={[styles.fallbackTrack, disabled ? styles.disabled : null]}
       >
-        <GlassSurface
-          liquid
-          touchGlow={touchGlow}
-          borderRadius={SIDEBAR_HEADER_BUTTON_SIZE / 2}
-          className="rounded-full"
-          style={styles.glass}
-        >
-          <View style={styles.pad}>
-            <View style={styles.track} onLayout={handleTrackLayout}>
-              <Animated.View style={[styles.thumb, thumbStyle]} pointerEvents="none">
-                <LiquidGlassSurface
-                  borderRadius={999}
-                  variant="regular"
-                  style={StyleSheet.absoluteFill}
+        <View
+          pointerEvents="none"
+          testID={INTENT_SELECTOR_TEST_IDS.trackSurface}
+          style={[
+            StyleSheet.absoluteFill,
+            styles.fallbackTrackSurface,
+            { backgroundColor: trackBg, borderColor: trackBorder },
+          ]}
+        />
+        <Animated.View pointerEvents="none" style={[styles.fallbackThumb, thumbStyle]}>
+          <View
+            testID={INTENT_SELECTOR_TEST_IDS.thumbSurface}
+            style={[
+              styles.fallbackThumbSurface,
+              {
+                backgroundColor: thumbBg,
+                borderColor: thumbBorder,
+              },
+            ]}
+          />
+        </Animated.View>
+        <View style={styles.fallbackRow} pointerEvents="box-none">
+          {INTENT_SELECTOR_OPTIONS.map((option) => {
+            const isSelected =
+              option.id === 'apply' ? value === 'apply' : value !== 'apply';
+            return (
+              <Pressable
+                key={option.id}
+                testID={
+                  option.id === 'apply'
+                    ? INTENT_SELECTOR_TEST_IDS.optionApply
+                    : INTENT_SELECTOR_TEST_IDS.optionUnderstand
+                }
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+                accessibilityLabel={intentSelectorAccessibilityLabel(option.id)}
+                disabled={disabled}
+                onPress={() => commitIndex(option.id === 'apply' ? 1 : 0)}
+                style={styles.fallbackSegment}
+              >
+                <Text
+                  style={[
+                    styles.fallbackLabel,
+                    { color: isSelected ? activeColor : mutedColor },
+                  ]}
                 >
-                  <View />
-                </LiquidGlassSurface>
-                <View
-                  pointerEvents="none"
-                  className="absolute inset-0 bg-indigo-400/15"
-                />
-              </Animated.View>
-
-              <View style={styles.labels}>
-                {OPTIONS.map((option, index) => (
-                  <GestureDetector key={option.id} gesture={segmentTapGestures[index]}>
-                    <Animated.View
-                      style={[styles.segment, segmentWidth > 0 ? { width: segmentWidth } : null]}
-                      accessibilityRole="tab"
-                      accessibilityState={{ selected: activeIndex === index }}
-                      accessibilityLabel={option.label}
-                    >
-                      <Animated.Text style={[styles.label, labelStyles[index]]}>
-                        {option.label}
-                      </Animated.Text>
-                    </Animated.View>
-                  </GestureDetector>
-                ))}
-              </View>
-            </View>
-          </View>
-        </GlassSurface>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
     </GestureDetector>
   );
 }
 
 const styles = StyleSheet.create({
-  shell: {
-    height: SIDEBAR_HEADER_BUTTON_SIZE,
-    minWidth: MIN_SEGMENT_WIDTH * OPTIONS.length + PADDING * 2,
+  nativeHost: {
+    width: NATIVE_OUTER_WIDTH + NATIVE_OVERFLOW_PAD * 2,
+    height: NATIVE_HOST_HEIGHT + NATIVE_OVERFLOW_PAD * 2,
+    marginHorizontal: -NATIVE_OVERFLOW_PAD,
+    marginVertical: -NATIVE_OVERFLOW_PAD,
+    overflow: 'visible',
+    alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  nativeView: {
+    width: NATIVE_OUTER_WIDTH + NATIVE_OVERFLOW_PAD * 2,
+    height: NATIVE_HOST_HEIGHT + NATIVE_OVERFLOW_PAD * 2,
+    overflow: 'visible',
+    backgroundColor: 'transparent',
+  },
+  fallbackTrack: {
+    width: INTENT_SELECTOR_TRACK_WIDTH,
+    height: INTENT_SELECTOR_LAYOUT.trackHeight,
+    borderRadius: INTENT_SELECTOR_LAYOUT.trackHeight / 2,
+    padding: INTENT_SELECTOR_LAYOUT.trackPad,
+    justifyContent: 'center',
+    overflow: 'visible',
+  },
+  fallbackTrackSurface: {
+    borderRadius: INTENT_SELECTOR_LAYOUT.trackHeight / 2,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  fallbackThumb: {
+    position: 'absolute',
+    left: INTENT_SELECTOR_LAYOUT.trackPad,
+    top: INTENT_SELECTOR_LAYOUT.trackPad,
+    width: INTENT_SELECTOR_LAYOUT.segmentWidth,
+    height: INTENT_SELECTOR_THUMB_HEIGHT,
+  },
+  fallbackThumbSurface: {
+    flex: 1,
+    borderRadius: INTENT_SELECTOR_THUMB_HEIGHT / 2,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  fallbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  fallbackSegment: {
+    width: INTENT_SELECTOR_LAYOUT.segmentWidth,
+    height: INTENT_SELECTOR_THUMB_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  fallbackLabel: {
+    fontSize: INTENT_SELECTOR_LAYOUT.labelFontSize,
+    fontWeight: INTENT_SELECTOR_LAYOUT.labelFontWeight,
+    letterSpacing: type.intentLabel.letterSpacing,
   },
   disabled: {
     opacity: 0.4,
   },
-  glass: {
-    height: SIDEBAR_HEADER_BUTTON_SIZE,
-  },
-  pad: {
-    padding: PADDING,
-  },
-  track: {
-    position: 'relative',
-    minHeight: SEGMENT_HEIGHT,
-    justifyContent: 'center',
-  },
-  thumb: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  labels: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  segment: {
-    minWidth: MIN_SEGMENT_WIDTH,
-    height: SEGMENT_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  label: {
-    fontSize: LABEL_FONT_SIZE,
-    fontWeight: '600',
-  },
 });
-
-export default React.memo(IntentSelector);

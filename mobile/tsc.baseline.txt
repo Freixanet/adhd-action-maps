@@ -1,0 +1,99 @@
+Known pre-existing type errors as of 2026-08-24 on branch feature/visual-nucleos. Do NOT fix in this branch.
+src/components/AttachMenu.tsx(21,5): error TS2820: Type '"gemini-3.7-flash"' is not assignable to type '"auto" | "gemini-3.6-flash" | "gemini-3.5-flash" | "gemini-3.5-flash-lite"'. Did you mean '"gemini-3.6-flash"'?
+src/components/ComposerMenuTrigger.tsx(71,7): error TS2322: Type '{ children: Element; title: string; themeVariant: string; actions: { id: string; title: string; state: MenuState | undefined; image: string | undefined; }[]; key: string; ... 4 more ...; accessibilityLabel: string | undefined; }' is not assignable to type 'IntrinsicAttributes & NucleoUIMenuAnchorProps'.
+  Property 'accessibilityLabel' does not exist on type 'IntrinsicAttributes & NucleoUIMenuAnchorProps'.
+src/components/HistoryDrawer.tsx(283,15): error TS2559: Type 'number[]' has no properties in common with type '{ min?: number | undefined; max?: number | undefined; }'.
+src/components/HistoryDrawer.tsx(351,13): error TS2559: Type 'number[]' has no properties in common with type '{ min?: number | undefined; max?: number | undefined; }'.
+src/components/HistoryDrawer.tsx(380,13): error TS2559: Type 'number[]' has no properties in common with type '{ min?: number | undefined; max?: number | undefined; }'.
+src/components/HistoryEntryCard.tsx(60,37): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/components/HistorySheet.tsx(134,57): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/components/HistorySheet.tsx(138,56): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/components/HistorySheet.tsx(297,41): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/components/HyperspaceView.tsx(230,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/components/HyperspaceView.tsx(240,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/components/InlineGenerationThread.tsx(462,65): error TS2367: This comparison appears to be unintentional because the types '"partial" | "ready" | "idle" | "generating"' and '"cancelled"' have no overlap.
+src/components/MapChatSheet.tsx(240,31): error TS2339: Property 'modelUsed' does not exist on type 'MapChatResponse & { error?: string | undefined; }'.
+src/components/MapChatSheet.tsx(334,37): error TS2339: Property 'modelUsed' does not exist on type 'ChatTurn'.
+src/components/NucleoCover.tsx(55,55): error TS2339: Property 'generatedCover' does not exist on type 'HistoryEntry'.
+src/components/NucleoCover.tsx(55,79): error TS2339: Property 'generatedCover' does not exist on type 'HistoryEntry'.
+src/components/NucleoOpenCover.tsx(142,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/components/NucleoOpenCover.tsx(145,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/components/ProfileMenu.tsx(27,5): error TS2820: Type '"gemini-3.7-flash"' is not assignable to type '"auto" | "gemini-3.6-flash" | "gemini-3.5-flash" | "gemini-3.5-flash-lite"'. Did you mean '"gemini-3.6-flash"'?
+src/components/RecentNucleoCard.tsx(77,28): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/components/RecentNucleoCard.tsx(156,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/components/ThinkingOrbWebView.tsx(184,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/components/ThinkingOrbWebView.tsx(188,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/context/AppSessionContext.tsx(167,3): error TS2724: '"../logic/history"' has no exported member named 'createChatEntry'. Did you mean 'createEntry'?
+src/context/AppSessionContext.tsx(183,3): error TS2305: Module '"../logic/history"' has no exported member 'updateEntryGeneratedCover'.
+src/context/AppSessionContext.tsx(888,41): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/context/AppSessionContext.tsx(1312,81): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/context/AppSessionContext.tsx(1465,42): error TS2339: Property 'kind' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1465,68): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1473,22): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1501,50): error TS2339: Property 'kind' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1501,76): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1504,33): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1504,58): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1505,23): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1506,20): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/context/AppSessionContext.tsx(1508,23): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1508,53): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1509,38): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1509,67): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1523,25): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1524,40): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(1556,28): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/context/AppSessionContext.tsx(2535,53): error TS2339: Property 'history' does not exist on type 'AskRequest'.
+src/context/AppSessionContext.tsx(2643,7): error TS2353: Object literal may only specify known properties, and 'preferredModel' does not exist in type 'AskRequest'.
+src/context/AppSessionContext.tsx(2681,36): error TS2339: Property 'modelUsed' does not exist on type 'AskResponse & { error?: string | undefined; }'.
+src/context/AppSessionContext.tsx(2686,27): error TS2339: Property 'modelUsed' does not exist on type 'AskResponse & { error?: string | undefined; }'.
+src/context/AppSessionContext.tsx(3781,45): error TS2339: Property 'modelUsed' does not exist on type 'AskResponse & { isAsk: true; answer: string; }'.
+src/context/AppSessionContext.tsx(3786,36): error TS2339: Property 'modelUsed' does not exist on type 'AskResponse & { isAsk: true; answer: string; }'.
+src/context/AppSessionContext.tsx(5292,39): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/context/AppSessionContext.tsx(5292,55): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(5309,35): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(5310,35): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(5310,60): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(5311,23): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(5312,36): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(5312,65): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(5313,52): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/context/AppSessionContext.tsx(5318,27): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(5319,42): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(5336,37): error TS2339: Property 'chat' does not exist on type 'HistoryEntry'.
+src/context/AppSessionContext.tsx(5400,40): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/context/AppSessionContext.tsx(6311,17): error TS2339: Property 'kind' does not exist on type 'HistoryEntry'.
+src/context/ThemeContext.tsx(65,37): error TS2345: Argument of type 'ColorSchemeName' is not assignable to parameter of type '"light" | "dark" | null | undefined'.
+  Type '"unspecified"' is not assignable to type '"light" | "dark" | null | undefined'.
+src/logic/buildNucleoRoundCarouselFaces.ts(35,54): error TS2339: Property 'generatedCover' does not exist on type 'HistoryEntry'.
+src/logic/buildNucleoRoundCarouselFaces.ts(35,78): error TS2339: Property 'generatedCover' does not exist on type 'HistoryEntry'.
+src/logic/cloudHistory.ts(222,36): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/logic/cloudHistory.ts(247,26): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/logic/entrySourceIcon.ts(79,26): error TS2559: Type 'HistoryEntry' has no properties in common with type '{ kind?: HistoryEntryKind | undefined; }'.
+src/lumen/LumenAskDock.tsx(395,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/lumen/LumenAskDock.tsx(399,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/screens/InputScreen.tsx(443,25): error TS2322: Type 'AnimatedStyleHandle<{ opacity: number; }>' is not assignable to type 'ViewStyle | Falsy | RecursiveArray<ViewStyle | Falsy> | readonly (ViewStyle | Falsy)[]'.
+src/screens/InputScreen.tsx(443,48): error TS2322: Type 'AnimatedStyle<ViewStyle>' is not assignable to type 'ViewStyle | Falsy | RecursiveArray<ViewStyle | Falsy> | readonly (ViewStyle | Falsy)[]'.
+  Type 'SharedValueDisableContravariance<ViewStyle>' is not assignable to type 'ViewStyle | Falsy | RecursiveArray<ViewStyle | Falsy> | readonly (ViewStyle | Falsy)[]'.
+src/screens/InputScreen.tsx(678,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/screens/InputScreen.tsx(769,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/screens/InputScreen.tsx(773,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/screens/InputScreen.tsx(787,19): error TS2551: Property 'absoluteFillObject' does not exist on type 'typeof StyleSheet'. Did you mean 'absoluteFill'?
+src/vendor/border-beam-native/src/PulseBeam.tsx(266,27): error TS2552: Cannot find name 'blobEffect'. Did you mean 'getBlobEffect'?
+src/vendor/border-beam-native/src/PulseBeam.tsx(269,27): error TS2552: Cannot find name 'blobEffect'. Did you mean 'getBlobEffect'?
+src/vendor/border-beam-native/src/PulseBeam.tsx(273,29): error TS2552: Cannot find name 'blobEffect'. Did you mean 'getBlobEffect'?
+src/vendor/border-beam-native/src/PulseBeam.tsx(296,29): error TS2552: Cannot find name 'blobEffect'. Did you mean 'getBlobEffect'?
+src/vendor/border-beam-native/src/PulseBeam.tsx(301,29): error TS2552: Cannot find name 'blobEffect'. Did you mean 'getBlobEffect'?
+src/vendor/border-beam-native/src/PulseBeam.tsx(308,27): error TS2552: Cannot find name 'blobEffect'. Did you mean 'getBlobEffect'?
+../shared/generatedCover.ts(52,26): error TS2345: Argument of type '{ id: string; kind?: string | undefined; }' is not assignable to parameter of type '{ kind?: HistoryEntryKind | undefined; }'.
+  Types of property 'kind' are incompatible.
+    Type 'string | undefined' is not assignable to type 'HistoryEntryKind | undefined'.
+      Type 'string' is not assignable to type 'HistoryEntryKind | undefined'.
+../shared/lumen/samples.ts(115,7): error TS2322: Type '(HistoryEntry | { category: string; tags: string[]; intent: string; status: MapStatus; title: string; session: SavedSession; id: string; pinned?: boolean | undefined; ... 6 more ...; sourceMeta?: PastedTextSourceMeta | ... 1 more ... | undefined; })[]' is not assignable to type 'HistoryEntry[]'.
+  Type 'HistoryEntry | { category: string; tags: string[]; intent: string; status: MapStatus; title: string; session: SavedSession; id: string; pinned?: boolean | undefined; ... 6 more ...; sourceMeta?: PastedTextSourceMeta | ... 1 more ... | undefined; }' is not assignable to type 'HistoryEntry'.
+    Type '{ category: string; tags: string[]; intent: string; status: MapStatus; title: string; session: SavedSession; id: string; pinned?: boolean; pinnedAt?: number; completionCeremonyShown?: boolean; ... 4 more ...; sourceMeta?: import("../pastedText").PastedTextSourceMeta | import("../pdf/types").PdfSourceMeta; }' is not assignable to type 'HistoryEntry'.
+      Types of property 'intent' are incompatible.
+        Type 'string' is not assignable to type 'MapIntent | undefined'.
+../shared/lumen/samples.ts(131,7): error TS2322: Type '{ category: string; tags: string[]; intent: string; status: MapStatus; id: string; title: string; createdAt: number; updatedAt: number; sourceType: "text"; session: SavedSession; }' is not assignable to type 'HistoryEntry'.
+  Types of property 'intent' are incompatible.
+    Type 'string' is not assignable to type 'MapIntent | undefined'.

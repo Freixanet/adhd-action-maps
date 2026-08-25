@@ -1,24 +1,31 @@
 import React from 'react';
 import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { RADII } from '@shared/uiTokens';
+import { CTA_FILL, RADII, TEXT_PRIMARY } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
-import { usePressScale } from '../hooks/usePressScale';
+import NativeGlassButton from './NativeGlassButton';
+import { PRESS_HIT_SLOP, PRESS_RETENTION_OFFSET, usePressScale } from '../hooks/usePressScale';
+import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { shouldUseNativeGlassButton } from '../logic/nativeGlassButtons';
+import { useTheme } from '../context/ThemeContext';
+import { color, type } from '@shared/design-tokens';
 
 /** Fixed height — Atrás and Siguiente must match without flex growth. */
 export const STEP_FOOTER_BUTTON_HEIGHT = 52;
-const STEP_FOOTER_PRIMARY_BG = '#6A6FE0';
-const STEP_FOOTER_PRIMARY_TEXT = '#FFFFFF';
+const FOOTER_BUTTON_RADIUS = RADII.md;
+const STEP_FOOTER_PRIMARY_TEXT = TEXT_PRIMARY;
 
 type StepFooterGlassButtonProps = {
   onPress: () => void;
   label: string;
+  /** `primary` = the single forward CTA (prominentGlass). `secondary` = glass. */
   variant?: 'primary' | 'secondary';
   icon?: React.ReactNode;
   iconPlacement?: 'leading' | 'trailing';
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
   disabled?: boolean;
+  systemImage?: string;
 };
 
 export default function StepFooterGlassButton({
@@ -30,16 +37,20 @@ export default function StepFooterGlassButton({
   style,
   accessibilityLabel,
   disabled = false,
+  systemImage,
 }: StepFooterGlassButtonProps) {
+  const { isDark } = useTheme();
   const isPrimary = variant === 'primary';
   const { animatedStyle, onPressIn, onPressOut } = usePressScale();
+  const { reduceTransparency } = useGlassAccessibility();
+  const secondaryOverlay = isDark ? 'bg-white/[0.08]' : 'bg-white/55';
 
   const content = (
     <View style={styles.content}>
       {iconPlacement === 'leading' ? icon : null}
       <Text
-        className={isPrimary ? 'text-[17px] font-semibold' : 'text-[17px] font-semibold text-body'}
-        style={isPrimary ? styles.primaryLabel : undefined}
+        className={isPrimary ? 'text-input font-semibold' : 'text-input font-semibold text-body'}
+        style={[isPrimary ? styles.primaryLabel : undefined, styles.flexibleLabel]}
       >
         {label}
       </Text>
@@ -47,36 +58,56 @@ export default function StepFooterGlassButton({
     </View>
   );
 
+  const native = shouldUseNativeGlassButton(reduceTransparency);
+
+  if (native) {
+    return (
+      <NativeGlassButton
+        onPress={onPress}
+        accessibilityLabel={accessibilityLabel ?? label}
+        variant={isPrimary ? 'prominentGlass' : 'glass'}
+        title={label}
+        systemImage={systemImage}
+        cornerRadius={FOOTER_BUTTON_RADIUS}
+        disabled={disabled}
+        style={[styles.shell, style]}
+      />
+    );
+  }
+
   return (
     <Pressable
       onPress={onPress}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
       disabled={disabled}
+      hitSlop={PRESS_HIT_SLOP}
+      pressRetentionOffset={PRESS_RETENTION_OFFSET}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
-      style={({ pressed }) => [
+      style={[
         styles.pressable,
         style,
         disabled ? styles.disabled : null,
-        pressed && !disabled ? styles.pressedOpacity : null,
       ]}
     >
       <Animated.View style={[styles.pressableInner, animatedStyle]}>
-      {isPrimary ? (
-        <View style={[styles.shell, styles.primaryShell]}>{content}</View>
-      ) : (
-        <GlassSurface
-          liquid
-          liquidBorder="perimeter"
-          borderRadius={RADII.md}
-          style={[styles.shell, styles.secondaryShell]}
-          contentClassName="h-full w-full items-center justify-center"
-        >
-          {content}
-        </GlassSurface>
-      )}
+        {isPrimary ? (
+          <View style={[styles.shell, styles.primaryShell]}>{content}</View>
+        ) : (
+          <GlassSurface
+            liquid
+            liquidBorder="none"
+            liquidMaterial="clear"
+            borderRadius={FOOTER_BUTTON_RADIUS}
+            style={[styles.shell, styles.secondaryShell]}
+            overlayClassName={secondaryOverlay}
+            contentClassName="h-full w-full items-center justify-center"
+          >
+            {content}
+          </GlassSurface>
+        )}
       </Animated.View>
     </Pressable>
   );
@@ -94,8 +125,8 @@ const styles = StyleSheet.create({
     height: STEP_FOOTER_BUTTON_HEIGHT,
   },
   primaryShell: {
-    backgroundColor: STEP_FOOTER_PRIMARY_BG,
-    borderRadius: RADII.md,
+    backgroundColor: CTA_FILL,
+    borderRadius: FOOTER_BUTTON_RADIUS,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -110,14 +141,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
   },
   secondaryShell: {
-    borderRadius: RADII.md,
+    borderRadius: FOOTER_BUTTON_RADIUS,
     overflow: 'hidden',
   },
-  pressedOpacity: {
-    opacity: 0.88,
+  flexibleLabel: {
+    flexShrink: 1,
+    textAlign: 'center',
   },
   disabled: {
     opacity: 0.55,

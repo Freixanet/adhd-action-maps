@@ -1,0 +1,68 @@
+---
+description: Contrato de producto y alcance P0 de Núcleo
+alwaysApply: true
+---
+
+# Contrato de producto
+
+Núcleo convierte fuentes heterogéneas en comprensión fiable y aplicación situada.
+
+## Resultados P0
+
+- `Automático`: recomienda Entender o Aplicar.
+- `Entender`: estructura, relaciones, evidencia, límites y transferencia.
+- `Aplicar`: contexto, adaptación, acción, supuesto y comprobación.
+
+No añadas modos visibles adicionales sin una decisión aceptada.
+
+## Fuentes de alpha personal
+
+- Texto.
+- Web.
+- PDF nativo.
+- EPUB.
+- TXT/MD/HTML/DOCX.
+- YouTube transcript.
+- X mediante vía oficial, compartir o pegar.
+
+## Principios
+
+- Amplio en fuentes, estrecho en transformación.
+- Una acción dominante.
+- Valor progresivo.
+- Evidencia exacta.
+- Cobertura honesta.
+- Reanudación.
+- Final real.
+- Errores accionables.
+- Fuente, inferencia y adaptación siempre distinguibles.
+
+## Prohibiciones P0
+
+- No chatbot generalista sin fuente.
+- No OCR avanzado.
+- No análisis audiovisual.
+- No varias fuentes.
+- No equipos.
+- No agentes que actúan.
+- No gamificación.
+- No claims clínicos.
+- No funciones decorativas.
+
+## YouTube
+
+- Transcript/subtítulos con timestamps.
+- No descargar audio o vídeo.
+- Declarar dependencia visual.
+- Entrada manual completa cuando no existe vía automática admisible.
+
+## X
+
+- API oficial, compartir o pegar.
+- No scraping.
+- Declarar huecos y autoría de hilos.
+
+## Criterio de producto
+
+Una función no está terminada porque exista una pantalla. Debe entregar el resultado, conservar evidencia, cubrir fallos y poder reanudarse.
+

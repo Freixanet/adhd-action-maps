@@ -11,14 +11,15 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LogOut, X } from 'lucide-react-native';
+import { LogOut, X } from '../icons';
 import { signInWithPassword,
   signInWithProvider,
   signUpWithPassword,
 } from '../logic/cloudHistory';
 import GlassSurface from './GlassSurface';
 import { useAppSession } from '../context/AppSessionContext';
-import { useTheme } from '../context/ThemeContext';
+import { useThemeColors } from '../context/ThemeContext';
+import { type } from '@shared/design-tokens';
 
 type AuthSheetProps = {
   visible: boolean;
@@ -38,7 +39,7 @@ function authErrorMessage(err: unknown): string {
 
 export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProps) {
   const session = useAppSession();
-  const { isDark } = useTheme();
+  const colors = useThemeColors();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -111,7 +112,16 @@ export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProp
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView className="flex-1 bg-base">
+      {/*
+        Uniwind does not patch SafeAreaView from react-native-safe-area-context,
+        so className flex-1 / bg-base are no-ops. Without style flex:1 the sheet
+        collapses to the header and the login form never appears.
+      */}
+      <SafeAreaView
+        edges={['top', 'left', 'right', 'bottom']}
+        style={{ flex: 1, backgroundColor: colors.background.canvas }}
+        className="flex-1 bg-base"
+      >
         <GlassSurface liquid borderRadius={0} liquidBorder="bottom">
           <View className="flex-row items-center justify-between px-5 py-4">
             <Text className="text-lg font-bold text-primary">
@@ -122,24 +132,28 @@ export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProp
               className="w-9 h-9 rounded-full items-center justify-center bg-neutral-200/80 dark:bg-white/10"
               accessibilityLabel="Cerrar"
             >
-              <X size={18} color="#737373" />
+              <X size={18} color={colors.icon.muted} />
             </Pressable>
           </View>
         </GlassSurface>
 
         <KeyboardAvoidingView
+          style={{ flex: 1 }}
           className="flex-1"
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView
+            style={{ flex: 1 }}
             className="flex-1"
-            contentContainerClassName="px-5 py-6"
+            contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 24 }}
             keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
           >
             {isSignedIn ? (
               <View>
                 <View className="rounded-2xl border border-neutral-200 border-white/10 bg-white bg-surface-2 px-4 py-4">
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                  <Text className="text-meta font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                     Cuenta conectada
                   </Text>
                   <Text
@@ -159,10 +173,10 @@ export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProp
                   className="mt-6 flex-row items-center justify-center gap-2 px-4 py-3.5 rounded-xl border border-neutral-200 border-white/10 active:bg-neutral-100 dark:active:bg-white/5"
                 >
                   {busy ? (
-                    <ActivityIndicator size="small" color="#737373" />
+                    <ActivityIndicator size="small" color={colors.icon.muted} />
                   ) : (
                     <>
-                      <LogOut size={18} color="#525252" />
+                      <LogOut size={18} color={colors.icon.muted} />
                       <Text className="font-semibold text-body">
                         Cerrar sesión
                       </Text>
@@ -208,7 +222,7 @@ export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProp
                   value={email}
                   onChangeText={setEmail}
                   placeholder="tu@email.com"
-                  placeholderTextColor="#a3a3a3"
+                  placeholderTextColor={colors.text.secondary}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="email-address"
@@ -219,7 +233,7 @@ export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProp
                   value={password}
                   onChangeText={setPassword}
                   placeholder="Contraseña (mín. 6)"
-                  placeholderTextColor="#a3a3a3"
+                  placeholderTextColor={colors.text.secondary}
                   autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry
@@ -238,7 +252,7 @@ export default function AuthSheet({ visible, userEmail, onClose }: AuthSheetProp
                   }`}
                 >
                   {busy ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="small" color={colors.text.onAccent} />
                   ) : (
                     <Text className="text-white font-bold text-base">
                       {isSignUp ? 'Crear cuenta' : 'Entrar'}

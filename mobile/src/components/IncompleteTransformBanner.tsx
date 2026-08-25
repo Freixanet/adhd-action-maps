@@ -1,6 +1,7 @@
+import { color } from '@shared/design-tokens';
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { X } from 'lucide-react-native';
+import { X } from '../icons';
 import { useAppSession } from '../context/AppSessionContext';
 
 export default function IncompleteTransformBanner() {
@@ -27,7 +28,7 @@ export default function IncompleteTransformBanner() {
           accessibilityLabel="Cerrar aviso"
           className="min-h-[44px] min-w-[44px] items-center justify-center rounded-full active:opacity-70"
         >
-          <X size={16} color="#b45309" />
+          <X size={16} color={color.text.warning} />
         </Pressable>
       </View>
       <View className="mt-3 flex-row gap-2">

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/Users/mfreixanet/antigravity/Untitled-mobile-preview"
-SCRIPT_DIR="${ROOT}/scripts/local-runtime"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_common.sh
 source "${SCRIPT_DIR}/_common.sh"
 
@@ -13,6 +12,9 @@ fi
 
 plutil -lint "${BACKEND_PLIST}" >/dev/null
 plutil -lint "${METRO_PLIST}" >/dev/null
+
+# Preview holds native experiments only; Metro serves canonical mobile/.
+sync_canonical_to_preview
 
 if ! launchctl print "${GUI_DOMAIN}/${BACKEND_LABEL}" >/dev/null 2>&1; then
   launchctl bootstrap "${GUI_DOMAIN}" "${BACKEND_PLIST}"
@@ -44,6 +46,8 @@ echo "=== Health ==="
 curl_backend_health "http://localhost:3000" || echo "WARN: backend localhost health failed"
 echo
 curl_metro_status "http://localhost:8081" || echo "WARN: metro localhost status failed"
+echo
+assert_metro_canonical_cwd || echo "WARN: Metro is not serving canonical mobile/"
 
 if [[ -n "${MAC_IP}" ]]; then
   echo
@@ -55,4 +59,4 @@ if [[ -n "${MAC_IP}" ]]; then
 fi
 
 echo
-echo "Started."
+echo "Started (backend + Metro from ROOT=${ROOT}; Metro cwd=${METRO_MOBILE_ROOT})."

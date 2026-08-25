@@ -1,3 +1,12 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import 'uniwind';
+@import 'heroui-native/styles';
+
+/* Scan HeroUI component classes */
+@source './node_modules/heroui-native/lib';
+
+/*
+  Nucleo theme tokens — generated from shared/design-tokens/canonical.json.
+  Do not edit tokens.generated.css by hand; run: npm run tokens:generate
+*/
+@import './src/theme/tokens.generated.css';

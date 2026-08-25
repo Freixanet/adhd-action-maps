@@ -1,0 +1,70 @@
+---
+description: Contratos y comportamiento de adaptadores de fuentes
+globs:
+alwaysApply: true
+---
+
+# Adaptadores
+
+Todos implementan el contrato canónico definido en `docs/NUCLEO_EXECUTION_SPEC.md`.
+
+## Requisitos
+
+- `canHandle`.
+- `validate`.
+- `extract`.
+- `getEvidenceTarget`.
+- `redactForLogs`.
+- Cancelación.
+- Timeout.
+- Cobertura.
+- Anclas.
+- Error tipado.
+
+## Contract tests
+
+- Válido.
+- Inválido.
+- Vacío.
+- Grande.
+- Corrupto.
+- Codificación.
+- Estructura.
+- Anclas.
+- Cancelación.
+- Timeout.
+- Error externo.
+- Logs.
+
+## Reglas por fuente
+
+### Web
+
+- SSRF.
+- No paywall bypass.
+- Fallback a pegar.
+
+### PDF
+
+- Firma.
+- Página.
+- Escaneado detectado.
+- Cobertura parcial.
+
+### EPUB/DOCX
+
+- ZIP seguro.
+- No macros.
+- No DRM bypass.
+
+### YouTube
+
+- Transcript temporal.
+- No audio/vídeo.
+- Visuales no analizados declarados.
+
+### X
+
+- API oficial/compartir/pegar.
+- No scraping.
+- Autoría e hilos correctos.

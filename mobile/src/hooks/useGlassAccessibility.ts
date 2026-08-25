@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 import { canUseNativeLiquidGlass } from '../logic/glassAvailability';
 
 export function useGlassAccessibility() {
@@ -7,18 +7,41 @@ export function useGlassAccessibility() {
   const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
-    void AccessibilityInfo.isReduceTransparencyEnabled().then(setReduceTransparency);
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    if (Platform.OS === 'web') {
+      const media =
+        typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+          ? window.matchMedia('(prefers-reduced-motion: reduce)')
+          : null;
+      if (media) {
+        setReduceMotion(media.matches);
+        const onChange = (event: MediaQueryListEvent) => setReduceMotion(event.matches);
+        media.addEventListener('change', onChange);
+        return () => media.removeEventListener('change', onChange);
+      }
+      return;
+    }
 
-    const transparencySub = AccessibilityInfo.addEventListener(
+    const transparencyQuery = AccessibilityInfo.isReduceTransparencyEnabled?.();
+    const motionQuery = AccessibilityInfo.isReduceMotionEnabled?.();
+    if (transparencyQuery && typeof transparencyQuery.then === 'function') {
+      void transparencyQuery.then(setReduceTransparency);
+    }
+    if (motionQuery && typeof motionQuery.then === 'function') {
+      void motionQuery.then(setReduceMotion);
+    }
+
+    const transparencySub = AccessibilityInfo.addEventListener?.(
       'reduceTransparencyChanged',
       setReduceTransparency
     );
-    const motionSub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    const motionSub = AccessibilityInfo.addEventListener?.(
+      'reduceMotionChanged',
+      setReduceMotion
+    );
 
     return () => {
-      transparencySub.remove();
-      motionSub.remove();
+      transparencySub?.remove?.();
+      motionSub?.remove?.();
     };
   }, []);
 

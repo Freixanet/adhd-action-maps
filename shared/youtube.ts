@@ -32,3 +32,10 @@ export function extractYouTubeVideoId(input: string): string | null {
 export function isYouTubeUrl(text: string): boolean {
   return extractYouTubeVideoId(text) !== null;
 }
+
+/** Public YouTube thumbnail (hq). Returns null when the input is not a video URL/id. */
+export function youtubeThumbnailUrl(input: string): string | null {
+  const id = extractYouTubeVideoId(input);
+  if (!id) return null;
+  return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+}

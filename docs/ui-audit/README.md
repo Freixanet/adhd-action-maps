@@ -229,3 +229,11 @@ screens/
 - [ ] Verificar manualmente el bug de toggle de tema en web fuera de la herramienta de automatización (§6).
 - [ ] Borrar los 3 componentes de orbe sin uso: `PremiumSphere.tsx`, `PremiumSphereFallback.tsx`, `LiquidGlassAtomOrb.tsx` (§7) — confírmame y lo hago.
 - [ ] Migrar historial a lista virtualizada y descomponer los monolitos web (§8).
+
+---
+
+## Limpieza jul 2026
+
+- Eliminadas capturas duplicadas `*__light2.png`.
+- Carpeta `screens/mobile/classic/` marcada como histórica.
+- Reauditoría: `../AUDIT-REAUDIT-2026-07-20.md`.

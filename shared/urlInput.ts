@@ -6,7 +6,7 @@ export type UrlInputDetection =
   | { kind: 'text' }
   | { kind: 'invalid'; message: string };
 
-export type TransformSourceKind = 'link' | 'youtube' | 'text';
+export type TransformSourceKind = 'link' | 'youtube' | 'text' | 'pdf' | 'image' | 'video';
 
 const URL_WITH_EXTRA_TEXT_MESSAGE =
   'Pega solo el enlace, sin texto adicional, o pega directamente el texto completo.';

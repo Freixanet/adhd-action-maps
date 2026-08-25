@@ -1,11 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { CircleAlert, Layers } from 'lucide-react-native';
-import { RADII } from '@shared/uiTokens';
+import { CircleAlert, Layers } from '../icons';
+import { RADII, ACCENT } from '@shared/uiTokens';
 import type { Coverage } from '../logic/contracts';
-import GlassSurface from './GlassSurface';
-import { useTheme } from '../context/ThemeContext';
-import { useAppSession } from '../context/AppSessionContext';
+import ElevatedSurface from './ElevatedSurface';
+import { color } from '@shared/design-tokens';
 
 type SourceCoverageCardProps = {
   coverage?: Coverage;
@@ -32,13 +31,13 @@ function CoverageContent({
 }) {
   return (
     <>
-      <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary mb-4">
+      <Text className="text-meta font-bold uppercase text-secondary mb-4">
         Cobertura de la fuente
       </Text>
 
       {hasSections ? (
         <View className="flex-row items-center gap-2 mb-4 bg-neutral-100/60 dark:bg-white/[0.03] px-3 py-1.5 rounded-full self-start">
-          <Layers size={13} color="#8B8FF5" />
+          <Layers size={13} color={ACCENT} />
           <Text className="text-xs font-semibold text-body">
             Señal estructurada: {knowledgeSectionsCount} secciones
           </Text>
@@ -55,7 +54,7 @@ function CoverageContent({
             <View key={`${note.label}-${index}`} className="flex-row gap-2">
               <CircleAlert
                 size={15}
-                color={note.tone === 'warning' ? '#d97706' : '#737373'}
+                color={note.tone === 'warning' ? color.action.warningAmber : color.text.muted}
                 style={{ marginTop: 2.5 }}
               />
               <Text className="flex-1 text-sm leading-relaxed text-body">
@@ -69,7 +68,7 @@ function CoverageContent({
 
       {hasLimitations ? (
         <View className="mt-5 pt-4 border-t border-white/10">
-          <Text className="text-[10px] font-bold uppercase tracking-wider text-secondary mb-2">
+          <Text className="text-micro font-bold uppercase tracking-wider text-secondary mb-2">
             Límites detectados
           </Text>
           {limitations.slice(0, 3).map((limitation, index) => (
@@ -94,9 +93,6 @@ export default function SourceCoverageCard({
   className = 'mt-6',
   plain = false,
 }: SourceCoverageCardProps) {
-  const { isDark } = useTheme();
-  const { isStreamGenerating } = useAppSession();
-
   const hasCoverage = !!coverage?.summary || !!coverage?.notes?.length;
   const hasLimitations = limitations.length > 0;
   const hasSections = knowledgeSectionsCount > 0;
@@ -122,14 +118,7 @@ export default function SourceCoverageCard({
 
   return (
     <View className={className}>
-      <GlassSurface
-        liquid
-        borderRadius={RADII.md}
-        className="rounded-2xl overflow-hidden"
-        style={styles.shell}
-        overlayClassName={isDark ? 'bg-white/[0.05]' : 'bg-white/45'}
-        glassRefreshKey={isStreamGenerating ? 'streaming' : 'ready'}
-      >
+      <ElevatedSurface borderRadius={RADII.md} style={styles.shell}>
         <View className="px-5 py-6">
           <CoverageContent
             coverage={coverage}
@@ -140,7 +129,7 @@ export default function SourceCoverageCard({
             hasSections={hasSections}
           />
         </View>
-      </GlassSurface>
+      </ElevatedSurface>
     </View>
   );
 }

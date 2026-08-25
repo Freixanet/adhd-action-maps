@@ -11,8 +11,6 @@ import {
   CheckCircle2,
   X,
   File,
-  Moon,
-  Sun,
   Clock,
   Layers,
   List,
@@ -26,18 +24,17 @@ import {
   Paperclip,
   Download,
   MessageSquareText,
-  BookOpen,
-  ListChecks,
   Sparkles,
   ChevronLeft,
-  Cpu,
   CircleAlert,
 } from 'lucide-react';
 import { apiUrl } from './apiBase';
 import HistoryPanel from './components/HistoryPanel';
 import AppIcon from './components/AppIcon';
-import AtomCanvasIcon from './components/AtomCanvasIcon';
+import GenerationModeChip from './components/GenerationModeChip';
+import IntentPill from './components/IntentPill';
 import MenuTwoLines from './components/MenuTwoLines';
+import NucleoWordmark from './components/NucleoWordmark';
 import ProfileAvatar from './components/ProfileAvatar';
 import LoadingState from './components/LoadingState';
 import ReadingProgressBar from './components/ReadingProgressBar';
@@ -50,14 +47,13 @@ import type {
   ChatTurn,
   MapChatResponse,
   MapIntent,
+  NucleoGenerationMode,
   SavedSession,
   SourceReference,
   TransformRequest,
 } from './contracts';
 import {
   getInitialModelPreference,
-  MODEL_OPTIONS,
-  saveModelPreference,
   type ModelPreference,
 } from './modelPreference';
 import {
@@ -129,25 +125,6 @@ const DEFAULT_CALLOUT_LABELS: Record<string, CalloutLabel> = {
   info: 'Idea clave',
   alert: 'Precaución',
 };
-const INTENT_OPTIONS: Array<{
-  id: Extract<MapIntent, 'understand' | 'apply'>;
-  title: string;
-  description: string;
-  icon: typeof BookOpen;
-}> = [
-  {
-    id: 'understand',
-    title: 'Entender',
-    description: 'Idea central, contexto, argumentos y matices.',
-    icon: BookOpen,
-  },
-  {
-    id: 'apply',
-    title: 'Aplicar',
-    description: 'Decisiones, pasos, riesgos y siguiente acción.',
-    icon: ListChecks,
-  },
-];
 function loadRecentImages(): string[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -247,13 +224,6 @@ function resolveSourceType(text: string, uploadedFile: UploadedFile | null): Sou
   return 'text';
 }
 
-function getInitialTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'dark';
-  const stored = localStorage.getItem('theme');
-  if (stored === 'light' || stored === 'dark') return stored;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
 function parseTotalMinutes(steps: any[]): number | null {
   if (!steps?.length) return null;
   let total = 0;
@@ -335,10 +305,11 @@ export default function ComprensionApp() {
     () => typeof window !== 'undefined' && window.innerWidth >= DESKTOP_BREAKPOINT
   );
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
-  const [modelPreference, setModelPreference] = useState<ModelPreference>(getInitialModelPreference);
+  const [theme] = useState<'light' | 'dark'>('dark');
+  const [modelPreference] = useState<ModelPreference>(getInitialModelPreference);
   const [intent, setIntent] = useState<MapIntent>(initialActiveData?.intent ?? 'understand');
   const [depthPreference, setDepthPreference] = useState<DepthPreference>(getInitialDepthPreference);
+  const [generationMode, setGenerationMode] = useState<NucleoGenerationMode>('classic');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [cloudUser, setCloudUser] = useState<CloudUserProfile | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -357,8 +328,6 @@ export default function ComprensionApp() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [essentialsReview, setEssentialsReview] = useState(false);
   const [profileMenuView, setProfileMenuView] = useState<'root' | 'settings'>('root');
-  const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const [modelPickerLeft, setModelPickerLeft] = useState(56);
   const [depthPickerOpen, setDepthPickerOpen] = useState(false);
   const [depthPickerLeft, setDepthPickerLeft] = useState(56);
   const [showStepFooter, setShowStepFooter] = useState(false);
@@ -382,7 +351,6 @@ export default function ComprensionApp() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const attachMenuRef = useRef<HTMLDivElement>(null);
-  const modelPickerRef = useRef<HTMLDivElement>(null);
   const depthPickerRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const scrollSpyLockRef = useRef(false);
@@ -573,13 +541,6 @@ export default function ComprensionApp() {
   }, [profileMenuOpen]);
 
   React.useLayoutEffect(() => {
-    if (!modelPickerOpen || !modelPickerRef.current || !attachMenuRef.current) return;
-    const anchor = modelPickerRef.current.getBoundingClientRect();
-    const group = attachMenuRef.current.getBoundingClientRect();
-    setModelPickerLeft(Math.max(8, anchor.left - group.left));
-  }, [modelPickerOpen]);
-
-  React.useLayoutEffect(() => {
     if (!depthPickerOpen || !depthPickerRef.current || !attachMenuRef.current) return;
     const anchor = depthPickerRef.current.getBoundingClientRect();
     const group = attachMenuRef.current.getBoundingClientRect();
@@ -587,18 +548,17 @@ export default function ComprensionApp() {
   }, [depthPickerOpen]);
 
   React.useEffect(() => {
-    if (!attachMenuOpen && !modelPickerOpen && !depthPickerOpen) return;
+    if (!attachMenuOpen && !depthPickerOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
       if (attachMenuRef.current && !attachMenuRef.current.contains(target)) {
         setAttachMenuOpen(false);
-        setModelPickerOpen(false);
         setDepthPickerOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [attachMenuOpen, modelPickerOpen, depthPickerOpen]);
+  }, [attachMenuOpen, depthPickerOpen]);
 
   React.useEffect(() => {
     if (appState !== 'result') return;
@@ -912,28 +872,12 @@ export default function ComprensionApp() {
   }, [isDesktop, isSidebarDragging]);
 
   React.useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
-      if (!localStorage.getItem('theme')) {
-        setTheme(e.matches ? 'dark' : 'light');
-      }
-    };
-    mq.addEventListener('change', handleChange);
-    return () => mq.removeEventListener('change', handleChange);
-  }, []);
-
-  React.useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    const themeColor = theme === 'dark' ? '#181A1F' : '#FAFAFA';
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor);
+    document.documentElement.classList.add('dark');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#181A1F');
     document
       .querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
-      ?.setAttribute('content', theme === 'dark' ? 'black-translucent' : 'default');
-  }, [theme]);
+      ?.setAttribute('content', 'black-translucent');
+  }, []);
 
   React.useEffect(() => {
     if (appState !== 'result' || !data || !historyStore.activeId) return;
@@ -951,14 +895,6 @@ export default function ComprensionApp() {
       return updated;
     });
   }, [appState, data, currentStep, isComplete, viewAll, historyStore.activeId]);
-
-  const toggleTheme = () => {
-    setTheme((prev) => {
-      const next = prev === 'light' ? 'dark' : 'light';
-      localStorage.setItem('theme', next);
-      return next;
-    });
-  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1192,6 +1128,7 @@ export default function ComprensionApp() {
           preferredModel: modelPreference,
           intent,
           depth: depthPreference,
+          generationMode,
           outputLanguage: resolvedOutputLanguage,
           sourceLabel,
           mapId,
@@ -1204,6 +1141,7 @@ export default function ComprensionApp() {
           preferredModel: modelPreference,
           intent,
           depth: depthPreference,
+          generationMode,
           outputLanguage: resolvedOutputLanguage,
           sourceLabel,
           mapId,
@@ -1217,6 +1155,7 @@ export default function ComprensionApp() {
           preferredModel: modelPreference,
           intent,
           depth: depthPreference,
+          generationMode,
           outputLanguage: resolvedOutputLanguage,
           sourceLabel,
           mapId,
@@ -1229,6 +1168,7 @@ export default function ComprensionApp() {
           preferredModel: modelPreference,
           intent,
           depth: depthPreference,
+          generationMode,
           outputLanguage: resolvedOutputLanguage,
           sourceLabel,
           mapId,
@@ -1241,6 +1181,7 @@ export default function ComprensionApp() {
             preferredModel: modelPreference,
             intent,
             depth: depthPreference,
+            generationMode,
             outputLanguage: resolvedOutputLanguage,
             sourceLabel: urlDetection.url,
             mapId,
@@ -1252,6 +1193,7 @@ export default function ComprensionApp() {
             preferredModel: modelPreference,
             intent,
             depth: depthPreference,
+            generationMode,
             outputLanguage: resolvedOutputLanguage,
             sourceLabel: urlDetection.url,
             mapId,
@@ -1263,6 +1205,7 @@ export default function ComprensionApp() {
             preferredModel: modelPreference,
             intent,
             depth: depthPreference,
+            generationMode,
             outputLanguage: resolvedOutputLanguage,
             sourceLabel,
             mapId,
@@ -1798,17 +1741,6 @@ export default function ComprensionApp() {
               );
             })}
           </div>
-          <div className="border-t border-neutral-200/60 dark:border-white/10 py-1">
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => toggleTheme()}
-              className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors"
-            >
-              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-              {theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
-            </button>
-          </div>
         </div>
       );
     }
@@ -2278,9 +2210,9 @@ export default function ComprensionApp() {
               <ul className="space-y-6">
                 {block.items.map((item: any, i: number) => (
                   <li key={i} className="flex gap-4 items-start">
-                    <div className="w-2 h-2 rounded-full bg-indigo-500 mt-2.5 shrink-0" />
+                    <div className="w-2 h-2 rounded-full bg-[#8B8FF5] mt-2.5 shrink-0" />
                     <div className="text-lg sm:text-xl leading-[1.65] text-pretty">
-                      <strong className="text-[#1A1A1A] dark:text-[#EDEDED] font-bold">
+                      <strong className="text-[#FAFAFA] font-bold">
                         {item.strong}
                       </strong>
                       {item.span && (
@@ -2318,31 +2250,31 @@ export default function ComprensionApp() {
       <div className="mb-16">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-6">
           <div className="flex items-center gap-2">
-            <AppIcon className="w-5 h-5 text-[#1A1A1A] dark:text-[#EDEDED]" />
-            <span className="text-sm font-bold tracking-widest uppercase text-[#1A1A1A] dark:text-[#EDEDED]">
+            <AppIcon className="w-5 h-5 text-[#FAFAFA]" />
+            <span className="text-sm font-bold tracking-widest uppercase text-[#FAFAFA]">
               Idea central
             </span>
           </div>
           {!isComplete && totalMinutes !== null && (
-            <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+            <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#8B8FF5]">
               <Clock className="w-4 h-4" aria-hidden="true" />
               ~{totalMinutes} min
             </p>
           )}
         </div>
-        <h2 className="heading-core text-[#1A1A1A] dark:text-[#EDEDED] mb-6">
+        <h2 className="heading-core text-[#FAFAFA] mb-6">
           <BalancedText>{data?.coreIdea}</BalancedText>
         </h2>
-        <p className="text-xl sm:text-2xl leading-[1.65] text-neutral-700 dark:text-neutral-400 content-prose text-pretty">
+        <p className="text-xl sm:text-2xl leading-[1.65] text-neutral-400 content-prose text-pretty">
           {data?.coreSupport}
         </p>
         {data?.sourceMetadata && (
-          <div className="mt-8 rounded-2xl bg-white/80 dark:bg-neutral-900/80 backdrop-blur-2xl backdrop-saturate-150 shadow-[0_12px_40px_rgba(0,0,0,0.12),inset_0_1px_1px_rgba(255,255,255,0.6)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.08)] overflow-hidden px-5 py-4">
+          <div className="mt-8 rounded-2xl bg-[#24262D] border border-white/10 overflow-hidden px-5 py-4">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
-                Fuente detectada
+              <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-400">
+                Señal extraída
               </span>
-              <span className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+              <span className="text-sm font-semibold text-neutral-100">
                 {data.sourceMetadata.label}
               </span>
             </div>
@@ -2351,7 +2283,7 @@ export default function ComprensionApp() {
                 {data.sourceMetadata.detected.map((item, index) => (
                   <span
                     key={`${item}-${index}`}
-                    className="rounded-full bg-neutral-100 dark:bg-white/[0.05] px-2.5 py-1 text-xs text-neutral-600 dark:text-neutral-300"
+                    className="rounded-full bg-white/[0.05] px-2.5 py-1 text-xs text-neutral-300"
                   >
                     {item}
                   </span>
@@ -2359,7 +2291,7 @@ export default function ComprensionApp() {
               </div>
             )}
             {data.coverage?.summary && (
-              <p className="mt-3 text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
+              <p className="mt-3 text-sm leading-relaxed text-neutral-300">
                 {data.coverage.summary}
               </p>
             )}
@@ -2370,12 +2302,12 @@ export default function ComprensionApp() {
                     <CircleAlert
                       className={`mt-0.5 h-4 w-4 shrink-0 ${
                         note.tone === 'warning'
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-neutral-400 dark:text-neutral-500'
+                          ? 'text-amber-400'
+                          : 'text-neutral-500'
                       }`}
                     />
-                    <p className="text-neutral-600 dark:text-neutral-300">
-                      <strong className="text-neutral-800 dark:text-neutral-100">
+                    <p className="text-neutral-300">
+                      <strong className="text-neutral-100">
                         {note.label}.
                       </strong>{' '}
                       {note.detail}
@@ -2388,7 +2320,7 @@ export default function ComprensionApp() {
         )}
         {data?.references?.length ? (
           <div className="mt-6">
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-400">
               Referencias visibles
             </p>
             {renderReferences(data.references)}
@@ -2396,21 +2328,21 @@ export default function ComprensionApp() {
         ) : null}
       </div>
 
-      <div className={`border-t border-neutral-200 dark:border-white/5 pt-12${viewAll ? ' pb-8' : ''}`}>
+      <div className={`border-t border-white/10 pt-12${viewAll ? ' pb-8' : ''}`}>
         <h3 className="text-xs font-bold tracking-widest uppercase text-neutral-400 mb-10">
           En 60 segundos
         </h3>
         <div className="grid gap-10">
           {data?.tldr?.map((item: any, i: number) => (
             <div key={i} className="flex gap-6 items-start group">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full border-2 border-neutral-200 dark:border-white/10 flex items-center justify-center text-sm font-bold text-neutral-400 group-hover:border-indigo-500 group-hover:text-indigo-500 transition-colors">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full border-2 border-white/10 flex items-center justify-center text-sm font-bold text-neutral-400 group-hover:border-[#8B8FF5] group-hover:text-[#8B8FF5] transition-colors">
                 {i + 1}
               </div>
               <div className="min-w-0 flex-1">
-                <strong className="block text-[#1A1A1A] dark:text-[#EDEDED] text-lg sm:text-xl font-bold mb-3">
+                <strong className="block text-[#FAFAFA] text-lg sm:text-xl font-bold mb-3">
                   {item.title}
                 </strong>
-                <p className="text-neutral-700 dark:text-neutral-300 text-base sm:text-lg leading-[1.65] content-prose text-pretty">
+                <p className="text-neutral-300 text-base sm:text-lg leading-[1.65] content-prose text-pretty">
                   {item.desc}
                 </p>
               </div>
@@ -2438,24 +2370,24 @@ export default function ComprensionApp() {
       >
         <div className={viewAll ? 'mb-12' : undefined}>
           <div className="flex flex-wrap items-center gap-3 mb-6">
-            <span className="text-indigo-600 dark:text-indigo-400 font-bold tracking-widest uppercase text-sm">
+            <span className="text-[#8B8FF5] font-bold tracking-widest uppercase text-sm">
               Paso {stepIndex} de {totalSteps}
             </span>
             {step.time && (
               <>
-                <span className="w-1 h-1 rounded-full bg-neutral-300 dark:bg-neutral-700" />
-                <span className="text-neutral-500 dark:text-neutral-400 font-medium text-sm">
+                <span className="w-1 h-1 rounded-full bg-neutral-600" />
+                <span className="text-neutral-400 font-medium text-sm">
                   {step.time}
                 </span>
               </>
             )}
           </div>
 
-          <h2 className="heading-step text-[#1A1A1A] dark:text-[#EDEDED] mb-12">
+          <h2 className="heading-step text-[#FAFAFA] mb-12">
             {step.title}
           </h2>
           {step.purpose && (
-            <p className="mb-8 max-w-3xl text-base sm:text-lg leading-[1.65] text-neutral-600 dark:text-neutral-300">
+            <p className="mb-8 max-w-3xl text-base sm:text-lg leading-[1.65] text-neutral-300">
               {step.purpose}
             </p>
           )}
@@ -2474,11 +2406,11 @@ export default function ComprensionApp() {
 
     if (currentStep === 0) {
       return (
-        <div className="shrink-0 border-t border-neutral-200 dark:border-white/5 bg-neutral-50 dark:bg-app-canvas px-4 sm:px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="shrink-0 border-t border-white/10 bg-app-canvas px-7 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="max-w-3xl mx-auto">
             <button
               onClick={() => handleStepClick(1)}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white p-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98]"
+              className="w-full h-[52px] bg-[#6A6FE0] hover:bg-[#7A7EE0] text-white rounded-2xl font-semibold text-[17px] flex items-center justify-center gap-3 transition-transform active:scale-[0.98]"
             >
               Empezar a leer <ArrowRight className="w-5 h-5" />
             </button>
@@ -2490,11 +2422,11 @@ export default function ComprensionApp() {
     const stepIndex = currentStep;
 
     return (
-      <div className="shrink-0 border-t border-neutral-200 dark:border-white/5 bg-neutral-50 dark:bg-app-canvas px-4 sm:px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <div className="max-w-3xl mx-auto flex gap-4">
+      <div className="shrink-0 border-t border-white/10 bg-app-canvas px-7 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="max-w-3xl mx-auto flex gap-3">
           <button
             onClick={() => handleStepClick(stepIndex - 1)}
-            className="flex-1 bg-transparent text-neutral-700 dark:text-neutral-300 p-4 rounded-xl font-bold border border-neutral-200 dark:border-white/10 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors flex justify-center"
+            className="flex-1 h-[52px] bg-white/[0.06] text-neutral-200 rounded-2xl font-semibold text-[17px] border border-white/10 hover:bg-white/10 transition-colors flex justify-center items-center"
           >
             Atrás
           </button>
@@ -2502,7 +2434,7 @@ export default function ComprensionApp() {
           {stepIndex < totalSteps ? (
             <button
               onClick={() => handleStepClick(stepIndex + 1)}
-              className="flex-[2] bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white p-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98]"
+              className="flex-[2] h-[52px] bg-[#6A6FE0] hover:bg-[#7A7EE0] text-white rounded-2xl font-semibold text-[17px] flex items-center justify-center gap-3 transition-transform active:scale-[0.98]"
             >
               Siguiente <ArrowRight className="w-5 h-5" />
             </button>
@@ -2512,9 +2444,9 @@ export default function ComprensionApp() {
                 setIsComplete(true);
                 scrollPageToTop();
               }}
-              className="flex-[2] bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white p-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98]"
+              className="flex-[2] h-[52px] bg-[#6A6FE0] hover:bg-[#7A7EE0] text-white rounded-2xl font-semibold text-[17px] flex items-center justify-center gap-3 transition-transform active:scale-[0.98]"
             >
-              <Check className="w-6 h-6" /> Completar mapa
+              <Check className="w-5 h-5" /> Completar mapa
             </button>
           )}
         </div>
@@ -2635,7 +2567,7 @@ export default function ComprensionApp() {
               .slice(0, 7)
               .map((item, index) => (
                 <li key={`${item}-${index}`} className="flex gap-3 text-base leading-relaxed text-neutral-700 dark:text-neutral-200">
-                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500" />
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#8B8FF5]" />
                   <span>{item}</span>
                 </li>
               ))}
@@ -2665,26 +2597,26 @@ export default function ComprensionApp() {
 
   const renderCompletion = () => (
     <div className="animate-fade-in content-column py-14">
-      <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-400">
-        <CheckCircle2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+      <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#8B8FF5]">
+        <CheckCircle2 className="h-4 w-4 text-[#8B8FF5]" />
         Mapa completado
       </p>
-      <h2 className="mt-6 text-3xl sm:text-4xl font-extrabold text-[#1A1A1A] dark:text-[#EDEDED]">
+      <h2 className="mt-6 text-3xl sm:text-4xl font-extrabold text-[#FAFAFA]">
         {data?.completionCard?.title || 'Has terminado esta lectura'}
       </h2>
-      <p className="mt-4 text-lg sm:text-xl text-neutral-600 dark:text-neutral-300 content-prose text-pretty">
+      <p className="mt-4 text-lg sm:text-xl text-neutral-300 content-prose text-pretty">
         {data?.completionCard?.summary || 'Aquí tienes lo esencial para retomarlo con rapidez.'}
       </p>
 
       {data?.completionCard?.takeaways?.length ? (
-        <div className="mt-10 rounded-3xl border border-neutral-200 dark:border-white/8 bg-white dark:bg-white/[0.03] px-5 py-5">
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+        <div className="mt-10 rounded-3xl border border-white/10 bg-[#24262D] px-5 py-5">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-400">
             Para recordar
           </p>
           <ul className="mt-4 space-y-3">
             {data.completionCard.takeaways.slice(0, 7).map((item, index) => (
-              <li key={`${item}-${index}`} className="flex gap-3 text-base leading-relaxed text-neutral-700 dark:text-neutral-200">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500" />
+              <li key={`${item}-${index}`} className="flex gap-3 text-base leading-relaxed text-neutral-200">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#8B8FF5]" />
                 <span>{item}</span>
               </li>
             ))}
@@ -2695,7 +2627,7 @@ export default function ComprensionApp() {
       <div className="mt-10 grid gap-3 sm:grid-cols-2">
         <button
           onClick={() => setEssentialsReview(true)}
-          className="px-6 py-4 rounded-2xl font-semibold border border-neutral-200 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
+          className="px-6 py-4 rounded-2xl font-semibold border border-white/10 text-neutral-300 hover:bg-white/5 transition-colors"
         >
           Repasar lo esencial
         </button>
@@ -2705,25 +2637,25 @@ export default function ComprensionApp() {
             setEssentialsReview(false);
             handleStepClick(0);
           }}
-          className="px-6 py-4 rounded-2xl font-semibold border border-neutral-200 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
+          className="px-6 py-4 rounded-2xl font-semibold border border-white/10 text-neutral-300 hover:bg-white/5 transition-colors"
         >
           Volver al inicio
         </button>
         <button
           onClick={() => void handleDownloadCheatsheet()}
-          className="px-6 py-4 rounded-2xl font-semibold border border-neutral-200 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors flex items-center justify-center gap-2"
+          className="px-6 py-4 rounded-2xl font-semibold border border-white/10 text-neutral-300 hover:bg-white/5 transition-colors flex items-center justify-center gap-2"
         >
           <Download className="w-4 h-4" /> Guardar ficha PDF
         </button>
         <button
           onClick={() => setChatOpen((open) => !open)}
-          className="px-6 py-4 rounded-2xl font-semibold border border-neutral-200 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors flex items-center justify-center gap-2"
+          className="px-6 py-4 rounded-2xl font-semibold border border-white/10 text-neutral-300 hover:bg-white/5 transition-colors flex items-center justify-center gap-2"
         >
           <MessageSquareText className="w-4 h-4" /> Preguntar sobre este mapa
         </button>
         <button
           onClick={resetApp}
-          className="px-6 py-4 rounded-2xl font-semibold bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+          className="px-6 py-4 rounded-2xl font-semibold bg-[#6A6FE0] hover:bg-[#7A7EE0] text-white flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
         >
           <SquarePen className="w-5 h-5" /> Nuevo mapa
         </button>
@@ -2745,13 +2677,16 @@ export default function ComprensionApp() {
   );
 
   const renderResultHeader = () => (
-    <div className="mb-12">
-      <h1 className="text-xs sm:text-sm font-bold text-neutral-500 dark:text-neutral-300 uppercase tracking-[0.16em] min-w-0 leading-snug text-pretty">
+    <div className="mb-8">
+      <h1 className="text-xs sm:text-sm font-bold text-neutral-400 uppercase tracking-[0.16em] min-w-0 leading-snug text-pretty">
         {data?.title}
       </h1>
+      <p className="mt-1 text-xs text-neutral-500">
+        Texto · {getIntentLabel(data?.intent ?? intent)}
+      </p>
       {isStreamGenerating && (
-        <p className="mt-2 text-xs font-semibold text-indigo-600 dark:text-indigo-300 animate-pulse">
-          Generando mapa…
+        <p className="mt-2 text-xs font-semibold text-[#8B8FF5] animate-pulse">
+          Ordenando el mapa…
         </p>
       )}
     </div>
@@ -2763,8 +2698,9 @@ export default function ComprensionApp() {
       ? 'Añade una indicación (opcional)…'
       : uploadedFile
         ? 'Archivo adjunto listo para convertir'
-        : 'Pega texto, un artículo, un enlace o una transcripción…';
+        : 'Pega texto, un enlace o adjunta un archivo';
     const hideTextInput = Boolean(uploadedFile?.isPdf);
+    const showHero = !canSubmit && !uploadedFile;
 
     return (
       <div
@@ -2775,63 +2711,40 @@ export default function ComprensionApp() {
           } as React.CSSProperties
         }
       >
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          className="absolute left-6 top-4 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-neutral-500/10 text-neutral-600 shadow-[inset_0_1px_1px_rgba(255,255,255,0.5)] dark:bg-neutral-500/20 dark:text-neutral-400 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition-all duration-200 hover:bg-neutral-500/20 dark:hover:bg-white/10 hover:scale-105 active:scale-95 shrink-0"
-          title="Abrir navegación"
-          aria-label="Abrir navegación"
-        >
-          <MenuTwoLines className="w-4.5 h-4.5" />
-        </button>
-        <div ref={contentRef} className="page-scroll flex-1 flex flex-col items-center justify-center px-4 sm:px-8">
-          <div
-            className="home-hero-copy text-center space-y-3 sm:space-y-4 max-w-2xl select-none"
-            onSelectStart={(e) => e.preventDefault()}
+        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-4 pt-4 sm:px-6">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.06] text-neutral-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] transition-all duration-200 hover:bg-white/10 hover:scale-105 active:scale-95 shrink-0"
+            title="Abrir navegación"
+            aria-label="Abrir navegación"
           >
-            <div className="inline-flex items-center justify-center mb-1">
-              <AtomCanvasIcon />
+            <MenuTwoLines className="w-4.5 h-4.5" />
+          </button>
+          <IntentPill
+            value={intent}
+            onChange={setIntent}
+            disabled={appState === 'loading'}
+          />
+          <div className="w-11 shrink-0" aria-hidden="true" />
+        </div>
+
+        <div className="home-center-stage flex-1 min-h-0 flex flex-col">
+        <div ref={contentRef} className="page-scroll flex-1 flex flex-col items-center justify-center px-4 sm:px-8 lg:flex-none">
+          {showHero ? (
+            <div
+              className="home-hero-copy text-center max-w-md select-none"
+              onSelectStart={(e) => e.preventDefault()}
+            >
+              <NucleoWordmark className="mx-auto mb-6" />
+              <p className="text-[15px] leading-6 text-neutral-400">
+                Separa lo importante del ruido.
+              </p>
             </div>
-            <h1 className="text-3xl sm:text-5xl font-black tracking-tighter text-[#1A1A1A] dark:text-[#EDEDED] leading-[1.1]">
-              Separa la señal del ruido.
-            </h1>
-            <p className="mx-auto max-w-xl text-sm sm:text-lg text-neutral-600 dark:text-neutral-300 leading-relaxed">
-              Convierte cualquier texto, enlace o PDF en un mapa cognitivo.
-            </p>
-            <div className="mx-auto mt-6 grid max-w-3xl gap-3 sm:grid-cols-2">
-              {INTENT_OPTIONS.map((option) => {
-                const Icon = option.icon;
-                const isActive = intent === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setIntent(option.id)}
-                    className={`group relative overflow-hidden rounded-[28px] px-5 py-5 text-left transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] backdrop-blur-2xl backdrop-saturate-[1.5] ${
-                      isActive
-                        ? 'bg-indigo-50/70 text-indigo-900 shadow-[0_8px_32px_rgba(0,0,0,0.06),inset_0_1px_1px_rgba(255,255,255,1)] dark:bg-indigo-500/10 dark:text-indigo-200 dark:shadow-[0_8px_32px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.1)]'
-                        : 'bg-white/30 text-neutral-700 shadow-[0_8px_32px_rgba(0,0,0,0.04),inset_0_1px_1px_rgba(255,255,255,0.8)] hover:bg-white/50 hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] dark:bg-white/[0.03] dark:text-neutral-300 dark:shadow-[0_8px_32px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,0.05)] dark:hover:bg-white/[0.06]'
-                    }`}
-                    aria-pressed={isActive}
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 dark:from-white/10" />
-                    <div className="relative z-10 flex items-center gap-3">
-                      <div className={`flex items-center justify-center w-8 h-8 rounded-full shadow-[inset_0_1px_1px_rgba(255,255,255,0.5)] ${isActive ? 'bg-indigo-500/15 text-indigo-700 dark:bg-indigo-400/20 dark:text-indigo-300 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]' : 'bg-neutral-500/10 text-neutral-600 dark:bg-neutral-500/20 dark:text-neutral-400 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]'}`}>
-                        <Icon className="h-4 w-4 shrink-0" />
-                      </div>
-                      <span className="text-[15px] font-bold tracking-tight">{option.title}</span>
-                    </div>
-                    <p className="relative z-10 mt-3 text-[13px] leading-relaxed text-current/70 font-medium">
-                      {option.description}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          ) : null}
 
           {error && (
-            <div className="mt-6 w-full max-w-3xl p-4 bg-neutral-50 dark:bg-neutral-900/50 text-[#1A1A1A] dark:text-[#EDEDED] rounded-2xl border border-neutral-200 dark:border-white/5 flex items-center gap-3">
+            <div className="mt-6 w-full max-w-3xl p-4 bg-neutral-900/50 text-[#EDEDED] rounded-2xl border border-white/5 flex items-center gap-3">
               <AlertTriangle className="w-5 h-5 shrink-0" />
               <p className="font-medium text-sm">{error}</p>
             </div>
@@ -2840,19 +2753,19 @@ export default function ComprensionApp() {
 
         {!isNativeIOS && (
         <div className="composer-dock">
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-3xl mx-auto lg:max-w-none lg:mx-0">
             <div className="relative overflow-visible group" ref={attachMenuRef}>
-              <div className="relative overflow-hidden rounded-[22px] bg-white/40 dark:bg-[#3F4142] backdrop-blur-3xl dark:backdrop-blur-[40px] backdrop-saturate-[1.5] dark:backdrop-saturate-[2] shadow-[0_12px_40px_rgba(0,0,0,0.06),inset_0_1px_1px_rgba(255,255,255,1)] dark:shadow-[0_2px_24px_rgba(0,0,0,0.25),inset_0_1px_0.5px_#626463,inset_0_-1px_0.5px_#626463] transition-all duration-500 hover:shadow-[0_16px_48px_rgba(0,0,0,0.08)]">
-                <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 dark:from-white/10 pointer-events-none" />
+              <div className="relative overflow-hidden rounded-[24px] bg-[#3E4041] backdrop-blur-[40px] backdrop-saturate-[2] shadow-[0_2px_24px_rgba(0,0,0,0.25),inset_0_1px_0.5px_rgba(255,255,255,0.12),inset_0_-1px_0.5px_rgba(255,255,255,0.06)] transition-all duration-500">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100 pointer-events-none" />
                 <div className="relative z-10">
                   {uploadedFile && (
-                  <div className="flex items-center gap-2 px-6 pt-5 pb-1">
+                  <div className="flex items-center gap-2 px-5 pt-4 pb-1">
                     {uploadedFile.isImage && uploadedFile.previewUrl ? (
                       <div className="relative group">
                         <img
                           src={uploadedFile.previewUrl}
                           alt={uploadedFile.name}
-                          className="w-16 h-16 rounded-xl object-cover border border-neutral-200 dark:border-white/10"
+                          className="w-16 h-16 rounded-xl object-cover border border-white/10"
                         />
                         <button
                           type="button"
@@ -2864,13 +2777,13 @@ export default function ComprensionApp() {
                         </button>
                       </div>
                     ) : (
-                      <div className="inline-flex items-center gap-2 max-w-full px-3 py-1.5 rounded-full bg-neutral-100 dark:bg-white/5 text-sm text-neutral-700 dark:text-neutral-300">
+                      <div className="inline-flex items-center gap-2 max-w-full px-3 py-1.5 rounded-full bg-white/10 text-sm text-neutral-300">
                         <File className="w-4 h-4 shrink-0 opacity-70" />
                         <span className="truncate max-w-[220px]">{uploadedFile.name}</span>
                         <button
                           type="button"
                           onClick={removeFile}
-                          className="p-0.5 rounded-full hover:bg-neutral-200 dark:hover:bg-white/10 transition-colors"
+                          className="p-0.5 rounded-full hover:bg-white/10 transition-colors"
                           aria-label="Quitar archivo"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -2890,22 +2803,21 @@ export default function ComprensionApp() {
                     }}
                     rows={1}
                     placeholder={composerPlaceholder}
-                    className="w-full min-h-[5.5rem] max-h-[200px] px-6 pt-5 pb-2 bg-transparent resize-none outline-none text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 text-base leading-snug"
+                    className="w-full min-h-[5.5rem] max-h-[200px] px-5 pt-4 pb-2 bg-transparent resize-none outline-none text-neutral-100 placeholder:text-neutral-500 text-base leading-snug"
                   />
                 )}
 
-                <div className="flex items-center justify-between px-4 pb-4 pt-1">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between px-3 pb-4 pt-1.5 gap-2">
+                  <div className="flex items-center gap-2 shrink min-w-0">
                   <button
                     type="button"
                     onClick={() => {
-                      setModelPickerOpen(false);
                       setAttachMenuOpen((open) => !open);
                     }}
                     className={`p-2.5 rounded-full transition-colors ${
                       attachMenuOpen
-                        ? 'bg-neutral-100 dark:bg-white/10 text-neutral-800 dark:text-neutral-200'
-                        : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10 dark:bg-white/10'
+                        ? 'bg-white/10 text-neutral-200'
+                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/10 bg-white/10'
                     }`}
                     title="Adjuntar"
                     aria-label="Adjuntar"
@@ -2922,33 +2834,21 @@ export default function ComprensionApp() {
                       type="button"
                       onClick={() => {
                         setAttachMenuOpen(false);
-                        setModelPickerOpen(false);
                         setDepthPickerOpen((open) => !open);
                       }}
                       disabled={appState === 'loading'}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-neutral-500/10 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 disabled:opacity-50"
+                      className="inline-flex h-9 items-center gap-1.5 px-3 rounded-full text-[13px] font-semibold bg-white/8 text-neutral-300 disabled:opacity-50"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       {DEPTH_OPTIONS.find((o) => o.id === depthPreference)?.label ?? 'Estándar'}
                     </button>
                   </div>
 
-                  <div ref={modelPickerRef}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAttachMenuOpen(false);
-                        setDepthPickerOpen(false);
-                        setModelPickerOpen((open) => !open);
-                      }}
-                      disabled={appState === 'loading'}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-neutral-500/10 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 disabled:opacity-50"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      {MODEL_OPTIONS.find((o) => o.id === modelPreference)?.label ?? 'Automático'}
-                      <ChevronDown className="w-3.5 h-3.5 opacity-60" />
-                    </button>
-                  </div>
+                  <GenerationModeChip
+                    value={generationMode}
+                    onChange={setGenerationMode}
+                    disabled={appState === 'loading'}
+                  />
                   </div>
 
                   <button
@@ -2959,8 +2859,8 @@ export default function ComprensionApp() {
                     disabled={!canSubmit || appState === 'loading'}
                     className={`w-10 h-10 flex items-center justify-center rounded-full transition-all active:scale-95 disabled:opacity-40 select-none shrink-0 ${
                       canSubmit && appState !== 'loading'
-                        ? 'bg-indigo-500/15 text-indigo-700 shadow-[inset_0_1px_1px_rgba(255,255,255,0.5)] dark:bg-indigo-400/20 dark:text-indigo-300 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]'
-                        : 'bg-neutral-500/10 text-neutral-400 shadow-[inset_0_1px_1px_rgba(255,255,255,0.5)] dark:bg-neutral-500/20 dark:text-neutral-500 dark:shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]'
+                        ? 'bg-[rgba(139,143,245,0.2)] text-[#c7d2fe] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]'
+                        : 'bg-white/8 text-neutral-500 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]'
                     }`}
                     title="Crear lectura"
                     aria-label="Crear lectura"
@@ -2973,7 +2873,7 @@ export default function ComprensionApp() {
 
               {depthPickerOpen && (
                 <div
-                  className="absolute bottom-full mb-2 z-[80] w-56 rounded-[20px] border border-neutral-200 dark:border-white/10 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-2xl shadow-xl py-1 overflow-hidden animate-fade-in"
+                  className="absolute bottom-full mb-2 z-[80] w-56 rounded-[20px] border border-white/10 bg-neutral-900/95 backdrop-blur-2xl shadow-xl py-1 overflow-hidden animate-fade-in"
                   style={{ left: depthPickerLeft }}
                 >
                   {DEPTH_OPTIONS.map((option) => {
@@ -2988,45 +2888,14 @@ export default function ComprensionApp() {
                           setDepthPickerOpen(false);
                         }}
                         className={`w-full text-left px-3 py-2.5 flex items-start gap-2 ${
-                          isActive ? 'bg-indigo-50 dark:bg-indigo-500/10' : 'hover:bg-neutral-50 dark:hover:bg-white/5'
+                          isActive ? 'bg-[rgba(139,143,245,0.12)]' : 'hover:bg-white/5'
                         }`}
                       >
                         <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-semibold text-neutral-800 dark:text-neutral-200">{option.label}</span>
-                          <span className="block text-xs text-neutral-500 dark:text-neutral-400">{option.hint}</span>
+                          <span className="block text-sm font-semibold text-neutral-200">{option.label}</span>
+                          <span className="block text-xs text-neutral-400">{option.hint}</span>
                         </span>
-                        {isActive && <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {modelPickerOpen && (
-                <div
-                  className="absolute bottom-full mb-2 z-[80] w-56 rounded-[20px] border border-neutral-200 dark:border-white/10 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-2xl shadow-xl py-1 overflow-hidden animate-fade-in"
-                  style={{ left: modelPickerLeft }}
-                >
-                  {MODEL_OPTIONS.map((option) => {
-                    const isActive = modelPreference === option.id;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => {
-                          setModelPreference(option.id);
-                          saveModelPreference(option.id);
-                          setModelPickerOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2.5 flex items-start gap-2 ${
-                          isActive ? 'bg-indigo-50 dark:bg-indigo-500/10' : 'hover:bg-neutral-50 dark:hover:bg-white/5'
-                        }`}
-                      >
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-semibold text-neutral-800 dark:text-neutral-200">{option.label}</span>
-                          <span className="block text-xs text-neutral-500 dark:text-neutral-400">{option.hint}</span>
-                        </span>
-                        {isActive && <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
+                        {isActive && <Check className="w-4 h-4 text-[#8B8FF5]" />}
                       </button>
                     );
                   })}
@@ -3036,7 +2905,7 @@ export default function ComprensionApp() {
               {attachMenuOpen && (
                 <div
                   role="menu"
-                  className="absolute bottom-full left-2 mb-2 z-[80] w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-neutral-200 dark:border-white/10 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl shadow-xl p-2 animate-fade-in"
+                  className="absolute bottom-full left-2 mb-2 z-[80] w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-neutral-900/95 backdrop-blur-xl shadow-xl p-2 animate-fade-in"
                 >
                   <div className="px-1 pt-1 pb-2">
                     <p className="px-1 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
@@ -3049,7 +2918,7 @@ export default function ComprensionApp() {
                           imageInputRef.current?.click();
                           setAttachMenuOpen(false);
                         }}
-                        className="shrink-0 w-14 h-14 rounded-lg border border-dashed border-neutral-300 dark:border-white/20 flex items-center justify-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:border-neutral-400 dark:hover:border-white/30 transition-colors"
+                        className="shrink-0 w-14 h-14 rounded-lg border border-dashed border-white/20 flex items-center justify-center text-neutral-400 hover:text-neutral-300 hover:border-white/30 transition-colors"
                         title="Elegir imagen"
                         aria-label="Elegir imagen"
                       >
@@ -3060,7 +2929,7 @@ export default function ComprensionApp() {
                           key={idx}
                           type="button"
                           onClick={() => attachRecentImage(url)}
-                          className="shrink-0 rounded-lg overflow-hidden border border-neutral-200 dark:border-white/10 hover:ring-2 hover:ring-indigo-400/50 transition-all"
+                          className="shrink-0 rounded-lg overflow-hidden border border-white/10 hover:ring-2 hover:ring-[#8B8FF5]/50 transition-all"
                           title="Adjuntar imagen reciente"
                         >
                           <img src={url} alt="" className="w-14 h-14 object-cover" />
@@ -3076,9 +2945,9 @@ export default function ComprensionApp() {
                       cameraInputRef.current?.click();
                       setAttachMenuOpen(false);
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left text-neutral-200 hover:bg-white/5 transition-colors"
                   >
-                    <Camera className="w-4 h-4 shrink-0 text-neutral-500 dark:text-neutral-400" />
+                    <Camera className="w-4 h-4 shrink-0 text-neutral-400" />
                     Cámara
                   </button>
                   <button
@@ -3088,9 +2957,9 @@ export default function ComprensionApp() {
                       setAttachMenuOpen(false);
                       fileInputRef.current?.click();
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left text-neutral-200 hover:bg-white/5 transition-colors"
                   >
-                    <Paperclip className="w-4 h-4 shrink-0 text-neutral-500 dark:text-neutral-400" />
+                    <Paperclip className="w-4 h-4 shrink-0 text-neutral-400" />
                     Añadir archivo o vídeo
                   </button>
                 </div>
@@ -3099,6 +2968,7 @@ export default function ComprensionApp() {
           </div>
         </div>
         )}
+        </div>
       </div>
     );
   };
@@ -3215,7 +3085,7 @@ export default function ComprensionApp() {
               <button
                 type="button"
                 onClick={() => setChatOpen(true)}
-                className="fixed bottom-24 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg transition-transform active:scale-95 lg:right-8"
+                className="fixed bottom-24 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[#6A6FE0] text-white shadow-lg transition-transform active:scale-95 lg:right-8"
                 aria-label="Preguntar sobre este mapa"
               >
                 <MessageSquareText className="h-5 w-5" />

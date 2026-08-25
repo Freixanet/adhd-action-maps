@@ -1,13 +1,24 @@
 import Constants from 'expo-constants';
-import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { HistoryEntry, HistoryStore } from './history';
+import { isChatHistoryEntry } from '@shared/historyKind';
 import { supabase } from './supabase';
 
 WebBrowser.maybeCompleteAuthSession();
 
 /** URL estable registrada en Supabase (evita exp:// que redirige al sitio web). */
 export function getAuthRedirectUrl(): string {
+  // Expo web: land on the local API bridge (allowlisted as http://127.0.0.1:3000/**),
+  // which bounces ?code= back to Expo web. Avoids Supabase falling back to Railway Site URL.
+  if (Platform.OS === 'web') {
+    return (
+      process.env.EXPO_PUBLIC_AUTH_WEB_BRIDGE_URL?.trim() ||
+      'http://127.0.0.1:3000/auth/callback'
+    );
+  }
+
   const override = process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL?.trim();
   if (override) return override;
 
@@ -70,14 +81,30 @@ export async function signInWith(provider: 'google' | 'apple') {
 }
 
 function paramFromUrl(url: string, key: string): string | undefined {
-  const parsed = Linking.parse(url);
-  const fromQuery = parsed.queryParams?.[key];
-  if (typeof fromQuery === 'string') return fromQuery;
+  // Pure JS parse — avoids requiring the ExpoLinking native module at startup.
+  try {
+    const normalized = /:\/\//.test(url) ? url : `nucleo://${url}`;
+    const parsed = new URL(normalized);
+    const fromQuery = parsed.searchParams.get(key);
+    if (fromQuery) return fromQuery;
+    if (parsed.hash.length > 1) {
+      const fromHash = new URLSearchParams(parsed.hash.slice(1)).get(key);
+      if (fromHash) return fromHash;
+    }
+  } catch {
+    /* fall through */
+  }
+
+  const qIndex = url.indexOf('?');
+  if (qIndex >= 0) {
+    const query = url.slice(qIndex + 1).split('#')[0] ?? '';
+    const fromQuery = new URLSearchParams(query).get(key);
+    if (fromQuery) return fromQuery;
+  }
 
   const hashIndex = url.indexOf('#');
   if (hashIndex >= 0) {
-    const hashParams = new URLSearchParams(url.slice(hashIndex + 1));
-    return hashParams.get(key) ?? undefined;
+    return new URLSearchParams(url.slice(hashIndex + 1)).get(key) ?? undefined;
   }
   return undefined;
 }
@@ -122,13 +149,24 @@ export async function completeOAuthRedirect(url: string): Promise<boolean> {
 }
 
 /**
- * Flujo OAuth completo para móvil: abre el navegador de autenticación del sistema,
- * recoge la redirección hacia la app y canjea el código/token por una sesión persistida.
+ * Flujo OAuth completo: en nativo abre el auth session del sistema; en web
+ * redirige la pestaña a Google/Apple y vuelve a `window.location.origin`.
  */
 export async function signInWithProvider(provider: 'google' | 'apple') {
   if (!supabase) throw new Error('La sincronización todavía no está configurada.');
 
   const redirectTo = getAuthRedirectUrl();
+
+  if (Platform.OS === 'web') {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo },
+    });
+    if (error) throw error;
+    if (!data?.url) throw new Error('No se pudo iniciar el acceso con el proveedor.');
+    window.location.assign(data.url);
+    return true;
+  }
 
   const { data, error } = await signInWith(provider);
   if (error) throw error;
@@ -171,18 +209,28 @@ export async function signOut() {
   if (supabase) await supabase.auth.signOut();
 }
 
-export async function migrateLocalHistory(store: HistoryStore) {
-  if (!supabase || store.entries.length === 0) return;
-  const { error } = await supabase.from('maps').upsert(
-    store.entries.map(toCloudMap),
-    { onConflict: 'id', ignoreDuplicates: false }
+type MapsClient = {
+  from: SupabaseClient['from'];
+};
+
+/** Upsert entries using a session-bound client (not the mutable global singleton). */
+export async function migrateLocalHistoryWithClient(
+  client: MapsClient,
+  entries: HistoryEntry[] | HistoryStore
+) {
+  const list = (Array.isArray(entries) ? entries : entries.entries).filter(
+    (entry) => !isChatHistoryEntry(entry)
   );
+  if (list.length === 0) return;
+  const { error } = await client.from('maps').upsert(list.map(toCloudMap), {
+    onConflict: 'id',
+    ignoreDuplicates: false,
+  });
   if (error) throw error;
 }
 
-export async function pullCloudHistory(): Promise<HistoryEntry[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase
+export async function pullCloudHistoryWithClient(client: MapsClient): Promise<HistoryEntry[]> {
+  const { data, error } = await client
     .from('maps')
     .select('id,title,category,pinned_at,source_type,session,created_at,updated_at')
     .order('updated_at', { ascending: false });
@@ -190,20 +238,39 @@ export async function pullCloudHistory(): Promise<HistoryEntry[]> {
   return (data as CloudMap[]).map(fromCloudMap);
 }
 
-export async function pushHistoryEntry(entry: HistoryEntry) {
-  if (!supabase) return;
-  const { error } = await supabase.from('maps').upsert(toCloudMap(entry), { onConflict: 'id' });
+export async function deleteCloudHistoryEntryWithClient(client: MapsClient, id: string) {
+  const { error } = await client.from('maps').delete().eq('id', id);
   if (error) throw error;
 }
 
-export async function deleteCloudHistoryEntry(id: string) {
-  if (!supabase) return;
-  const { error } = await supabase.from('maps').delete().eq('id', id);
+export async function pushHistoryEntryWithClient(client: MapsClient, entry: HistoryEntry) {
+  if (isChatHistoryEntry(entry)) return;
+  const { error } = await client.from('maps').upsert(toCloudMap(entry), { onConflict: 'id' });
   if (error) throw error;
 }
 
-export async function deleteAllCloudHistory(): Promise<void> {
-  if (!supabase) return;
-  const entries = await pullCloudHistory();
-  await Promise.all(entries.map((entry) => deleteCloudHistoryEntry(entry.id)));
+/**
+ * Global singleton helpers are intentionally unavailable for authenticated mobile sync.
+ * Use the WithClient variants with createSessionBoundSupabase(accessToken).
+ */
+export async function migrateLocalHistory(_entries: HistoryEntry[] | HistoryStore): Promise<never> {
+  throw new Error('migrateLocalHistory requires a session-bound client (migrateLocalHistoryWithClient)');
+}
+
+export async function pullCloudHistory(): Promise<never> {
+  throw new Error('pullCloudHistory requires a session-bound client (pullCloudHistoryWithClient)');
+}
+
+export async function pushHistoryEntry(_entry: HistoryEntry): Promise<never> {
+  throw new Error('pushHistoryEntry requires a session-bound client (pushHistoryEntryWithClient)');
+}
+
+export async function deleteCloudHistoryEntry(_id: string): Promise<never> {
+  throw new Error(
+    'deleteCloudHistoryEntry requires a session-bound client (deleteCloudHistoryEntryWithClient)'
+  );
+}
+
+export async function deleteAllCloudHistory(): Promise<never> {
+  throw new Error('deleteAllCloudHistory is disabled; use bound deletes per entry');
 }

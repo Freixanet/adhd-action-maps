@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "budgetNote": "Every exception must be inevitable, concrete, and reviewed. CI fails on new ignores not listed here, and on stale allowlist entries.",
+  "exceptions": []
+}

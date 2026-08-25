@@ -10,6 +10,13 @@ export type NetworkStatusValue = {
 
 const NetworkStatusContext = createContext<NetworkStatusValue | null>(null);
 
+function readOffline(isConnected: boolean | null): boolean {
+  // iOS NetInfo often reports isInternetReachable=false on working Wi-Fi,
+  // especially on LAN or right after a request. Only an explicit disconnect
+  // is offline; reachability false must not block chats.
+  return isConnected === false;
+}
+
 export function NetworkStatusProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<NetworkStatusValue>({
     isConnected: null,
@@ -19,35 +26,28 @@ export function NetworkStatusProvider({ children }: { children: React.ReactNode 
   });
 
   useEffect(() => {
-    // Lectura inicial
-    NetInfo.fetch().then((state) => {
+    const apply = (state: { isConnected: boolean | null; isInternetReachable: boolean | null }) => {
       const isConnected = state.isConnected;
       const isInternetReachable = state.isInternetReachable;
-      const hasKnownStatus = isConnected !== null;
-      // isOffline es true solo si isConnected o isInternetReachable son explícitamente false.
-      // Si isInternetReachable es null, no lo consideramos offline por sí solo.
-      const isOffline = isConnected === false || isInternetReachable === false;
-
       setStatus({
         isConnected,
         isInternetReachable,
-        hasKnownStatus,
-        isOffline,
+        hasKnownStatus: isConnected !== null,
+        isOffline: readOffline(isConnected),
+      });
+    };
+
+    void NetInfo.fetch().then((state) => {
+      apply({
+        isConnected: state.isConnected,
+        isInternetReachable: state.isInternetReachable,
       });
     });
 
-    // Suscribirse a cambios
     const unsubscribe = NetInfo.addEventListener((state) => {
-      const isConnected = state.isConnected;
-      const isInternetReachable = state.isInternetReachable;
-      const hasKnownStatus = isConnected !== null;
-      const isOffline = isConnected === false || isInternetReachable === false;
-
-      setStatus({
-        isConnected,
-        isInternetReachable,
-        hasKnownStatus,
-        isOffline,
+      apply({
+        isConnected: state.isConnected,
+        isInternetReachable: state.isInternetReachable,
       });
     });
 

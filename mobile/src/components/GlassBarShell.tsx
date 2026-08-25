@@ -4,7 +4,7 @@ import { RADII } from '@shared/uiTokens';
 import GlassSurface from './GlassSurface';
 
 /** Shared corner radius for footer CTAs and map header bar buttons (e.g. Empezar a leer, Vista completa). */
-export const GLASS_BAR_BUTTON_RADIUS = RADII.sm;
+export const GLASS_BAR_BUTTON_RADIUS = RADII.md;
 
 type GlassBarShellProps = {
   children: React.ReactNode;

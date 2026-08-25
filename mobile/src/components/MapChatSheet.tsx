@@ -11,13 +11,18 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
-import { MessageSquareText, X, ArrowUp } from 'lucide-react-native';
+import { hapticCommit } from '../logic/haptics';
+import { MessageSquareText, X, ArrowUp } from '../icons';
 import { apiUrl } from '../logic/apiBase';
+import { buildLlmRequestHeaders } from '../logic/apiHeaders';
 import type { ActionMapData, ChatTurn, MapChatResponse } from '../logic/contracts';
 import { supabase } from '../logic/supabase';
 import GlassSurface from './GlassSurface';
+import { DevModelLongPress } from './DevModelInspect';
 import { fetchWithTimeout } from '../logic/network';
+import { useThemeColors } from '../context/ThemeContext';
+import { useAppSession } from '../context/AppSessionContext';
+import { type } from '@shared/design-tokens';
 
 type MapChatSheetProps = {
   visible: boolean;
@@ -96,15 +101,24 @@ function formatAssistantText(reply: MapChatResponse): string {
   return `${reply.answer}${citationText}${limitationsText}`.trim();
 }
 
-function AssistantBubble({ text }: { text: string }) {
+function AssistantBubble({
+  text,
+  modelUsed,
+  inspectEnabled,
+}: {
+  text: string;
+  modelUsed?: string;
+  inspectEnabled: boolean;
+}) {
   const parsed = parseStoredAssistantText(text);
 
   return (
-    <View className="self-start max-w-[92%] mb-4 rounded-card px-4 py-3 bg-neutral-100 dark:bg-white/5">
-      <Text className="text-sm leading-relaxed text-primary">{parsed.answer}</Text>
+    <DevModelLongPress enabled={inspectEnabled} modelUsed={modelUsed}>
+      <View className="self-start max-w-[92%] mb-4 rounded-card px-4 py-3 bg-neutral-100 dark:bg-white/5">
+        <Text className="text-sm leading-relaxed text-primary">{parsed.answer}</Text>
       {parsed.citations?.length ? (
         <View className="mt-3 pt-3 border-t border-neutral-200/80 border-white/10">
-          <Text className="text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
+          <Text className="text-meta font-bold uppercase tracking-widest text-secondary mb-2">
             Fuentes
           </Text>
           {parsed.citations.map((citation, index) => (
@@ -126,7 +140,7 @@ function AssistantBubble({ text }: { text: string }) {
       ) : null}
       {parsed.limitations?.length ? (
         <View className="mt-3 pt-3 border-t border-neutral-200/80 border-white/10">
-          <Text className="text-[11px] font-bold uppercase tracking-widest text-secondary mb-2">
+          <Text className="text-meta font-bold uppercase tracking-widest text-secondary mb-2">
             Límites
           </Text>
           {parsed.limitations.map((item, index) => (
@@ -137,10 +151,14 @@ function AssistantBubble({ text }: { text: string }) {
         </View>
       ) : null}
     </View>
+    </DevModelLongPress>
   );
 }
 
 export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapChatSheetProps) {
+  const colors = useThemeColors();
+  const session = useAppSession();
+  const inspectEnabled = session.devToolsEnabled;
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
@@ -175,7 +193,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
       const question = (presetQuestion || chatInput).trim();
       if (!question || chatBusy) return;
 
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      hapticCommit();
 
       const optimisticHistory: ChatTurn[] = [...chatHistory, { role: 'user', text: question }];
       setChatHistory(optimisticHistory);
@@ -187,6 +205,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
         const accessToken = supabase
           ? (await supabase.auth.getSession()).data.session?.access_token
           : undefined;
+        const authHeaders = await buildLlmRequestHeaders(accessToken);
 
         const response = await fetchWithTimeout(
           apiUrl(`/api/maps/${mapId}/chat`),
@@ -194,7 +213,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+              ...authHeaders,
             },
             body: JSON.stringify({
               map: mapData,
@@ -218,6 +237,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
           {
             role: 'assistant',
             text: formatAssistantText(parsed),
+            modelUsed: parsed.modelUsed,
           },
         ]);
       } catch (err) {
@@ -249,7 +269,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
               <Text className="text-base font-bold text-primary">
                 Preguntar sobre la fuente
               </Text>
-              <Text className="mt-1 text-[11px] text-secondary leading-normal">
+              <Text className="mt-1 text-meta text-secondary leading-normal">
                 Responde solo con el contenido de esta lectura y sus referencias.
               </Text>
             </View>
@@ -258,7 +278,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
               className="w-7 h-7 rounded-full items-center justify-center bg-neutral-200/60 dark:bg-white/5"
               accessibilityLabel="Cerrar chat"
             >
-              <X size={14} color="#737373" />
+              <X size={14} color={colors.icon.muted} />
             </Pressable>
           </View>
 
@@ -268,10 +288,12 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
             contentContainerStyle={chatHistory.length === 0 ? { flexGrow: 1, justifyContent: 'center' } : undefined}
             contentContainerClassName="px-5 py-5 pb-4"
             keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
           >
             {chatHistory.length === 0 ? (
               <View className="items-center justify-center py-6 px-4">
-                <MessageSquareText size={24} color="#8B8FF5" className="mb-3 opacity-60" />
+                <MessageSquareText size={24} color={colors.action.primary} className="mb-3 opacity-60" />
                 <Text className="text-sm font-bold text-primary text-center mb-1">
                   Preguntar sobre la fuente
                 </Text>
@@ -306,14 +328,19 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
                     <Text className="text-sm leading-relaxed text-white">{turn.text}</Text>
                   </View>
                 ) : (
-                  <AssistantBubble key={`${turn.role}-${index}`} text={turn.text} />
+                  <AssistantBubble
+                    key={`${turn.role}-${index}`}
+                    text={turn.text}
+                    modelUsed={turn.modelUsed}
+                    inspectEnabled={inspectEnabled}
+                  />
                 )
               )
             )}
 
             {chatBusy ? (
               <View className="self-start max-w-[92%] mb-4 rounded-card px-4 py-3 bg-neutral-100 dark:bg-white/5 flex-row items-center gap-2">
-                <ActivityIndicator size="small" color="#8B8FF5" />
+                <ActivityIndicator size="small" color={colors.action.primary} />
                 <Text className="text-sm text-body">Consultando el Núcleo…</Text>
               </View>
             ) : null}
@@ -326,7 +353,7 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
                 value={chatInput}
                 onChangeText={setChatInput}
                 placeholder="Pregunta sobre esta fuente…"
-                placeholderTextColor="#a3a3a3"
+                placeholderTextColor={colors.text.secondary}
                 multiline
                 textAlignVertical="center"
                 editable={!chatBusy}
@@ -343,9 +370,9 @@ export default function MapChatSheet({ visible, onClose, mapId, mapData }: MapCh
                 accessibilityLabel="Enviar pregunta"
               >
                 {chatBusy ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator size="small" color={colors.text.onAccent} />
                 ) : (
-                  <ArrowUp size={15} color={chatInput.trim() ? '#fff' : '#a3a3a3'} />
+                  <ArrowUp size={15} color={chatInput.trim() ? colors.text.primary : colors.text.secondary} />
                 )}
               </Pressable>
             </View>

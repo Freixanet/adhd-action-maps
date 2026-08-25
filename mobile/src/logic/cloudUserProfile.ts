@@ -1,6 +1,7 @@
 import type { User } from '@supabase/supabase-js';
 
 export type CloudUserProfile = {
+  id: string;
   email?: string | null;
   displayName?: string | null;
   avatarUrl?: string | null;
@@ -19,7 +20,8 @@ export function toCloudUserProfile(user: User): CloudUserProfile {
     null;
 
   return {
-    email: user.email,
+    id: user.id,
+    email: user.email ?? null,
     displayName,
     avatarUrl,
   };

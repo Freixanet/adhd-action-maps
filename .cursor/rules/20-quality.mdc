@@ -1,0 +1,71 @@
+---
+description: Pruebas, accesibilidad, rendimiento y definición de terminado
+alwaysApply: true
+---
+
+# Calidad
+
+## Pirámide
+
+- Dominio/parsers: unit tests.
+- DB/RLS/API/jobs: integration tests.
+- Adaptadores: contract tests.
+- Flujos críticos: E2E.
+- IA: golden set y evals.
+
+## Cada slice
+
+- Ruta feliz.
+- Input inválido.
+- Vacío.
+- Límite.
+- Cancelación cuando aplique.
+- Retry/error externo.
+- Autorización.
+- Estado visible.
+- Accesibilidad.
+- Telemetría segura.
+
+## Prohibido
+
+- Mocks activos en producción.
+- Tests que solo verifican snapshots triviales.
+- Redes externas no controladas en unit tests.
+- `skip` sin ticket/razón.
+- Declarar éxito con tests fallidos.
+- Cambiar expectativas para ocultar una regresión.
+
+## UI
+
+- Una acción primaria.
+- Objetivos táctiles ≥44 pt.
+- Texto escalable.
+- Contraste AA.
+- Reduce Motion.
+- Lectura por screen reader.
+- Estados de foco web.
+- No color como única señal.
+- Layout pequeño, grande y web.
+
+## Rendimiento
+
+- No bloquear UI con parsing.
+- Listas virtualizadas cuando sea necesario.
+- No renderizar el documento completo.
+- Primera utilidad progresiva.
+- Medir antes de optimizar.
+- Añadir presupuesto y regresión para trabajos costosos.
+
+## Done
+
+Solo `DONE` con:
+
+- Build.
+- Typecheck.
+- Lint.
+- Tests aplicables.
+- Criterios.
+- Diff limpio de alcance.
+- Documentación.
+- Evidencia en estado.
+

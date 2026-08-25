@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSharedValue } from 'react-native-reanimated';
 import FloatingGlassButton, { FLOATING_PILL_MIN_HEIGHT } from './FloatingGlassButton';
 import HistoryEntryCard from './HistoryEntryCard';
 import {
@@ -8,7 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   SquarePen,
-} from 'lucide-react-native';
+} from '../icons';
 import ProfileMenu from './ProfileMenu';
 import {
   SidebarBrandHeader,
@@ -18,12 +19,13 @@ import {
   sidebarListPaddingTop,
   sidebarSearchStackHeight,
 } from './SidebarGlassHeader';
-import { APP_DARK_BACKGROUND } from '@shared/uiTokens';
+import { ACCENT, TEXT_SECONDARY } from '@shared/uiTokens';
 import { useTheme } from '../context/ThemeContext';
 import {
   sortPinnedEntries,
   type HistoryEntry,
 } from '../logic/history';
+import { isChatHistoryEntry } from '@shared/historyKind';
 import { groupHistoryEntries, type Coleccion } from '@shared/collections';
 import HistoryCollectionGroup from './HistoryCollectionGroup';
 import { applyHistoryListFilter, filterHistoryEntries, type HistoryListFilter } from '../logic/historySearch';
@@ -31,6 +33,14 @@ import HistoryCategoryFilter from './HistoryCategoryFilter';
 import CategoryEditSheet from './CategoryEditSheet';
 import { collectUsedCategories, collectUserCategories } from '@shared/categories';
 import type { ActionMapData } from '../logic/contracts';
+import {
+  countEntriesByLibraryState,
+  filterEntriesByLibraryState,
+  libraryStateForEntry,
+  type LibraryStateFilter as LibraryStateFilterValue,
+} from '@shared/progress';
+import LibraryStateFilter from './LibraryStateFilter';
+import { color, type } from '@shared/design-tokens';
 
 type HistorySheetProps = {
   visible: boolean;
@@ -105,28 +115,35 @@ export default function HistorySheet({
   const [renameValue, setRenameValue] = useState('');
   const [indexExpanded, setIndexExpanded] = useState(true);
   const [listFilter, setListFilter] = useState<HistoryListFilter>('all');
-  // The list's switch into search mode (filter chips header, re-filtering,
-  // row re-renders) is deferred until the drawer/pill animation has finished —
-  // doing that render work in the same frame as the animation start is what
-  // caused the opening stutter. Exiting search reverts immediately.
-  const [searchMode, setSearchMode] = useState(searchActive);
-  useEffect(() => {
-    if (!searchActive) {
-      setSearchMode(false);
-      return;
-    }
-    const timer = setTimeout(() => setSearchMode(true), 360);
-    return () => clearTimeout(timer);
-  }, [searchActive]);
+  const [libraryFilter, setLibraryFilter] =
+    useState<LibraryStateFilterValue>('all');
+  // Search UI (hide index, show filters) follows searchActive immediately.
+  const searchMode = searchActive;
   const insets = useSafeAreaInsets();
   const floatingActionsBottom = Math.max(insets.bottom, 12);
   const listBottomInset = searchActive
     ? floatingActionsBottom + 16
     : floatingActionsBottom + FLOATING_PILL_MIN_HEIGHT + 20;
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
+  const modalSearchProgress = useSharedValue(searchActive ? 1 : 0);
+  useEffect(() => {
+    modalSearchProgress.value = searchActive ? 1 : 0;
+  }, [modalSearchProgress, searchActive]);
 
-  const usedCategories = useMemo(() => collectUsedCategories(entries), [entries]);
-  const userCategories = useMemo(() => collectUserCategories(entries), [entries]);
+  const nucleoEntries = useMemo(
+    () => entries.filter((entry) => !isChatHistoryEntry(entry)),
+    [entries]
+  );
+  const chatEntries = useMemo(
+    () => entries.filter((entry) => isChatHistoryEntry(entry)),
+    [entries]
+  );
+  const usedCategories = useMemo(() => collectUsedCategories(nucleoEntries), [nucleoEntries]);
+  const userCategories = useMemo(() => collectUserCategories(nucleoEntries), [nucleoEntries]);
+  const hasIncompleteEntries = useMemo(
+    () => nucleoEntries.some((entry) => libraryStateForEntry(entry) !== 'completed'),
+    [nucleoEntries]
+  );
 
   useEffect(() => {
     if (!searchActive) {
@@ -135,6 +152,10 @@ export default function HistorySheet({
   }, [searchActive]);
 
   useEffect(() => {
+    if (listFilter === 'incomplete' && !hasIncompleteEntries) {
+      setListFilter('all');
+      return;
+    }
     if (
       listFilter !== 'all' &&
       listFilter !== 'incomplete' &&
@@ -144,25 +165,59 @@ export default function HistorySheet({
     ) {
       setListFilter('all');
     }
-  }, [listFilter, usedCategories]);
+  }, [hasIncompleteEntries, listFilter, usedCategories]);
 
-  const filteredEntries = useMemo(() => {
-    if (!searchMode) return entries;
-    const searched = filterHistoryEntries(entries, searchQuery);
+  const libraryCounts = useMemo(
+    () => countEntriesByLibraryState(nucleoEntries),
+    [nucleoEntries]
+  );
+
+  useEffect(() => {
+    if (libraryFilter !== 'all' && libraryCounts[libraryFilter] === 0) {
+      setLibraryFilter('all');
+    }
+  }, [libraryCounts, libraryFilter]);
+
+  const filteredNucleos = useMemo(() => {
+    const byState = filterEntriesByLibraryState(nucleoEntries, libraryFilter);
+    if (!searchMode) return byState;
+    const searched = filterHistoryEntries(byState, searchQuery);
     return applyHistoryListFilter(searched, listFilter);
-  }, [entries, listFilter, searchMode, searchQuery]);
+  }, [listFilter, libraryFilter, nucleoEntries, searchMode, searchQuery]);
+
+  const filteredChats = useMemo(() => {
+    if (libraryFilter !== 'all') return [];
+    if (searchMode && listFilter !== 'all') return [];
+    if (!searchMode) return chatEntries;
+    return filterHistoryEntries(chatEntries, searchQuery);
+  }, [chatEntries, libraryFilter, listFilter, searchMode, searchQuery]);
+
+  const pinnedChats = useMemo(
+    () => sortPinnedEntries(filteredChats.filter((entry) => entry.pinned)),
+    [filteredChats]
+  );
+  const recentChats = useMemo(
+    () =>
+      filteredChats
+        .filter((entry) => !entry.pinned)
+        .sort((a, b) => {
+          if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+          return b.createdAt - a.createdAt;
+        }),
+    [filteredChats]
+  );
 
   const pinnedStandalone = useMemo(
-    () => sortPinnedEntries(filteredEntries.filter((entry) => entry.pinned && !entry.collectionId)),
-    [filteredEntries]
+    () => sortPinnedEntries(filteredNucleos.filter((entry) => entry.pinned && !entry.collectionId)),
+    [filteredNucleos]
   );
   const { standalone, groups } = useMemo(
     () =>
       groupHistoryEntries(
-        filteredEntries.filter((entry) => !entry.pinned || Boolean(entry.collectionId)),
+        filteredNucleos.filter((entry) => !entry.pinned || Boolean(entry.collectionId)),
         collections
       ),
-    [collections, filteredEntries]
+    [collections, filteredNucleos]
   );
   const regularStandalone = useMemo(
     () => standalone.filter((entry) => !entry.pinned),
@@ -170,6 +225,14 @@ export default function HistorySheet({
   );
   const listData = useMemo(
     () => [
+      ...(pinnedChats.length
+        ? [{ type: 'header' as const, id: 'chats-pinned-header', title: 'Chats fijados' }]
+        : []),
+      ...pinnedChats.map((entry) => ({ type: 'entry' as const, entry })),
+      ...(recentChats.length
+        ? [{ type: 'header' as const, id: 'chats-header', title: 'Chats recientes' }]
+        : []),
+      ...recentChats.map((entry) => ({ type: 'entry' as const, entry })),
       ...(pinnedStandalone.length
         ? [{ type: 'header' as const, id: 'pinned-header', title: 'Núcleos fijados' }]
         : []),
@@ -180,7 +243,7 @@ export default function HistorySheet({
         : []),
       ...regularStandalone.map((entry) => ({ type: 'entry' as const, entry })),
     ],
-    [groups, pinnedStandalone, regularStandalone]
+    [groups, pinnedChats, pinnedStandalone, recentChats, regularStandalone]
   );
 
   const toggleCollectionExpanded = useCallback((collectionId: string) => {
@@ -231,14 +294,19 @@ export default function HistorySheet({
 
   const handleDeleteEntry = useCallback(
     (entry: HistoryEntry) => {
-      Alert.alert('Eliminar Núcleo', '¿Seguro que quieres eliminar este Núcleo?', [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => onDelete(entry.id),
-        },
-      ]);
+      const isChat = isChatHistoryEntry(entry);
+      Alert.alert(
+        isChat ? 'Eliminar chat' : 'Eliminar Núcleo',
+        isChat ? '¿Seguro que quieres eliminar este chat?' : '¿Seguro que quieres eliminar este Núcleo?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Eliminar',
+            style: 'destructive',
+            onPress: () => onDelete(entry.id),
+          },
+        ]
+      );
     },
     [onDelete]
   );
@@ -247,7 +315,7 @@ export default function HistorySheet({
     ({ item, index }: { item: (typeof listData)[number]; index: number }) => {
       if (item.type === 'header') {
         const isRecentHeader = item.id === 'recent-header';
-        const isPinnedHeader = item.id === 'pinned-header';
+        const isPinnedHeader = item.id === 'pinned-header' || item.id === 'chats-pinned-header';
         const pinTopPadding =
           isPinnedHeader && searchMode
             ? 'pt-3'
@@ -256,11 +324,15 @@ export default function HistorySheet({
               : isPinnedHeader
                 ? 'pt-1'
                 : 'pt-1';
+        const headerTopPadding =
+          item.id === 'chats-header' || (item.id === 'chats-pinned-header' && index === 0)
+            ? 'pt-8'
+            : isRecentHeader
+              ? 'pt-8'
+              : pinTopPadding;
         return (
           <Text
-            className={`px-1 pb-2 text-[11px] font-bold uppercase tracking-widest text-secondary ${
-              isRecentHeader ? 'pt-8' : pinTopPadding
-            }`}
+            className={`px-1 pb-2 text-meta font-bold uppercase tracking-widest text-secondary ${headerTopPadding}`}
           >
             {item.title}
           </Text>
@@ -342,16 +414,15 @@ export default function HistorySheet({
   );
 
   const listHeaderComponent = useMemo(() => {
-    if (searchMode) {
-      return null;
-    }
-
-    if (!showIndex || !data) {
-      return null;
-    }
-
     return (
-      <View className="mb-6">
+      <View>
+        <LibraryStateFilter
+          value={libraryFilter}
+          counts={libraryCounts}
+          onChange={setLibraryFilter}
+        />
+        {searchMode || !showIndex || !data ? null : (
+        <View className="mb-6">
         <Pressable
           onPress={() => setIndexExpanded((value) => !value)}
           className="flex-row items-center gap-2 mb-3 px-1 py-1"
@@ -359,9 +430,9 @@ export default function HistorySheet({
         >
           <View style={styles.indexChevronSlot}>
             {indexExpanded ? (
-              <ChevronDown size={16} color="#a3a3a3" />
+              <ChevronDown size={16} color={TEXT_SECONDARY} />
             ) : (
-              <ChevronRight size={16} color="#a3a3a3" />
+              <ChevronRight size={16} color={TEXT_SECONDARY} />
             )}
           </View>
           <Text className="text-xs font-bold tracking-widest uppercase text-secondary">Índice</Text>
@@ -389,29 +460,9 @@ export default function HistorySheet({
               </Text>
             </Pressable>
 
-            <Pressable
-              onPress={() => {
-                onGoToStep?.(1);
-                onClose();
-              }}
-              className={`px-4 py-3 rounded-lg mb-1 ${
-                currentStep === 1 && !isComplete ? 'bg-accent/10 dark:bg-accent/100/10' : ''
-              }`}
-            >
-              <Text
-                className={`font-semibold ${
-                  currentStep === 1 && !isComplete
-                    ? 'text-accent'
-                    : 'text-body'
-                }`}
-              >
-                En 60s
-              </Text>
-            </Pressable>
-
             {data.steps?.map((step, idx) => {
               const stepNum = idx + 1;
-              const pageStep = stepNum + 1;
+              const pageStep = stepNum;
               const isActive = currentStep === pageStep && !isComplete;
               const isPast = currentStep > pageStep || isComplete;
               return (
@@ -442,12 +493,14 @@ export default function HistorySheet({
                       {step.shortNav || step.title}
                     </Text>
                   </View>
-                  <CheckCircle2 size={16} color={isPast ? '#8B8FF5' : '#a3a3a3'} />
+                  <CheckCircle2 size={16} color={isPast ? ACCENT : TEXT_SECONDARY} filled={isPast} />
                 </Pressable>
               );
             })}
           </View>
         ) : null}
+        </View>
+        )}
       </View>
     );
   }, [
@@ -455,6 +508,8 @@ export default function HistorySheet({
     data,
     indexExpanded,
     isComplete,
+    libraryCounts,
+    libraryFilter,
     onClose,
     onGoToStep,
     showIndex,
@@ -466,7 +521,7 @@ export default function HistorySheet({
       return (
         <View className="py-8 px-2">
           <Text className="text-center text-body leading-6">
-            Nada por aquí. Prueba con otra categoría.
+            Nada por aquí. Prueba con otro estado o categoría.
           </Text>
         </View>
       );
@@ -488,7 +543,7 @@ export default function HistorySheet({
     ? searchStackHeight + SIDEBAR_SEARCH_FILTER_LIST_GAP
     : listTopInset;
   const listBottomPadding = Math.max(SIDEBAR_OCCLUSION.listBottomMin, listBottomInset);
-  const sheetBackground = canvasColor ?? (isDark ? APP_DARK_BACKGROUND : '#f0f0f0');
+  const sheetBackground = canvasColor ?? (isDark ? colors.background.canvas : colors.background.surface);
   const modalBrandHeaderHeight =
     searchActive && !hideBrandHeader ? searchStackHeight : headerSolidHeight;
 
@@ -499,9 +554,11 @@ export default function HistorySheet({
           embeddedInHeader
           activeFilter={listFilter}
           onSelectFilter={setListFilter}
+          categories={usedCategories}
+          showIncomplete={hasIncompleteEntries}
         />
       ) : null,
-    [listFilter, searchActive]
+    [hasIncompleteEntries, listFilter, searchActive, usedCategories]
   );
 
   useEffect(() => {
@@ -528,10 +585,10 @@ export default function HistorySheet({
           }}
           style={styles.list}
           showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
           keyboardShouldPersistTaps="always"
           keyboardDismissMode="on-drag"
           scrollEnabled={!openMenuEntryId}
-          pointerEvents={openMenuEntryId ? 'none' : 'auto'}
         >
           {listHeaderComponent}
           {listData.length === 0
@@ -566,29 +623,31 @@ export default function HistorySheet({
             onSearchOpen={onSearchOpen}
             onSearchClose={onSearchClose}
             searchFilters={searchActive ? searchFilterNode : undefined}
+            searchProgress={modalSearchProgress}
           />
         ) : null}
       </View>
 
       {!searchActive ? (
         <View
-          pointerEvents={openMenuEntryId ? 'none' : 'box-none'}
+          pointerEvents="box-none"
           className="absolute left-0 right-0 flex-row items-center justify-between px-5"
           style={{ bottom: floatingActionsBottom }}
         >
           <ProfileMenu placement="bottomLeft" floating />
           <FloatingGlassButton
             onPress={() => {
+              if (openMenuEntryId) return;
               onNewMap?.();
               onClose();
             }}
-            accessibilityLabel="Núcleo"
-            shape="pill"
+            accessibilityLabel="Nuevo Núcleo"
+            shape="circle"
             tone="accent"
-            compact
+            systemImage="square.and.pencil"
+            symbolPointSize={17}
           >
-            <SquarePen size={17} color="#ffffff" />
-            <Text className="text-[15px] font-bold text-white">Núcleo</Text>
+            <SquarePen size={20} color={color.text.onAccent} />
           </FloatingGlassButton>
         </View>
       ) : null}

@@ -111,6 +111,9 @@ export function deriveMapStatus(
 export function getSourceTypeLabel(sourceType: SourceType, sourceKind?: string): string {
   if (sourceKind === 'image') return 'Imagen';
   if (sourceKind === 'video') return 'Vídeo';
+  if (sourceKind === 'epub') return 'Archivo EPUB';
+  if (sourceKind === 'docx') return 'Documento DOCX';
+  if (sourceKind === 'pdf' || sourceType === 'pdf') return 'PDF';
 
   const labels: Record<SourceType, string> = {
     text: 'Texto',
@@ -130,8 +133,25 @@ export function getIntentLabel(intent?: MapIntent): string {
 }
 
 export function getEntrySourceLabel(entry: HistoryEntry): string {
-  const kind = (entry.session.data as { sourceMetadata?: { kind?: string } } | undefined)
-    ?.sourceMetadata?.kind;
+  const meta = (entry.session.data as {
+    sourceMetadata?: { kind?: string; contentKind?: string };
+  } | undefined)
+    ?.sourceMetadata;
+  const contentLabels: Record<string, string> = {
+    book: 'Libro',
+    article: 'Artículo',
+    report: 'Informe',
+    paper: 'Estudio',
+    manual: 'Manual',
+    notes: 'Apuntes',
+    slides: 'Presentación',
+    transcript: 'Transcripción',
+    other: 'Fuente',
+  };
+  if (meta?.contentKind && contentLabels[meta.contentKind]) {
+    return contentLabels[meta.contentKind];
+  }
+  const kind = meta?.kind;
   return getSourceTypeLabel(entry.sourceType, kind);
 }
 

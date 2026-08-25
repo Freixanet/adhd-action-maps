@@ -1,7 +1,12 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import {
+  getInfoAsync,
+  readAsStringAsync,
+  EncodingType,
+} from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+// NOTE: do NOT use expo-image-manipulator here. Its native renderAsync
+// throws "Image context has been lost" on large iOS photos (HEIC/8MB+).
 
 export type UploadedFile = {
   name: string;
@@ -9,65 +14,173 @@ export type UploadedFile = {
   isPdf?: boolean;
   isImage?: boolean;
   isVideo?: boolean;
+  isEpub?: boolean;
+  isDocx?: boolean;
   fileData?: string;
   mimeType?: string;
+  /** Local file URI for on-device preview (PDF WebView, image fallback). */
+  localUri?: string;
+  /** Raster preview when available (images, video poster, generated thumbs). */
   previewUri?: string;
 };
 
-export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
+/** Prefer a raster URI the `<Image>` component can paint. */
+export function resolveAttachmentImagePreviewUri(
+  file: UploadedFile | null | undefined
+): string | null {
+  if (!file) return null;
+  // file:// and ph:// from the picker often fail in RN Image after the
+  // picker closes. The base64 we already hold for upload always paints.
+  if (file.isImage && file.fileData) {
+    const mime =
+      file.mimeType && file.mimeType.startsWith('image/') && file.mimeType !== 'image/heic'
+        ? file.mimeType
+        : 'image/jpeg';
+    return `data:${mime};base64,${file.fileData}`;
+  }
+  if (file.previewUri) return file.previewUri;
+  if (file.isImage && file.localUri) return file.localUri;
+  return null;
+}
+
+/** Local document URI for native/WebView preview (PDF on iOS). */
+export function resolveAttachmentDocumentUri(
+  file: UploadedFile | null | undefined
+): string | null {
+  if (!file?.localUri) return null;
+  return file.localUri;
+}
+
+/** Photos / camera (ADR-002 image limit). */
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+/** PDF / EPUB / DOCX / text docs. */
+export const MAX_BOOK_BYTES = 20 * 1024 * 1024;
+/** @deprecated Prefer MAX_IMAGE_BYTES / MAX_BOOK_BYTES; kept for older call sites. */
+export const MAX_UPLOAD_BYTES = MAX_BOOK_BYTES;
+
 export const MAX_UPLOAD_SIZE_MESSAGE =
-  'El archivo supera el límite de 15 MB. Prueba con un archivo más pequeño.';
+  'Máx 10MB para fotos, 20MB para libros';
 export const LOCAL_FILE_READ_ERROR_MESSAGE =
   'No se pudo leer el archivo en el dispositivo. Prueba con otro archivo.';
 export const UNSUPPORTED_IMAGE_MESSAGE = 'El archivo seleccionado no es una imagen.';
+export const UNSUPPORTED_FILE_MESSAGE =
+  'Formato no soportado. Usa PDF, EPUB, DOCX, TXT o Markdown.';
 
-const IMAGE_MAX_DIMENSION = 1024;
+/** Picker compresses on iOS when quality < 1 — no ImageManipulator (renderAsync OOM). */
+const IMAGE_COMPRESS = 0.7;
 
-function assertFileSize(size: number | undefined | null): void {
-  if (size != null && size > MAX_UPLOAD_BYTES) {
+const IMAGE_PICKER_OPTIONS: ImagePicker.ImagePickerOptions = {
+  mediaTypes: ['images'],
+  quality: IMAGE_COMPRESS,
+  allowsEditing: false,
+  exif: false,
+};
+
+function assertImageSize(size: number | undefined | null): void {
+  if (size != null && size > MAX_IMAGE_BYTES) {
     throw new Error(MAX_UPLOAD_SIZE_MESSAGE);
   }
 }
 
+function assertBookSize(size: number | undefined | null): void {
+  if (size != null && size > MAX_BOOK_BYTES) {
+    throw new Error(MAX_UPLOAD_SIZE_MESSAGE);
+  }
+}
+
+async function resolveLocalFileSize(
+  uri: string,
+  fallback?: number | null
+): Promise<number | null> {
+  try {
+    const info = await getInfoAsync(uri);
+    if (info.exists && typeof info.size === 'number') return info.size;
+  } catch {
+    // fall through
+  }
+  return fallback ?? null;
+}
+
+/**
+ * Safe image path (no expo-image-manipulator):
+ * Picker quality 0.7 re-encodes on device; we only size-check + read base64 for upload.
+ * Preview uses the local file URI — never a manipulator renderAsync context.
+ */
 async function processImageAsset(
   asset: ImagePicker.ImagePickerAsset
 ): Promise<UploadedFile> {
-  assertFileSize(asset.fileSize);
+  const size = await resolveLocalFileSize(asset.uri, asset.fileSize);
+  assertImageSize(size);
 
-  const width = asset.width ?? IMAGE_MAX_DIMENSION;
-  const height = asset.height ?? IMAGE_MAX_DIMENSION;
-  const maxDim = Math.max(width, height);
-  const actions =
-    maxDim > IMAGE_MAX_DIMENSION
-      ? [
-          {
-            resize: {
-              width: Math.round(width * (IMAGE_MAX_DIMENSION / maxDim)),
-              height: Math.round(height * (IMAGE_MAX_DIMENSION / maxDim)),
-            },
-          },
-        ]
-      : [];
+  if (!asset.uri) {
+    throw new Error('No se pudo procesar la imagen.');
+  }
 
-  const processed = await manipulateAsync(asset.uri, actions, {
-    compress: 0.82,
-    format: SaveFormat.JPEG,
-    base64: true,
-  });
-
-  const base64 = processed.base64;
+  let base64: string;
+  try {
+    base64 = await readAsStringAsync(asset.uri, {
+      encoding: EncodingType.Base64,
+    });
+  } catch {
+    throw new Error(LOCAL_FILE_READ_ERROR_MESSAGE);
+  }
   if (!base64) {
     throw new Error('No se pudo procesar la imagen.');
   }
 
+  const uploadBytes = Math.round(base64.length * 0.75);
+  assertImageSize(uploadBytes);
+
+  const mime =
+    asset.mimeType && asset.mimeType.startsWith('image/') && asset.mimeType !== 'image/heic'
+      ? asset.mimeType
+      : 'image/jpeg';
+
   return {
-    name: asset.fileName || 'Imagen',
-    size: asset.fileSize ?? Math.round(base64.length * 0.75),
+    name: asset.fileName || 'Imagen.jpg',
+    size: size ?? uploadBytes,
     isImage: true,
     fileData: base64,
-    mimeType: 'image/jpeg',
-    previewUri: processed.uri,
+    mimeType: mime,
+    localUri: asset.uri,
+    previewUri: asset.uri,
   };
+}
+
+async function readBinaryAttachment(params: {
+  uri: string;
+  name: string;
+  size: number | undefined | null;
+  mimeType: string;
+  flags: Pick<UploadedFile, 'isPdf' | 'isEpub' | 'isDocx' | 'isVideo'>;
+  previewUri?: string;
+  maxBytes?: number;
+}): Promise<UploadedFile> {
+  const { uri, name, size, mimeType, flags, previewUri, maxBytes = MAX_BOOK_BYTES } =
+    params;
+  if (size != null && size > maxBytes) {
+    throw new Error(MAX_UPLOAD_SIZE_MESSAGE);
+  }
+
+  try {
+    const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
+    const resolvedSize = size ?? Math.round(base64.length * 0.75);
+    if (resolvedSize > maxBytes) {
+      throw new Error(MAX_UPLOAD_SIZE_MESSAGE);
+    }
+    return {
+      name,
+      size: resolvedSize,
+      fileData: base64,
+      mimeType,
+      localUri: uri,
+      previewUri,
+      ...flags,
+    };
+  } catch (err) {
+    if (err instanceof Error && err.message === MAX_UPLOAD_SIZE_MESSAGE) throw err;
+    throw new Error(LOCAL_FILE_READ_ERROR_MESSAGE);
+  }
 }
 
 async function readPdfAttachment(
@@ -75,20 +188,42 @@ async function readPdfAttachment(
   name: string,
   size: number | undefined | null
 ): Promise<UploadedFile> {
-  assertFileSize(size);
+  return readBinaryAttachment({
+    uri,
+    name,
+    size,
+    mimeType: 'application/pdf',
+    flags: { isPdf: true },
+  });
+}
 
-  try {
-    const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
-    return {
-      name,
-      size: size ?? Math.round(base64.length * 0.75),
-      isPdf: true,
-      fileData: base64,
-      mimeType: 'application/pdf',
-    };
-  } catch {
-    throw new Error(LOCAL_FILE_READ_ERROR_MESSAGE);
-  }
+async function readEpubAttachment(
+  uri: string,
+  name: string,
+  size: number | undefined | null
+): Promise<UploadedFile> {
+  return readBinaryAttachment({
+    uri,
+    name,
+    size,
+    mimeType: 'application/epub+zip',
+    flags: { isEpub: true },
+  });
+}
+
+async function readDocxAttachment(
+  uri: string,
+  name: string,
+  size: number | undefined | null
+): Promise<UploadedFile> {
+  return readBinaryAttachment({
+    uri,
+    name,
+    size,
+    mimeType:
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    flags: { isDocx: true },
+  });
 }
 
 async function readVideoAttachment(
@@ -96,23 +231,16 @@ async function readVideoAttachment(
   name: string,
   size: number | undefined | null,
   mimeType?: string | null,
-  previewUri?: string,
+  previewUri?: string
 ): Promise<UploadedFile> {
-  assertFileSize(size);
-
-  try {
-    const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
-    return {
-      name,
-      size: size ?? Math.round(base64.length * 0.75),
-      isVideo: true,
-      fileData: base64,
-      mimeType: mimeType || 'video/mp4',
-      previewUri,
-    };
-  } catch {
-    throw new Error(LOCAL_FILE_READ_ERROR_MESSAGE);
-  }
+  return readBinaryAttachment({
+    uri,
+    name,
+    size,
+    mimeType: mimeType || 'video/mp4',
+    flags: { isVideo: true },
+    previewUri,
+  });
 }
 
 export type PickFileAttachmentResult =
@@ -121,17 +249,16 @@ export type PickFileAttachmentResult =
 
 const FILE_PICKER_TYPES = [
   'application/pdf',
-  'video/mp4',
-  'video/quicktime',
-  'video/webm',
+  'application/epub+zip',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
   'text/markdown',
-  'text/csv',
-  'application/json',
-  'text/html',
-  'text/xml',
-  'application/rtf',
 ] as const;
+
+export function isBookAttachment(file: UploadedFile | null | undefined): boolean {
+  if (!file) return false;
+  return Boolean(file.isPdf || file.isEpub || file.isDocx);
+}
 
 export async function pickFileAttachment(): Promise<PickFileAttachmentResult | null> {
   const result = await DocumentPicker.getDocumentAsync({
@@ -152,26 +279,48 @@ export async function pickFileAttachment(): Promise<PickFileAttachmentResult | n
   }
 
   if (
-    mimeType.startsWith('video/') ||
-    /\.(mp4|mov|webm|m4v|mkv)$/.test(lowerName)
+    mimeType === 'application/epub+zip' ||
+    mimeType === 'application/epub' ||
+    lowerName.endsWith('.epub')
   ) {
-    return readVideoAttachment(asset.uri, name, asset.size, mimeType, asset.uri);
+    return readEpubAttachment(asset.uri, name, asset.size);
   }
 
-  assertFileSize(asset.size);
-  try {
-    const textContent = await readAsStringAsync(asset.uri, { encoding: EncodingType.UTF8 });
-    return {
-      file: {
-        name,
-        size: asset.size ?? textContent.length,
-        mimeType: mimeType || 'text/plain',
-      },
-      textContent,
-    };
-  } catch {
-    throw new Error(LOCAL_FILE_READ_ERROR_MESSAGE);
+  if (
+    mimeType ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    lowerName.endsWith('.docx')
+  ) {
+    return readDocxAttachment(asset.uri, name, asset.size);
   }
+
+  if (
+    mimeType === 'text/plain' ||
+    mimeType === 'text/markdown' ||
+    lowerName.endsWith('.txt') ||
+    lowerName.endsWith('.md') ||
+    lowerName.endsWith('.markdown')
+  ) {
+    assertBookSize(asset.size);
+    try {
+      const textContent = await readAsStringAsync(asset.uri, {
+        encoding: EncodingType.UTF8,
+      });
+      return {
+        file: {
+          name,
+          size: asset.size ?? textContent.length,
+          mimeType: mimeType || 'text/plain',
+          localUri: asset.uri,
+        },
+        textContent,
+      };
+    } catch {
+      throw new Error(LOCAL_FILE_READ_ERROR_MESSAGE);
+    }
+  }
+
+  throw new Error(UNSUPPORTED_FILE_MESSAGE);
 }
 
 export async function pickPdfAttachment(): Promise<UploadedFile | null> {
@@ -195,17 +344,29 @@ export async function pickPdfAttachment(): Promise<UploadedFile | null> {
   return readPdfAttachment(asset.uri, name, asset.size);
 }
 
+/**
+ * DEV/QA: load the bundled multipage PDF through the same attachment path as a
+ * user-picked file (no DocumentPicker). Used for S08 productive visual QA.
+ */
+export async function loadBundledQaMultipagePdf(): Promise<UploadedFile> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require('../../assets/s08-multipage.pdf') as number;
+  const { Asset } = await import('expo-asset');
+  const asset = Asset.fromModule(mod);
+  await asset.downloadAsync();
+  if (!asset.localUri) {
+    throw new Error(LOCAL_FILE_READ_ERROR_MESSAGE);
+  }
+  return readPdfAttachment(asset.localUri, 's08-multipage.pdf', null);
+}
+
 export async function pickImageFromLibrary(): Promise<UploadedFile | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
     throw new Error('Necesitamos acceso a la galería para adjuntar imágenes.');
   }
 
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],
-    quality: 1,
-    allowsEditing: false,
-  });
+  const result = await ImagePicker.launchImageLibraryAsync(IMAGE_PICKER_OPTIONS);
 
   if (result.canceled || !result.assets?.[0]) return null;
 
@@ -223,10 +384,7 @@ export async function pickImageFromCamera(): Promise<UploadedFile | null> {
     throw new Error('Necesitamos acceso a la cámara para tomar una foto.');
   }
 
-  const result = await ImagePicker.launchCameraAsync({
-    quality: 1,
-    allowsEditing: false,
-  });
+  const result = await ImagePicker.launchCameraAsync(IMAGE_PICKER_OPTIONS);
 
   if (result.canceled || !result.assets?.[0]) return null;
 
@@ -248,13 +406,13 @@ export async function pickVideoFromLibrary(): Promise<UploadedFile | null> {
   if (result.canceled || !result.assets?.[0]) return null;
 
   const asset = result.assets[0];
-  assertFileSize(asset.fileSize);
+  assertBookSize(asset.fileSize);
 
   return readVideoAttachment(
     asset.uri,
     asset.fileName || 'Video',
     asset.fileSize,
     asset.mimeType || 'video/mp4',
-    asset.uri,
+    asset.uri
   );
 }

@@ -2,14 +2,15 @@ import React, { useEffect } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
-  FadeIn,
   FadeOut,
   SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { ACCENT } from '@shared/uiTokens';
+import { motion, type } from '@shared/design-tokens';
+import { contentEntering } from '../motion/contentEnter';
+import { useTheme } from '../context/ThemeContext';
 
 function clampRatio(value: number): number {
   'worklet';
@@ -46,6 +47,7 @@ export function GenerationProgressBar({
   reduceMotion = false,
   style,
 }: GenerationProgressBarProps) {
+  const { isDark, colors } = useTheme();
   const clamped = Math.max(0, Math.min(100, progress));
   const fillRatio = useSharedValue(clamped / 100);
 
@@ -54,7 +56,7 @@ export function GenerationProgressBar({
     const target = clamped / 100;
     fillRatio.value = reduceMotion
       ? target
-      : withTiming(target, { duration: 400, easing: Easing.out(Easing.cubic) });
+      : withTiming(target, { duration: motion.sheetAlt.duration, easing: Easing.out(Easing.cubic) });
   }, [clamped, fillRatio, progressShared, reduceMotion]);
 
   const fillStyle = useAnimatedStyle(() => {
@@ -63,6 +65,8 @@ export function GenerationProgressBar({
       : fillRatio.value;
     return progressFillStyle(ratio);
   });
+
+  const trackColor = isDark ? colors.background.surfaceRaised : colors.background.surfaceSunken;
 
   return (
     <View
@@ -73,6 +77,7 @@ export function GenerationProgressBar({
           width: fullWidth ? undefined : width,
           height,
           borderRadius: height / 2,
+          backgroundColor: trackColor,
         },
         style,
       ]}
@@ -83,7 +88,7 @@ export function GenerationProgressBar({
           {
             height,
             borderRadius: height / 2,
-            backgroundColor: ACCENT,
+            backgroundColor: colors.action.primary,
           },
           fillStyle,
         ]}
@@ -94,7 +99,6 @@ export function GenerationProgressBar({
 
 const styles = StyleSheet.create({
   track: {
-    backgroundColor: '#2C2E37',
     overflow: 'hidden',
   },
   trackFullWidth: {
@@ -111,8 +115,8 @@ export const ANALYZING_SOURCE_LABEL = 'Analizando la fuente…';
 
 export const LOADING_PHASE_LABELS = [
   'Leyendo la fuente…',
-  'Destilando la idea central…',
-  'Construyendo tu Núcleo…',
+  'Sacando la idea central…',
+  'Montando tu Núcleo…',
 ] as const;
 
 type PhaseLabelProps = {
@@ -128,15 +132,15 @@ export function LoadingPhaseLabel({
   align = 'center',
   variant = 'body',
 }: PhaseLabelProps) {
-  const duration = reduceMotion ? 0 : 200;
+  const duration = reduceMotion ? 0 : motion.enter.duration;
   const alignClass = align === 'left' ? 'text-left' : 'text-center';
-  const toneClass = variant === 'meta' ? 'text-[14px] text-secondary' : 'text-[15px] text-body';
+  const toneClass = variant === 'meta' ? 'text-callout text-secondary' : 'text-body text-body';
 
   return (
     <Animated.Text
       key={text}
-      entering={duration ? FadeIn.duration(duration) : undefined}
-      exiting={duration ? FadeOut.duration(duration) : undefined}
+      entering={duration ? contentEntering() : undefined}
+      exiting={duration ? FadeOut.duration(motion.exit.duration) : undefined}
       className={`${toneClass} ${alignClass}`}
     >
       {text}

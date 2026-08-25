@@ -8,10 +8,15 @@ export type InlineAttachmentSnapshot = {
   isPdf?: boolean;
   isImage?: boolean;
   isVideo?: boolean;
+  isEpub?: boolean;
+  isDocx?: boolean;
   previewUri?: string;
 };
 
+export type InlineUserTurnKind = 'ask' | 'source';
+
 export type InlineUserTurnSnapshot = {
+  kind: InlineUserTurnKind;
   conversationalMessage: string;
   text: string | null;
   pastedText: string | null;
@@ -19,6 +24,8 @@ export type InlineUserTurnSnapshot = {
   sourceUrl: string | null;
   urlKind: 'youtube' | 'link' | null;
   linkTitle: string | null;
+  /** Restored history turns skip typewriter / enter choreography. */
+  revealInstant?: boolean;
 };
 
 export function formatInlineFileSize(bytes: number | undefined): string {
@@ -56,6 +63,8 @@ function toAttachmentSnapshot(file: UploadedFile): InlineAttachmentSnapshot {
     isPdf: file.isPdf,
     isImage: file.isImage,
     isVideo: file.isVideo,
+    isEpub: file.isEpub,
+    isDocx: file.isDocx,
     previewUri: file.previewUri,
   };
 }
@@ -65,8 +74,17 @@ export function buildInlineUserTurnSnapshot(params: {
   pastedText: string | null;
   uploadedFile: UploadedFile | null;
   conversationalMessage: string;
+  kind?: InlineUserTurnKind;
+  revealInstant?: boolean;
 }): InlineUserTurnSnapshot {
-  const { inputText, pastedText, uploadedFile, conversationalMessage } = params;
+  const {
+    inputText,
+    pastedText,
+    uploadedFile,
+    conversationalMessage,
+    kind = 'source',
+    revealInstant = false,
+  } = params;
   const bodyText = pastedText?.trim() ?? inputText.trim();
 
   let urlDetection: ReturnType<typeof detectUrlInput> | null = null;
@@ -75,6 +93,7 @@ export function buildInlineUserTurnSnapshot(params: {
   }
 
   return {
+    kind,
     conversationalMessage,
     text: inputText.trim() || null,
     pastedText,
@@ -88,6 +107,7 @@ export function buildInlineUserTurnSnapshot(params: {
           ? 'link'
           : null,
     linkTitle: null,
+    ...(revealInstant ? { revealInstant: true } : {}),
   };
 }
 

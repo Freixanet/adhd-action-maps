@@ -1,10 +1,11 @@
 import React, { forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import * as Haptics from 'expo-haptics';
-import { Play, X } from 'lucide-react-native';
+import { Play, X } from '../icons';
 import GlassSurface from './GlassSurface';
 import { buildContinueChipLabel } from '../logic/continueTransition';
 import type { HistoryEntry } from '../logic/history';
+import { ACCENT, TEXT_SECONDARY } from '@shared/uiTokens';
+import { control } from '@shared/design-tokens';
 
 export function getContinueChipLabel(entry: HistoryEntry): string {
   return buildContinueChipLabel(entry.title);
@@ -27,15 +28,12 @@ const ContinueChip = forwardRef<View, ContinueChipProps>(function ContinueChip(
       <GlassSurface liquid borderRadius={999} style={styles.shell}>
         <View className="flex-row items-center gap-2 px-3 py-2">
           <Pressable
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onPress();
-            }}
+            onPress={onPress}
             accessibilityRole="button"
             accessibilityLabel={`Continuar ${entry.title}`}
             className="flex-row items-center gap-2 flex-shrink min-w-0"
           >
-            <Play size={13} color="#8B8FF5" fill="#8B8FF5" />
+            <Play size={control.iconSm} color={ACCENT} filled />
             <Text className="text-sm font-semibold text-primary" numberOfLines={1}>
               {label}
             </Text>
@@ -47,7 +45,7 @@ const ContinueChip = forwardRef<View, ContinueChipProps>(function ContinueChip(
             accessibilityLabel="Ocultar continuar"
             className="p-1 active:opacity-70"
           >
-            <X size={14} color="#9CA0AB" />
+            <X size={14} color={TEXT_SECONDARY} />
           </Pressable>
         </View>
       </GlassSurface>
