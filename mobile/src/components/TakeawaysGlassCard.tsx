@@ -1,10 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { RADII } from '@shared/uiTokens';
-import GlassSurface from './GlassSurface';
-import { useTheme } from '../context/ThemeContext';
-import { useAppSession } from '../context/AppSessionContext';
-import { type } from '@shared/design-tokens';
+import ElevatedSurface from './ElevatedSurface';
 import { ReadingText } from '../context/TypographyContext';
 
 type TakeawaysGlassCardProps = {
@@ -30,16 +27,13 @@ function TakeawaysContent({ items, title }: { items: string[]; title: string }) 
   );
 }
 
-/** Para recordar — same liquid glass panel as Fuente detectada. */
+/** Para recordar — elevated solid; glass is reserved for StatBlock. */
 export default function TakeawaysGlassCard({
   items,
   title = 'Para recordar',
   className = 'mt-8',
   plain = false,
 }: TakeawaysGlassCardProps) {
-  const { isDark } = useTheme();
-  const { isStreamGenerating } = useAppSession();
-
   if (!items.length) return null;
 
   if (plain) {
@@ -52,18 +46,11 @@ export default function TakeawaysGlassCard({
 
   return (
     <View className={className}>
-      <GlassSurface
-        liquid
-        borderRadius={RADII.md}
-        className="rounded-2xl overflow-hidden"
-        style={styles.shell}
-        overlayClassName={isDark ? 'bg-white/[0.05]' : 'bg-white/45'}
-        glassRefreshKey={isStreamGenerating ? 'streaming' : 'ready'}
-      >
+      <ElevatedSurface borderRadius={RADII.md} style={styles.shell}>
         <View className="px-5 py-6">
           <TakeawaysContent items={items} title={title} />
         </View>
-      </GlassSurface>
+      </ElevatedSurface>
     </View>
   );
 }

@@ -9,7 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { HAIRLINE, RADII } from '@shared/uiTokens';
 import type { StepContentBlockComparison } from '@shared/contracts';
-import GlassSurface from '../GlassSurface';
+import ElevatedSurface from '../ElevatedSurface';
 import { useTheme } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import { useInViewportOnce } from '../../hooks/useInViewportOnce';
@@ -61,13 +61,7 @@ function SideCard({
 
   return (
     <Animated.View style={animatedStyle}>
-      <GlassSurface
-        liquid
-        borderRadius={RADII.sm}
-        className="rounded-xl overflow-hidden"
-        style={styles.sideGlass}
-        overlayClassName="bg-white/45 dark:bg-white/[0.05]"
-      >
+      <ElevatedSurface borderRadius={RADII.sm} style={styles.sideSurface}>
         <View style={styles.sideInner}>
           <Text style={[styles.colTitle, { color: colors.text.primary }]} maxFontSizeMultiplier={1.3}>
             {title}
@@ -79,13 +73,13 @@ function SideCard({
             </View>
           ))}
         </View>
-      </GlassSurface>
+      </ElevatedSurface>
     </Animated.View>
   );
 }
 
 export default function ComparisonBlock({ block, index = 0 }: Props) {
-  const { isDark, colors } = useTheme();
+  const { colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
   const { visible, onLayout } = useInViewportOnce();
   const cols = block.columns;
@@ -126,13 +120,7 @@ export default function ComparisonBlock({ block, index = 0 }: Props) {
   return (
     <BlockEnter delayMs={contentEnterStagger(index)}>
       <View onLayout={onLayout} style={styles.wrap}>
-        <GlassSurface
-          liquid
-          borderRadius={RADII.md}
-          className="rounded-2xl overflow-hidden"
-          style={styles.tableGlass}
-          overlayClassName={isDark ? 'bg-white/[0.05]' : 'bg-white/45'}
-        >
+        <ElevatedSurface borderRadius={RADII.md} style={styles.tableSurface}>
           <View style={styles.table}>
             <View style={[styles.tableRow, styles.headerRow]}>
               <Text style={[styles.cell, styles.headerCell, styles.labelCell, { color: colors.text.secondary }]}> </Text>
@@ -159,7 +147,7 @@ export default function ComparisonBlock({ block, index = 0 }: Props) {
               </View>
             ))}
           </View>
-        </GlassSurface>
+        </ElevatedSurface>
       </View>
     </BlockEnter>
   );
@@ -173,7 +161,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
   },
-  sideGlass: {
+  sideSurface: {
     borderRadius: RADII.sm,
     overflow: 'hidden',
     flex: 1,
@@ -196,7 +184,7 @@ const styles = StyleSheet.create({
   rowValue: {
     ...typography('callout'),
   },
-  tableGlass: {
+  tableSurface: {
     borderRadius: RADII.md,
     overflow: 'hidden',
   },

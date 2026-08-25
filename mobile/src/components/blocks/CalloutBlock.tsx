@@ -1,13 +1,13 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { RADII } from '@shared/uiTokens';
 import type { SourceReference } from '@shared/contracts';
-import GlassSurface from '../GlassSurface';
+import ElevatedSurface from '../ElevatedSurface';
 import { useTheme } from '../../context/ThemeContext';
 import BlockReferences from '../BlockReferences';
 import BlockEnter from './BlockEnter';
 import { contentEnterStagger } from '../../motion/contentEnter';
-import { typography, shadow, primitive } from '@shared/design-tokens';
+import { typography } from '@shared/design-tokens';
 
 export type CalloutTone = 'clave' | 'matiz' | 'ejemplo' | 'alerta';
 
@@ -27,23 +27,6 @@ const KIND_TO_TONE: Record<string, CalloutTone> = {
   action: 'ejemplo',
   alert: 'alerta',
 };
-
-function hexToRgba(hex: string, alpha: number): string {
-  const raw = hex.replace('#', '');
-  const normalized =
-    raw.length === 3
-      ? raw
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : raw;
-  const n = Number.parseInt(normalized, 16);
-  if (!Number.isFinite(n)) {
-    const [r, g, b] = primitive.color.brand.accentRgb;
-    return `rgba(${r},${g},${b},${alpha})`; // design-token-ignore: runtime alpha wash from brand.accentRgb channels
-  }
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`; // design-token-ignore: runtime alpha wash from parsed hex channels
-}
 
 export function resolveCalloutTone(kind?: string, label?: string): CalloutTone {
   const k = String(kind || '').toLowerCase();
@@ -67,8 +50,7 @@ type CalloutBlockProps = {
 };
 
 /**
- * Glass-sonner–inspired highlight card for Nucleo callouts.
- * Tinted liquid glass + tone label; no vertical side bar.
+ * Tone-labeled highlight card. Elevated solid — glass is reserved for StatBlock.
  */
 export default function CalloutBlock({
   label,
@@ -77,7 +59,7 @@ export default function CalloutBlock({
   references,
   index = 0,
 }: CalloutBlockProps) {
-  const { isDark, colors } = useTheme();
+  const { colors } = useTheme();
   const tone = resolveCalloutTone(kind, label);
   const toneColor =
     tone === 'clave'
@@ -89,43 +71,29 @@ export default function CalloutBlock({
           : colors.text.danger;
   const title = (label && label.trim()) || TONE_LABEL[tone];
 
-  const tint = useMemo(
-    () => hexToRgba(toneColor, isDark ? 0.2 : 0.1),
-    [toneColor, isDark]
-  );
-  const border = useMemo(
-    () => hexToRgba(toneColor, isDark ? 0.42 : 0.22),
-    [toneColor, isDark]
-  );
-
   return (
     <BlockEnter delayMs={contentEnterStagger(index)}>
       <View style={styles.wrap}>
-        <GlassSurface
-          liquid
-          borderRadius={RADII.sm}
-          liquidBorder="perimeter"
-          tintColor={tint}
-          style={[styles.glass, { borderColor: border }]}
-          contentClassName="px-4 py-3.5"
-        >
-          <Text
-            style={[styles.title, { color: toneColor }]}
-            maxFontSizeMultiplier={1.35}
-            accessibilityRole="header"
-          >
-            {title}
-          </Text>
-          {text.trim() ? (
+        <ElevatedSurface borderRadius={RADII.sm} style={styles.surface}>
+          <View style={styles.content}>
             <Text
-              style={[styles.body, { color: colors.text.body }]}
+              style={[styles.title, { color: toneColor }]}
               maxFontSizeMultiplier={1.35}
+              accessibilityRole="header"
             >
-              {text}
+              {title}
             </Text>
-          ) : null}
-          <BlockReferences references={references} />
-        </GlassSurface>
+            {text.trim() ? (
+              <Text
+                style={[styles.body, { color: colors.text.body }]}
+                maxFontSizeMultiplier={1.35}
+              >
+                {text}
+              </Text>
+            ) : null}
+            <BlockReferences references={references} />
+          </View>
+        </ElevatedSurface>
       </View>
     </BlockEnter>
   );
@@ -135,12 +103,12 @@ const styles = StyleSheet.create({
   wrap: {
     marginVertical: 14,
   },
-  glass: {
+  surface: {
     borderRadius: RADII.sm,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    // Soft depth like glass-sonner (no left rail).
-    ...shadow.glassCallout,
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   title: {
     ...typography('labelSemiboldTrack'),

@@ -3,10 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChevronDown, ChevronUp, Layers, Bookmark } from '../icons';
 import { RADII, ACCENT } from '@shared/uiTokens';
 import type { KnowledgeSection } from '../logic/contracts';
-import GlassSurface from './GlassSurface';
-import { useTheme } from '../context/ThemeContext';
-import { useAppSession } from '../context/AppSessionContext';
-import { color, type } from '@shared/design-tokens';
+import ElevatedSurface from './ElevatedSurface';
+import { color } from '@shared/design-tokens';
 import { ReadingText } from '../context/TypographyContext';
 
 type KnowledgeSectionsListProps = {
@@ -18,8 +16,6 @@ export default function KnowledgeSectionsList({
   sections = [],
   className = 'mt-6',
 }: KnowledgeSectionsListProps) {
-  const { isDark } = useTheme();
-  const { isStreamGenerating } = useAppSession();
   const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
 
   if (!sections || sections.length === 0) {
@@ -32,14 +28,7 @@ export default function KnowledgeSectionsList({
 
   return (
     <View className={className}>
-      <GlassSurface
-        liquid
-        borderRadius={RADII.md}
-        className="rounded-2xl overflow-hidden"
-        style={styles.shell}
-        overlayClassName={isDark ? 'bg-white/[0.05]' : 'bg-white/45'}
-        glassRefreshKey={isStreamGenerating ? 'streaming' : 'ready'}
-      >
+      <ElevatedSurface borderRadius={RADII.md} style={styles.shell}>
         <View className="px-5 py-6">
           <Text className="text-meta font-bold uppercase text-secondary mb-2">
             Secciones extraídas
@@ -131,7 +120,7 @@ export default function KnowledgeSectionsList({
             Esto no sustituye la fuente original: organiza la señal que el Núcleo pudo extraer.
           </Text>
         </View>
-      </GlassSurface>
+      </ElevatedSurface>
     </View>
   );
 }

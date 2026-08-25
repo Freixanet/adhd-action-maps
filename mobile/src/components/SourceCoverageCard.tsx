@@ -3,10 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { CircleAlert, Layers } from '../icons';
 import { RADII, ACCENT } from '@shared/uiTokens';
 import type { Coverage } from '../logic/contracts';
-import GlassSurface from './GlassSurface';
-import { useTheme } from '../context/ThemeContext';
-import { useAppSession } from '../context/AppSessionContext';
-import { color, type } from '@shared/design-tokens';
+import ElevatedSurface from './ElevatedSurface';
+import { color } from '@shared/design-tokens';
 
 type SourceCoverageCardProps = {
   coverage?: Coverage;
@@ -95,9 +93,6 @@ export default function SourceCoverageCard({
   className = 'mt-6',
   plain = false,
 }: SourceCoverageCardProps) {
-  const { isDark } = useTheme();
-  const { isStreamGenerating } = useAppSession();
-
   const hasCoverage = !!coverage?.summary || !!coverage?.notes?.length;
   const hasLimitations = limitations.length > 0;
   const hasSections = knowledgeSectionsCount > 0;
@@ -123,14 +118,7 @@ export default function SourceCoverageCard({
 
   return (
     <View className={className}>
-      <GlassSurface
-        liquid
-        borderRadius={RADII.md}
-        className="rounded-2xl overflow-hidden"
-        style={styles.shell}
-        overlayClassName={isDark ? 'bg-white/[0.05]' : 'bg-white/45'}
-        glassRefreshKey={isStreamGenerating ? 'streaming' : 'ready'}
-      >
+      <ElevatedSurface borderRadius={RADII.md} style={styles.shell}>
         <View className="px-5 py-6">
           <CoverageContent
             coverage={coverage}
@@ -141,7 +129,7 @@ export default function SourceCoverageCard({
             hasSections={hasSections}
           />
         </View>
-      </GlassSurface>
+      </ElevatedSurface>
     </View>
   );
 }

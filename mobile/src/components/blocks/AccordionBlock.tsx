@@ -10,7 +10,7 @@ import { ChevronDown } from '../../icons';
 import { hapticToggle } from '../../logic/haptics';
 import { RADII } from '@shared/uiTokens';
 import type { SourceReference, StepContentBlockAccordion } from '@shared/contracts';
-import GlassSurface from '../GlassSurface';
+import ElevatedSurface from '../ElevatedSurface';
 import { useTheme } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import BlockEnter from './BlockEnter';
@@ -42,7 +42,7 @@ function AccordionReferences({
 }
 
 export default function AccordionBlock({ block, index = 0 }: Props) {
-  const { isDark, colors } = useTheme();
+  const { colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
   const [open, setOpen] = useState(false);
   const [bodyHeight, setBodyHeight] = useState(0);
@@ -78,13 +78,7 @@ export default function AccordionBlock({ block, index = 0 }: Props) {
   return (
     <BlockEnter delayMs={contentEnterStagger(index)}>
       <View style={styles.wrap}>
-        <GlassSurface
-          liquid
-          borderRadius={RADII.md}
-          className="rounded-2xl overflow-hidden"
-          style={styles.glass}
-          overlayClassName={isDark ? 'bg-white/[0.05]' : 'bg-white/45'}
-        >
+        <ElevatedSurface borderRadius={RADII.md} style={styles.surface}>
           <Pressable
             onPress={toggle}
             accessibilityRole="button"
@@ -129,7 +123,7 @@ export default function AccordionBlock({ block, index = 0 }: Props) {
               </View>
             </View>
           ) : null}
-        </GlassSurface>
+        </ElevatedSurface>
       </View>
     </BlockEnter>
   );
@@ -139,7 +133,7 @@ const styles = StyleSheet.create({
   wrap: {
     marginVertical: 12,
   },
-  glass: {
+  surface: {
     borderRadius: RADII.md,
     overflow: 'hidden',
   },
