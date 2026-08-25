@@ -3,7 +3,7 @@
  * Regenerate: npm run tokens:generate
  */
 
-export const TOKEN_FINGERPRINT = "9576155436402619";
+export const TOKEN_FINGERPRINT = "3a5e903bfab7d452";
 
 export const primitive = {
   "color": {
@@ -290,7 +290,7 @@ export const primitive = {
         "width": 0,
         "height": 8
       },
-      "shadowOpacity": 0.35,
+      "shadowOpacity": 0.32,
       "shadowRadius": 18,
       "elevation": 8
     },
@@ -300,7 +300,7 @@ export const primitive = {
         "width": 0,
         "height": 0
       },
-      "shadowOpacity": 0.45,
+      "shadowOpacity": 0.3,
       "shadowRadius": 14,
       "elevation": 4
     },
@@ -1896,7 +1896,7 @@ export const shadow = {
       "width": 0,
       "height": 8
     },
-    "shadowOpacity": 0.35,
+    "shadowOpacity": 0.32,
     "shadowRadius": 18,
     "elevation": 8
   } as const,
@@ -1906,7 +1906,7 @@ export const shadow = {
       "width": 0,
       "height": 0
     },
-    "shadowOpacity": 0.45,
+    "shadowOpacity": 0.3,
     "shadowRadius": 14,
     "elevation": 4
   } as const,

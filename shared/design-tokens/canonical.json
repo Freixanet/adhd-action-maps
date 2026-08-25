@@ -290,7 +290,7 @@
           "width": 0,
           "height": 8
         },
-        "shadowOpacity": 0.35,
+        "shadowOpacity": 0.32,
         "shadowRadius": 18,
         "elevation": 8
       },
@@ -300,7 +300,7 @@
           "width": 0,
           "height": 0
         },
-        "shadowOpacity": 0.45,
+        "shadowOpacity": 0.30,
         "shadowRadius": 14,
         "elevation": 4
       },
