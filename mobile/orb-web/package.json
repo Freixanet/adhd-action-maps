@@ -5,9 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.live.ts",
-    "build": "vite build --config vite.config.live.ts && cp dist-live/thinking-orb-live.html ../assets/thinking-orb-live.html && vite build --config vite.config.roundcarousel.ts && cp dist-round-carousel/round-carousel.html ../assets/round-carousel.html",
+    "build": "vite build --config vite.config.live.ts && cp dist-live/thinking-orb-live.html ../assets/thinking-orb-live.html",
     "build:live": "vite build --config vite.config.live.ts && cp dist-live/thinking-orb-live.html ../assets/thinking-orb-live.html",
-    "build:roundcarousel": "vite build --config vite.config.roundcarousel.ts && cp dist-round-carousel/round-carousel.html ../assets/round-carousel.html",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
