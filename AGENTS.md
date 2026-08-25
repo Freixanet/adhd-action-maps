@@ -106,8 +106,11 @@ Non-negotiable for UI work under `mobile/src/` (components, screens, editorial,
 visualize chrome):
 
 - Every new interface color comes from `@shared/design-tokens` / `@shared/uiTokens`.
-- Typography uses semantic roles (`typography('body')`, `type.*`, or theme
-  classes like `text-body`) — never raw `fontSize` / `text-[15px]`.
+- Typography uses the eight roles in `docs/design-system/TYPOGRAPHY.md`
+  (`display`, `pageTitle`, `heading`, `title`, `body`, `callout`, `caption`,
+  `meta`; `kicker` is the overline of `meta`). Do not add synonym roles.
+  Consume via `typography(role)`, `type.*`, or theme classes like `text-body`
+  — never raw `fontSize` / `text-[15px]`.
 - Recurrent spacing, radii, shadows, blurs, and interaction durations use tokens.
 - Do not edit `mobile/src/theme/tokens.generated.css` directly.
 - Before adding a token, search for an existing semantic role with the same meaning.

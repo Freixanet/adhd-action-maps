@@ -519,3 +519,20 @@ a Flash Lite y elige `guide` en artículos. Ante duda de kind, `explain`.
 
 **Evidencia:** `shared/iconAppearance.ts`, `mobile/src/icons/index.tsx`.
 
+---
+
+## ADR-029 — Ocho roles tipográficos y peso 600 en heading
+
+**Fecha:** 2026-08-24  
+**Estado:** accepted
+
+**Contexto:** `semantic.type` tenía ~20 nombres para seis combinaciones reales. `heading` / `sectionTitle` / `subtitle` / `readingSection` eran 22/25/500. `label` / `meta` / `micro` eran 13/18/500. `body` / `readingBody` / `readingLead` eran 17/24/400. En `primitive.fontSize`, `3xs` = `2xs` = `xs` = `sm` = `md` = 13. Dos sesiones de agente elegían nombres distintos para el mismo slot; el checker no veía divergencia. El salto 500→700 dejaba los headings de 22px blandos.
+
+**Decisión:** Conservar la rampa 13/15/17/22/28/34. Ocho roles de tamaño×peso: `display`, `pageTitle`, `heading`, `title`, `body`, `caption`, `callout`, `meta`. El resto son alias `{semantic.type.*}`. `kicker` es overline de `meta` (tracking abierto, uppercase), no un noveno tamaño. `heading` (22px) usa peso 600; 28 y 34 siguen en 700.
+
+**Alternativas:** Dejar los sinónimos y documentar preferencias; fusionar `kicker` en `meta` y perder el tracking de overline.
+
+**Consecuencias:** Call sites antiguos siguen compilando. Agentes nuevos deben usar los ocho nombres. `sectionTitle` y `heading` resuelven al mismo objeto (600).
+
+**Evidencia:** `shared/design-tokens/canonical.json`, `docs/design-system/TYPOGRAPHY.md`, `shared/typography.test.ts`.
+
