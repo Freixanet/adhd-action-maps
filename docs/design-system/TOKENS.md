@@ -114,9 +114,9 @@ Current budget: **2** exceptions (both in `CalloutBlock` runtime alpha washes). 
 `scripts/design-tokens/check.mjs` scans production UI paths and fails on hex/rgba,
 direct type metrics, radii, shadows, elevations, durations, and arbitrary visual
 classes. Vendor code, generated SVG/XML bundles, tests, fixtures, and assets are
-excluded. The only specialized exclusions are two unreferenced research
-renderers (`OrbHtmlIterationWebView.tsx` and `liquidGlassAtomOrbShared.ts`),
-kept explicit so their palette/geometry data cannot hide product UI drift.
+excluded. The only specialized exclusion is the unreferenced research
+renderer `liquidGlassAtomOrbShared.ts`, kept explicit so its palette/geometry
+data cannot hide product UI drift.
 The active Skia orb and all first-party WebView templates, including orb
 fallbacks, are checked for token usage and invalid CSS values.
 

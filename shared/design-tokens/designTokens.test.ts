@@ -131,7 +131,7 @@ const offset = measuredWidth * 0.12; // design-token-ignore: calculated layout g
     fs.writeFileSync(path.join(vendor, 'x.tsx'), `const c = '#ff0000';\n`);
     const orb = path.join(dir, 'mobile/src/components');
     fs.mkdirSync(orb, { recursive: true });
-    fs.writeFileSync(path.join(orb, 'OrbHtmlIterationWebView.tsx'), `const c = '#ff0000';\n`);
+    fs.writeFileSync(path.join(orb, 'liquidGlassAtomOrbShared.ts'), `const c = '#ff0000';\n`);
     fs.writeFileSync(path.join(orb, 'Clean.tsx'), `import { color } from '@shared/design-tokens';\nconst c = color.text.primary;\n`);
     const r = runNode(CHECK, [], { DESIGN_TOKENS_ROOT: dir });
     expect(r.status).toBe(0);

@@ -47,7 +47,6 @@ const EXCLUDE_FILE_RE = /(bundledEditorialSvgXml|\.test\.|\.spec\.|Fixture|fixtu
  * Keep this list exact: filename-pattern exclusions hide unrelated UI.
  */
 const SPECIALIZED_RENDERER_FILES = new Set([
-  'mobile/src/components/OrbHtmlIterationWebView.tsx',
   'mobile/src/components/liquidGlassAtomOrbShared.ts',
 ]);
 
