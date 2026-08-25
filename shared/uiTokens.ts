@@ -182,6 +182,11 @@ export const glassFillPressed = darkColor.background.whiteFade09;
 export const surfaceSolid = '#17181F';
 export const textTertiarySafe = glass.blurWashLight;
 export const nodeCapsuleFill = 'rgba(22,24,34,0.92)';
+/** Solid reading surface — same fill/hairline as node capsules. Border width is RN hairline. */
+export const elevatedSurface = {
+  backgroundColor: nodeCapsuleFill,
+  borderColor: hairline,
+} as const;
 export const nodeSelectedBorder = 'rgba(169,173,255,0.45)';
 export const connectorActive = 'rgba(139,143,245,0.42)';
 export const statusOrbGlow = {

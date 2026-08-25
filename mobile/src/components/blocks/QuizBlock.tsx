@@ -1,21 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { hapticSuccess, hapticWarning } from '../../logic/haptics';
 import { RADII } from '@shared/uiTokens';
 import type { StepContentBlockQuiz } from '@shared/contracts';
-import GlassSurface from '../GlassSurface';
+import ElevatedSurface from '../ElevatedSurface';
+import { Check, X } from '../../icons';
+import { useCalmPress } from '../../hooks/useCalmPress';
 import { useTheme, useThemeColors } from '../../context/ThemeContext';
 import { useGlassAccessibility } from '../../hooks/useGlassAccessibility';
 import BlockEnter from './BlockEnter';
 import { contentEnterStagger } from '../../motion/contentEnter';
-import { motion, typography } from '@shared/design-tokens';
+import { control, motion, typography } from '@shared/design-tokens';
 
 type Props = {
   block: StepContentBlockQuiz;
@@ -30,31 +26,14 @@ function QuizOptionRow({
   disabled,
   state,
   onPress,
-  reduceMotion,
 }: {
   label: string;
   disabled: boolean;
   state: OptionState;
   onPress: () => void;
-  reduceMotion: boolean;
 }) {
   const colors = useThemeColors();
-  const scale = useSharedValue(1);
-  const shake = useSharedValue(0);
-
-  useEffect(() => {
-    if (state !== 'wrong' || reduceMotion) return;
-    shake.value = withSequence(
-      withTiming(-6, { duration: motion.feedback.duration }),
-      withTiming(6, { duration: motion.feedback.duration }),
-      withTiming(-4, { duration: motion.feedback.duration }),
-      withTiming(0, { duration: motion.feedback.duration })
-    );
-  }, [reduceMotion, shake, state]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shake.value }, { scale: scale.value }],
-  }));
+  const { style: pressStyle, handlers } = useCalmPress();
 
   const borderColor =
     state === 'correct'
@@ -68,46 +47,38 @@ function QuizOptionRow({
       : state === 'wrong'
         ? colors.background.dangerFade14
         : colors.background.whiteFade04;
+  const glyphColor = state === 'correct' ? colors.text.success : colors.text.danger;
 
   return (
-    <Animated.View style={animatedStyle}>
-      <Pressable
-        disabled={disabled}
-        onPress={onPress}
-        onPressIn={() => {
-          if (!disabled && !reduceMotion) {
-            scale.value = withTiming(motion.press.scale, {
-              duration: motion.press.duration,
-              easing: Easing.bezier(0.23, 1, 0.32, 1),
-            });
-          }
-        }}
-        onPressOut={() => {
-          scale.value = withTiming(1, {
-            duration: motion.press.duration,
-            easing: Easing.bezier(0.23, 1, 0.32, 1),
-          });
-        }}
-        accessibilityRole="button"
-        accessibilityState={{ disabled }}
-        style={[styles.option, { borderColor, backgroundColor }]}
-      >
-        <Text
-          style={[
-            styles.optionText,
-            { color: state === 'missed' ? colors.text.secondary : colors.text.body },
-          ]}
-          maxFontSizeMultiplier={1.35}
-        >
-          {label}
-        </Text>
-      </Pressable>
-    </Animated.View>
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      onPressIn={handlers.onPressIn}
+      onPressOut={handlers.onPressOut}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+    >
+      <Animated.View style={pressStyle}>
+        <View style={[styles.option, { borderColor, backgroundColor }]}>
+          {state === 'correct' ? <Check size={control.iconSm} color={glyphColor} /> : null}
+          {state === 'wrong' ? <X size={control.iconSm} color={glyphColor} /> : null}
+          <Text
+            style={[
+              styles.optionText,
+              { color: state === 'missed' ? colors.text.secondary : colors.text.body },
+            ]}
+            maxFontSizeMultiplier={1.35}
+          >
+            {label}
+          </Text>
+        </View>
+      </Animated.View>
+    </Pressable>
   );
 }
 
 export default function QuizBlock({ block, index = 0, questionStyle }: Props) {
-  const { isDark, colors } = useTheme();
+  const { colors } = useTheme();
   const { reduceMotion } = useGlassAccessibility();
   const [selected, setSelected] = useState<number | null>(null);
   const feedbackProgress = useSharedValue(0);
@@ -117,7 +88,6 @@ export default function QuizBlock({ block, index = 0, questionStyle }: Props) {
 
   const feedbackStyle = useAnimatedStyle(() => ({
     opacity: feedbackProgress.value,
-    transform: [{ translateY: (1 - feedbackProgress.value) * 8 }],
   }));
 
   const choose = (optionIndex: number) => {
@@ -131,7 +101,7 @@ export default function QuizBlock({ block, index = 0, questionStyle }: Props) {
     }
     feedbackProgress.value = reduceMotion
       ? 1
-      : withTiming(1, { duration: motion.quizSettle.duration, easing: Easing.out(Easing.cubic) });
+      : withTiming(1, { duration: motion.feedback.duration, easing: Easing.out(Easing.cubic) });
   };
 
   return (
@@ -154,7 +124,6 @@ export default function QuizBlock({ block, index = 0, questionStyle }: Props) {
                 label={option}
                 disabled={answered}
                 state={state}
-                reduceMotion={reduceMotion}
                 onPress={() => choose(optionIndex)}
               />
             );
@@ -162,27 +131,28 @@ export default function QuizBlock({ block, index = 0, questionStyle }: Props) {
         </View>
         {answered ? (
           <Animated.View style={feedbackStyle}>
-            <GlassSurface
-              liquid
-              borderRadius={RADII.sm}
-              className="rounded-xl overflow-hidden"
-              style={styles.feedbackGlass}
-              overlayClassName={isDark ? 'bg-white/[0.05]' : 'bg-white/45'}
-            >
+            <ElevatedSurface borderRadius={RADII.sm} style={styles.feedbackSurface}>
               <View style={styles.feedbackInner}>
-                <Text
-                  style={[
-                    styles.feedbackKicker,
-                    { color: isCorrect ? colors.text.success : colors.text.danger },
-                  ]}
-                >
-                  {isCorrect ? 'Acertado' : 'Casi'}
-                </Text>
+                <View style={styles.feedbackKickerRow}>
+                  {isCorrect ? (
+                    <Check size={control.iconSm} color={colors.text.success} />
+                  ) : (
+                    <X size={control.iconSm} color={colors.text.danger} />
+                  )}
+                  <Text
+                    style={[
+                      styles.feedbackKicker,
+                      { color: isCorrect ? colors.text.success : colors.text.danger },
+                    ]}
+                  >
+                    {isCorrect ? 'Acertado' : 'Casi'}
+                  </Text>
+                </View>
                 <Text style={[styles.feedbackText, { color: colors.text.body }]} maxFontSizeMultiplier={1.35}>
                   {block.feedback}
                 </Text>
               </View>
-            </GlassSurface>
+            </ElevatedSurface>
           </Animated.View>
         ) : null}
       </View>
@@ -206,11 +176,15 @@ const styles = StyleSheet.create({
     borderRadius: RADII.sm,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   optionText: {
     ...typography('body'),
+    flex: 1,
   },
-  feedbackGlass: {
+  feedbackSurface: {
     borderRadius: RADII.sm,
     overflow: 'hidden',
     marginTop: 4,
@@ -219,6 +193,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 6,
+  },
+  feedbackKickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   feedbackKicker: {
     ...typography('metaBold'),

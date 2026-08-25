@@ -1,24 +1,16 @@
 import React, { memo, useCallback } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  Easing,
   Extrapolation,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import {
-  motion,
-  radius,
-  shadow,
-  space,
-  type,
-} from '@shared/design-tokens';
+import { radius, shadow, space, type } from '@shared/design-tokens';
 import type { HistoryEntry } from '@shared/history';
 import { isChatHistoryEntry } from '@shared/historyKind';
-import { useGlassAccessibility } from '../hooks/useGlassAccessibility';
+import { useCalmPress } from '../hooks/useCalmPress';
 import { useTheme } from '../context/ThemeContext';
 import { useTypography } from '../context/TypographyContext';
 import NucleoCover from './NucleoCover';
@@ -40,10 +32,6 @@ type RecentNucleoCardProps = {
   scrollX?: SharedValue<number>;
 };
 
-const PRESS_DURATION = motion.press.duration;
-const PRESS_SCALE = motion.press.scale;
-const PRESS_EASE = Easing.bezier(0.23, 1, 0.32, 1);
-
 function RecentNucleoCard({
   entry,
   width,
@@ -54,11 +42,10 @@ function RecentNucleoCard({
 }: RecentNucleoCardProps) {
   const { isDark, colors } = useTheme();
   const { font } = useTypography();
-  const { reduceMotion } = useGlassAccessibility();
+  const { style: pressStyle, handlers } = useCalmPress();
   const size = width;
   const coverHeight = Math.round(size * RECENT_NUCLEO_COVER_RATIO);
   const cardRadius = radius.card;
-  const press = useSharedValue(0);
   const idleScroll = useSharedValue(0);
   const trackX = scrollX ?? idleScroll;
 
@@ -67,23 +54,6 @@ function RecentNucleoCard({
   const handlePress = useCallback(() => {
     onPress(entry.id);
   }, [entry.id, onPress]);
-
-  const handlePressIn = useCallback(() => {
-    press.value = withTiming(1, { duration: PRESS_DURATION, easing: PRESS_EASE });
-  }, [press]);
-
-  const handlePressOut = useCallback(() => {
-    press.value = withTiming(0, { duration: PRESS_DURATION, easing: PRESS_EASE });
-  }, [press]);
-
-  const motionStyle = useAnimatedStyle(() => {
-    if (reduceMotion) {
-      return { transform: [{ scale: 1 }] };
-    }
-    return {
-      transform: [{ scale: interpolate(press.value, [0, 1], [1, PRESS_SCALE]) }],
-    };
-  }, [reduceMotion]);
 
   const veilStyle = useAnimatedStyle(() => {
     const span = slotInterval > 0 ? slotInterval : 1;
@@ -100,8 +70,8 @@ function RecentNucleoCard({
   return (
     <Pressable
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
+      onPressIn={handlers.onPressIn}
+      onPressOut={handlers.onPressOut}
       accessibilityRole="button"
       accessibilityLabel={
         isChatHistoryEntry(entry) ? `Abrir chat: ${entry.title}` : `Abrir Núcleo: ${entry.title}`
@@ -115,7 +85,7 @@ function RecentNucleoCard({
             height: size,
             borderRadius: cardRadius,
           },
-          motionStyle,
+          pressStyle,
           Platform.OS === 'ios' ? styles.continuous : null,
         ]}
       >
