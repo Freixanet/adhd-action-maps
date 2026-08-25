@@ -3,7 +3,7 @@
  * Regenerate: npm run tokens:generate
  */
 
-export const TOKEN_FINGERPRINT = "3a5e903bfab7d452";
+export const TOKEN_FINGERPRINT = "842a2e57a5cf5149";
 
 export const primitive = {
   "color": {
@@ -1844,8 +1844,7 @@ export const motion = {
     "in": 90,
     "out": 160,
     "easing": "cubic-bezier(0.4, 0.0, 0.2, 1)",
-    "scale": 0.97,
-    "fade": 0.25
+    "scale": 0.975
   }
 } as const;
 

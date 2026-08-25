@@ -13,8 +13,8 @@ export const PRESS_RETENTION_OFFSET = 16;
 const SCALE_DELTA = 1 - motion.press.scale;
 
 /**
- * Press-in scale ~0.97 plus a light fade. Timing, not a spring: the finger
- * is still down, so we ease to the pressed rest and back.
+ * Press-in scale 0.975. No opacity fade.
+ * Timing, not a spring: the finger is still down, so we ease to the pressed rest and back.
  */
 export function usePressSpring(reduceMotion?: boolean) {
   const systemReduced = Boolean(useReducedMotion());
@@ -23,7 +23,6 @@ export function usePressSpring(reduceMotion?: boolean) {
 
   const style = useAnimatedStyle(() => ({
     transform: [{ scale: 1 - pressed.value * SCALE_DELTA }],
-    opacity: 1 - pressed.value * motion.press.fade,
   }));
 
   const handlers = useMemo(

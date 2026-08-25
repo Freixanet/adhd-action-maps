@@ -918,8 +918,7 @@
         "in": "{primitive.duration.pressIn}",
         "out": "{primitive.duration.pressOut}",
         "easing": "{primitive.easing.standard}",
-        "scale": 0.97,
-        "fade": 0.25
+        "scale": 0.975
       }
     },
     "shadow": {
