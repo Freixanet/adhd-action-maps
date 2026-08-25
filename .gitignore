@@ -34,3 +34,11 @@ backups/
 # Tesseract language data, downloaded on first OCR run
 *.traineddata
 .originkit/
+
+# Local artifacts (screenshots, prompts, orb-web scratch builds)
+.tmp/
+PROMPT_MAESTRO_GROK45.md
+README_USO_CURSOR.md
+docs/design-system/evidence/
+docs/editorial/captures/
+mobile/orb-web/dist-round-carousel/
