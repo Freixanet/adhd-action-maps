@@ -3,7 +3,7 @@
  * Regenerate: npm run tokens:generate
  */
 
-/* fingerprint: 28798ffd8e3fb8bd */
+/* fingerprint: 9576155436402619 */
 
 @theme {
   --color-sem-clave: #8B8FF5;
@@ -19,14 +19,22 @@
   --text-page-title--line-height: 32px;
   --text-heading: 22px;
   --text-heading--line-height: 25px;
-  --text-section-title: 22px;
-  --text-section-title--line-height: 25px;
-  --text-subtitle: 22px;
-  --text-subtitle--line-height: 25px;
   --text-title: 17px;
   --text-title--line-height: 24px;
   --text-body: 17px;
   --text-body--line-height: 24px;
+  --text-caption: 15px;
+  --text-caption--line-height: 21px;
+  --text-callout: 15px;
+  --text-callout--line-height: 21px;
+  --text-meta: 13px;
+  --text-meta--line-height: 18px;
+  --text-kicker: 13px;
+  --text-kicker--line-height: 18px;
+  --text-section-title: 22px;
+  --text-section-title--line-height: 25px;
+  --text-subtitle: 22px;
+  --text-subtitle--line-height: 25px;
   --text-body-strong: 17px;
   --text-body-strong--line-height: 24px;
   --text-reading-body: 17px;
@@ -41,18 +49,10 @@
   --text-reading-section--line-height: 25px;
   --text-reading-caption: 13px;
   --text-reading-caption--line-height: 18px;
-  --text-callout: 15px;
-  --text-callout--line-height: 21px;
-  --text-caption: 15px;
-  --text-caption--line-height: 21px;
   --text-label: 13px;
   --text-label--line-height: 18px;
-  --text-meta: 13px;
-  --text-meta--line-height: 18px;
   --text-micro: 13px;
   --text-micro--line-height: 18px;
-  --text-kicker: 13px;
-  --text-kicker--line-height: 18px;
   --text-button: 15px;
   --text-button--line-height: 21px;
   --text-button-sm: 15px;
@@ -241,14 +241,22 @@
   --text-page-title--line-height: 32px;
   --text-heading: 22px;
   --text-heading--line-height: 25px;
-  --text-section-title: 22px;
-  --text-section-title--line-height: 25px;
-  --text-subtitle: 22px;
-  --text-subtitle--line-height: 25px;
   --text-title: 17px;
   --text-title--line-height: 24px;
   --text-body: 17px;
   --text-body--line-height: 24px;
+  --text-caption: 15px;
+  --text-caption--line-height: 21px;
+  --text-callout: 15px;
+  --text-callout--line-height: 21px;
+  --text-meta: 13px;
+  --text-meta--line-height: 18px;
+  --text-kicker: 13px;
+  --text-kicker--line-height: 18px;
+  --text-section-title: 22px;
+  --text-section-title--line-height: 25px;
+  --text-subtitle: 22px;
+  --text-subtitle--line-height: 25px;
   --text-body-strong: 17px;
   --text-body-strong--line-height: 24px;
   --text-reading-body: 17px;
@@ -263,18 +271,10 @@
   --text-reading-section--line-height: 25px;
   --text-reading-caption: 13px;
   --text-reading-caption--line-height: 18px;
-  --text-callout: 15px;
-  --text-callout--line-height: 21px;
-  --text-caption: 15px;
-  --text-caption--line-height: 21px;
   --text-label: 13px;
   --text-label--line-height: 18px;
-  --text-meta: 13px;
-  --text-meta--line-height: 18px;
   --text-micro: 13px;
   --text-micro--line-height: 18px;
-  --text-kicker: 13px;
-  --text-kicker--line-height: 18px;
   --text-button: 15px;
   --text-button--line-height: 21px;
   --text-button-sm: 15px;
@@ -461,14 +461,22 @@
   --text-page-title--line-height: 32px;
   --text-heading: 22px;
   --text-heading--line-height: 25px;
-  --text-section-title: 22px;
-  --text-section-title--line-height: 25px;
-  --text-subtitle: 22px;
-  --text-subtitle--line-height: 25px;
   --text-title: 17px;
   --text-title--line-height: 24px;
   --text-body: 17px;
   --text-body--line-height: 24px;
+  --text-caption: 15px;
+  --text-caption--line-height: 21px;
+  --text-callout: 15px;
+  --text-callout--line-height: 21px;
+  --text-meta: 13px;
+  --text-meta--line-height: 18px;
+  --text-kicker: 13px;
+  --text-kicker--line-height: 18px;
+  --text-section-title: 22px;
+  --text-section-title--line-height: 25px;
+  --text-subtitle: 22px;
+  --text-subtitle--line-height: 25px;
   --text-body-strong: 17px;
   --text-body-strong--line-height: 24px;
   --text-reading-body: 17px;
@@ -483,18 +491,10 @@
   --text-reading-section--line-height: 25px;
   --text-reading-caption: 13px;
   --text-reading-caption--line-height: 18px;
-  --text-callout: 15px;
-  --text-callout--line-height: 21px;
-  --text-caption: 15px;
-  --text-caption--line-height: 21px;
   --text-label: 13px;
   --text-label--line-height: 18px;
-  --text-meta: 13px;
-  --text-meta--line-height: 18px;
   --text-micro: 13px;
   --text-micro--line-height: 18px;
-  --text-kicker: 13px;
-  --text-kicker--line-height: 18px;
   --text-button: 15px;
   --text-button--line-height: 21px;
   --text-button-sm: 15px;

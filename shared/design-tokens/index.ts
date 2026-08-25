@@ -28,6 +28,9 @@ export const blur = generated.blur;
 export const control = generated.control;
 export const glass = generated.glass;
 export const engraved = generated.engraved;
+export const canonicalTypeRoles = generated.canonicalTypeRoles;
+export const overlineTypeRole = generated.overlineTypeRole;
+export const typeRoleAliases = generated.typeRoleAliases;
 
 export type TypeRole = generated.TypeRole;
 export type ColorSchemeName = generated.ColorSchemeName;

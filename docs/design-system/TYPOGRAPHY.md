@@ -8,21 +8,27 @@ La tipografía es parte de la función de lectura, no una capa decorativa.
 - Source Sans 3 y SF Pro Rounded quedan como prueba en Ajustes. No son el default.
 - Firma opcional: solo en títulos de canvas Lumen, **Iowan Old Style** (iOS) / Georgia (Android). El cuerpo sigue en system. No añadir Söhne, Geist ni Inter Display sin una decisión explícita.
 - Escala única: **34 / 28 / 22 / 17 / 15 / 13**.
-- Pesos: **400** cuerpo, **500** subtítulo y UI, **700** display (28 y 34, y títulos Lumen).
+- Pesos: **400** cuerpo, **500** énfasis a 15/17, **600** heading (22), **700** display (28 y 34, y títulos Lumen).
 - Interlineado: **1,4** cuerpo (13/15/17) y **1,15** titulares (22/28/34).
-- Tracking: **−0,02 em** por encima de 24 px (28 y 34). El resto, 0. Los kickers en mayúsculas conservan tracking abierto.
+- Tracking: **−0,02 em** por encima de 24 px (28 y 34). El resto, 0. Los kickers en mayúsculas conservan tracking abierto (`kicker`).
 - **Máximo 3 tamaños por pantalla.**
 
-## Roles
+## 8 roles
 
-| Tamaño | Uso |
-| --- | --- |
-| 34 | Display / cover |
-| 28 | Título de página |
-| 22 | Sección / subtítulo |
-| 17 | Cuerpo y campos |
-| 15 | Callout, botón, caption |
-| 13 | Meta, kicker, label |
+Nuevo texto usa uno de estos nombres. El resto de claves en `type` son alias deprecados que apuntan a ellos.
+
+| Role | Tamaño | Peso | Uso |
+| --- | --- | --- | --- |
+| `display` | 34 | 700 | Cover / display |
+| `pageTitle` | 28 | 700 | Título de página |
+| `heading` | 22 | 600 | Sección |
+| `title` | 17 | 500 | Línea enfatizada, título de tarjeta |
+| `body` | 17 | 400 | Cuerpo y campos |
+| `callout` | 15 | 500 | Callout, botón |
+| `caption` | 15 | 400 | Caption |
+| `meta` | 13 | 500 | Meta, label |
+
+`kicker` no es un noveno tamaño: es `meta` en overline (13/18/500, tracking abierto, uppercase). Usar `kicker`, no inventar `metaKicker` ni `planKicker`.
 
 ## Regla de uso
 

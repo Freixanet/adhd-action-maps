@@ -3,7 +3,7 @@
  * Regenerate: npm run tokens:generate
  */
 
-export const TOKEN_FINGERPRINT = "28798ffd8e3fb8bd";
+export const TOKEN_FINGERPRINT = "9576155436402619";
 
 export const primitive = {
   "color": {
@@ -94,6 +94,12 @@ export const primitive = {
     "11": 64
   },
   "fontSize": {
+    "13": 13,
+    "15": 15,
+    "17": 17,
+    "22": 22,
+    "28": 28,
+    "34": 34,
     "3xs": 13,
     "2xs": 13,
     "xs": 13,
@@ -199,6 +205,8 @@ export const primitive = {
     "micro": 120,
     "stagger": 30,
     "press": 140,
+    "pressIn": 90,
+    "pressOut": 160,
     "fast": 180,
     "base": 200,
     "moderate": 300,
@@ -516,6 +524,7 @@ export const color = {
 },
   orb: {
   "ambient": "rgba(139,143,245,0.10)",
+  "homeAmbient": "rgba(139,143,245,0.08)",
   "swirl": "rgba(139,143,245,0.32)",
   "caustics": "rgba(255,255,255,0.24)",
   "glassHighlight": "rgba(255,255,255,0.68)",
@@ -694,6 +703,7 @@ export const themeColor = {
 },
   orb: {
   "ambient": "rgba(139,143,245,0.10)",
+  "homeAmbient": "rgba(139,143,245,0.08)",
   "swirl": "rgba(139,143,245,0.32)",
   "caustics": "rgba(255,255,255,0.24)",
   "glassHighlight": "rgba(255,255,255,0.68)",
@@ -870,6 +880,7 @@ export const themeColor = {
 },
   orb: {
   "ambient": "rgba(91,96,212,0.08)",
+  "homeAmbient": "rgba(91,96,212,0.08)",
   "swirl": "rgba(91,96,212,0.22)",
   "caustics": "rgba(255,255,255,0.55)",
   "glassHighlight": "rgba(255,255,255,0.78)",
@@ -1060,21 +1071,7 @@ export const type = {
     fontFamily: font.family,
     fontSize: 22,
     lineHeight: 25,
-    fontWeight: "500",
-    letterSpacing: 0,
-  },
-  sectionTitle: {
-    fontFamily: font.family,
-    fontSize: 22,
-    lineHeight: 25,
-    fontWeight: "500",
-    letterSpacing: 0,
-  },
-  subtitle: {
-    fontFamily: font.family,
-    fontSize: 22,
-    lineHeight: 25,
-    fontWeight: "500",
+    fontWeight: "600",
     letterSpacing: 0,
   },
   title: {
@@ -1089,6 +1086,49 @@ export const type = {
     fontSize: 17,
     lineHeight: 24,
     fontWeight: "400",
+    letterSpacing: 0,
+  },
+  caption: {
+    fontFamily: font.family,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "400",
+    letterSpacing: 0,
+  },
+  callout: {
+    fontFamily: font.family,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "500",
+    letterSpacing: 0,
+  },
+  meta: {
+    fontFamily: font.family,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "500",
+    letterSpacing: 0,
+  },
+  kicker: {
+    fontFamily: font.family,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "500",
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+  },
+  sectionTitle: {
+    fontFamily: font.family,
+    fontSize: 22,
+    lineHeight: 25,
+    fontWeight: "600",
+    letterSpacing: 0,
+  },
+  subtitle: {
+    fontFamily: font.family,
+    fontSize: 22,
+    lineHeight: 25,
+    fontWeight: "600",
     letterSpacing: 0,
   },
   bodyStrong: {
@@ -1130,38 +1170,17 @@ export const type = {
     fontFamily: font.family,
     fontSize: 22,
     lineHeight: 25,
-    fontWeight: "500",
+    fontWeight: "600",
     letterSpacing: 0,
   },
   readingCaption: {
     fontFamily: font.family,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "400",
-    letterSpacing: 0,
-  },
-  callout: {
-    fontFamily: font.family,
-    fontSize: 15,
-    lineHeight: 21,
     fontWeight: "500",
-    letterSpacing: 0,
-  },
-  caption: {
-    fontFamily: font.family,
-    fontSize: 15,
-    lineHeight: 21,
-    fontWeight: "400",
     letterSpacing: 0,
   },
   label: {
-    fontFamily: font.family,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "500",
-    letterSpacing: 0,
-  },
-  meta: {
     fontFamily: font.family,
     fontSize: 13,
     lineHeight: 18,
@@ -1174,14 +1193,6 @@ export const type = {
     lineHeight: 18,
     fontWeight: "500",
     letterSpacing: 0,
-  },
-  kicker: {
-    fontFamily: font.family,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "500",
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
   },
   button: {
     fontFamily: font.family,
@@ -1334,7 +1345,7 @@ export const type = {
     fontFamily: font.family,
     fontSize: 22,
     lineHeight: 25,
-    fontWeight: "500",
+    fontWeight: "600",
     letterSpacing: 0,
   },
   microExtrabold: {
@@ -1356,7 +1367,7 @@ export const type = {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "500",
-    letterSpacing: 0.8,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
   },
   metaWide: {
@@ -1377,7 +1388,7 @@ export const type = {
     fontFamily: font.family,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "400",
+    fontWeight: "500",
     letterSpacing: 0,
   },
   subtitle17: {
@@ -1391,7 +1402,7 @@ export const type = {
     fontFamily: font.family,
     fontSize: 22,
     lineHeight: 25,
-    fontWeight: "500",
+    fontWeight: "600",
     letterSpacing: 0,
   },
   body16lh24: {
@@ -1412,7 +1423,7 @@ export const type = {
     fontFamily: font.family,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "400",
+    fontWeight: "500",
     letterSpacing: 0,
   },
   captionExtrabold16: {
@@ -1426,7 +1437,7 @@ export const type = {
     fontFamily: font.family,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "400",
+    fontWeight: "500",
     letterSpacing: 0,
   },
   bodySemibold: {
@@ -1475,7 +1486,7 @@ export const type = {
     fontFamily: font.family,
     fontSize: 22,
     lineHeight: 25,
-    fontWeight: "500",
+    fontWeight: "600",
     letterSpacing: 0,
   },
   inputBold: {
@@ -1490,8 +1501,7 @@ export const type = {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "500",
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
+    letterSpacing: 0,
   },
   labelExtrabold: {
     fontFamily: font.family,
@@ -1505,14 +1515,14 @@ export const type = {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "500",
-    letterSpacing: 0.8,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
   },
   pageTitleMedium: {
     fontFamily: font.family,
     fontSize: 22,
     lineHeight: 25,
-    fontWeight: "500",
+    fontWeight: "600",
     letterSpacing: 0,
   },
   planBody: {
@@ -1541,7 +1551,7 @@ export const type = {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "500",
-    letterSpacing: 0.7,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
   },
   stripTitle: {
@@ -1563,7 +1573,7 @@ export const type = {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "500",
-    letterSpacing: 1.68,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
   },
   lumenReadTime: {
@@ -1571,7 +1581,7 @@ export const type = {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "500",
-    letterSpacing: 1.68,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
   },
   lumenSectionTitle: {
@@ -1579,7 +1589,7 @@ export const type = {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "500",
-    letterSpacing: 1.68,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
   },
   lumenHook: {
@@ -1628,7 +1638,7 @@ export const type = {
     fontFamily: font.family,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "400",
+    fontWeight: "500",
     letterSpacing: 0,
   },
   lumenLabel: {
@@ -1648,6 +1658,89 @@ export const type = {
 } as const;
 
 export type TypeRole = keyof typeof type;
+
+/** Eight size×weight roles. Other `type` keys are deprecated aliases of these. */
+export const canonicalTypeRoles = ["display","pageTitle","heading","title","body","caption","callout","meta"] as const;
+/** Overline of meta: same 13/18/500, open tracking, uppercase. Not a ninth size. */
+export const overlineTypeRole = "kicker" as const;
+export const typeRoleAliases = {
+  "sectionTitle": "heading",
+  "subtitle": "heading",
+  "bodyStrong": "title",
+  "readingBody": "body",
+  "readingBodyStrong": "title",
+  "readingLead": "body",
+  "readingTitle": "pageTitle",
+  "readingSection": "heading",
+  "readingCaption": "meta",
+  "label": "meta",
+  "micro": "meta",
+  "button": "callout",
+  "buttonSm": "callout",
+  "input": "body",
+  "editorialCover": "display",
+  "editorialLede": "body",
+  "pageTitleTight": "pageTitle",
+  "inputStrong": "title",
+  "inputTitle": "title",
+  "metaBold": "meta",
+  "captionBold": "callout",
+  "captionBoldTrack": "callout",
+  "captionSemibold": "callout",
+  "captionExtrabold": "callout",
+  "labelSemibold": "meta",
+  "labelSemiboldTrack": "meta",
+  "labelBold": "meta",
+  "bodyBold": "title",
+  "bodyRelaxed": "body",
+  "calloutBold": "callout",
+  "calloutTight": "callout",
+  "titleMedium": "title",
+  "sectionTitleTrack": "heading",
+  "microExtrabold": "meta",
+  "microLabel": "meta",
+  "kickerWide": "kicker",
+  "metaWide": "meta",
+  "label17": "meta",
+  "label19": "meta",
+  "subtitle17": "title",
+  "headingTight": "heading",
+  "body16lh24": "body",
+  "captionSemiboldTrack": "callout",
+  "meta16": "meta",
+  "captionExtrabold16": "callout",
+  "micro14": "meta",
+  "bodySemibold": "title",
+  "buttonTitle": "callout",
+  "buttonTitleBold": "callout",
+  "calloutSemibold": "callout",
+  "continueTitle": "title",
+  "editorialCoverTitle": "display",
+  "editorialSectionTitle": "heading",
+  "inputBold": "title",
+  "intentLabel": "meta",
+  "labelExtrabold": "meta",
+  "metaKicker": "kicker",
+  "pageTitleMedium": "heading",
+  "planBody": "body",
+  "planBullet": "body",
+  "planHero": "pageTitle",
+  "planKicker": "kicker",
+  "stripTitle": "callout",
+  "titleExtrabold": "pageTitle",
+  "lumenKicker": "kicker",
+  "lumenReadTime": "kicker",
+  "lumenSectionTitle": "kicker",
+  "lumenHook": "pageTitle",
+  "lumenLead": "body",
+  "lumenCopy": "body",
+  "lumenDisplayLg": "pageTitle",
+  "lumenDisplayXl": "pageTitle",
+  "lumenDisplay3xl": "display",
+  "lumenTab": "meta",
+  "lumenLabel": "title",
+  "lumenChipLabel": "callout"
+} as const;
 
 export const radius = {
   "control": 12,
@@ -1748,8 +1841,11 @@ export const motion = {
   },
   "press": {
     "duration": 140,
+    "in": 90,
+    "out": 160,
     "easing": "cubic-bezier(0.4, 0.0, 0.2, 1)",
-    "scale": 0.97
+    "scale": 0.97,
+    "fade": 0.25
   }
 } as const;
 

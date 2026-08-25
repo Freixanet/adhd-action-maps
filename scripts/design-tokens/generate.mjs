@@ -151,7 +151,52 @@ function emitColorModule(color) {
 }`;
 }
 
-function emitTs(resolved, themes, fingerprint) {
+function partitionTypeRoles(typeTree) {
+  const canonical = [];
+  const aliases = {};
+  for (const [name, value] of Object.entries(typeTree)) {
+    if (isRef(value)) {
+      const key = value.slice(1, -1);
+      if (!key.startsWith('semantic.type.')) {
+        throw new Error(`type.${name} must reference semantic.type.* (got ${value})`);
+      }
+      const target = key.slice('semantic.type.'.length);
+      if (target.includes('.')) {
+        throw new Error(`type.${name} must reference a role, not a field (${value})`);
+      }
+      aliases[name] = target;
+    } else if (value && typeof value === 'object') {
+      canonical.push(name);
+    } else {
+      throw new Error(`type.${name} must be a style object or {semantic.type.*} ref`);
+    }
+  }
+  const sizeWeightRoles = [
+    'display',
+    'pageTitle',
+    'heading',
+    'title',
+    'body',
+    'caption',
+    'callout',
+    'meta',
+  ];
+  const overlineRole = 'kicker';
+  const expected = [...sizeWeightRoles, overlineRole];
+  if (JSON.stringify(canonical) !== JSON.stringify(expected)) {
+    throw new Error(
+      `canonical type roles must be ${expected.join(', ')} in that order (got ${canonical.join(', ')})`,
+    );
+  }
+  for (const [alias, target] of Object.entries(aliases)) {
+    if (!canonical.includes(target)) {
+      throw new Error(`type.${alias} aliases ${target}, which is not a canonical role`);
+    }
+  }
+  return { canonical: sizeWeightRoles, overlineRole, aliases };
+}
+
+function emitTs(resolved, themes, fingerprint, typePartition) {
   const p = resolved.primitive;
   const s = resolved.semantic;
   const g = resolved.specialized.glass;
@@ -212,6 +257,12 @@ ${typeStyles}
 } as const;
 
 export type TypeRole = keyof typeof type;
+
+/** Eight size×weight roles. Other \`type\` keys are deprecated aliases of these. */
+export const canonicalTypeRoles = ${JSON.stringify(typePartition.canonical)} as const;
+/** Overline of meta: same 13/18/500, open tracking, uppercase. Not a ninth size. */
+export const overlineTypeRole = ${JSON.stringify(typePartition.overlineRole)} as const;
+export const typeRoleAliases = ${JSON.stringify(typePartition.aliases, null, 2)} as const;
 
 export const radius = ${JSON.stringify(s.radius, null, 2)} as const;
 
@@ -325,6 +376,8 @@ function main() {
     throw new Error('canonical.json must define themes.dark.color and themes.light.color');
   }
 
+  const typePartition = partitionTypeRoles(canonical.semantic.type);
+
   const resolved = {
     primitive: resolveTree(canonical, canonical.primitive),
     semantic: resolveTree(canonical, canonical.semantic),
@@ -337,7 +390,7 @@ function main() {
   };
   assertThemesDiffer(themes);
 
-  const ts = emitTs(resolved, themes, fp);
+  const ts = emitTs(resolved, themes, fp, typePartition);
   const css = emitCss(resolved, themes, canonical.cssAliases, fp);
 
   if (checkOnly) {
