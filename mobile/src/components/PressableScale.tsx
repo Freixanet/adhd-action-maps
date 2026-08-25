@@ -25,7 +25,10 @@ type PressableScaleProps = {
   contentStyle?: StyleProp<ViewStyle>;
 };
 
-/** Primary pressables: feedback on press-in, commit on press-out. */
+/** Primary pressables: feedback on press-in, commit on press-out.
+ * `reduceMotion` is accepted for API compatibility; press physics use
+ * `useGlassAccessibility` inside `usePressSpring`.
+ */
 export default function PressableScale({
   onPress,
   children,
@@ -33,11 +36,11 @@ export default function PressableScale({
   accessibilityLabel,
   accessibilityState,
   hitSlop = PRESS_HIT_SLOP,
-  reduceMotion,
+  reduceMotion: _reduceMotion,
   style,
   contentStyle,
 }: PressableScaleProps) {
-  const { style: pressStyle, handlers } = usePressSpring(reduceMotion);
+  const { style: pressStyle, handlers } = usePressSpring();
 
   return (
     <Pressable
