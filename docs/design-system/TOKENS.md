@@ -117,8 +117,8 @@ classes. Vendor code, generated SVG/XML bundles, tests, fixtures, and assets are
 excluded. The only specialized exclusion is the unreferenced research
 renderer `liquidGlassAtomOrbShared.ts`, kept explicit so its palette/geometry
 data cannot hide product UI drift.
-The active Skia orb and all first-party WebView templates, including orb
-fallbacks, are checked for token usage and invalid CSS values.
+First-party WebView templates are checked for token usage and invalid CSS
+values.
 
 One-shot migrators that could rewrite the app or auto-append ignores are archived
 under `scripts/design-tokens/archive/` and must not be re-run.

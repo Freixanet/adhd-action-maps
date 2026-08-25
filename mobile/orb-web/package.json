@@ -4,9 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && cp dist/index.html ../assets/nucleo-orb.html && vite build --config vite.config.gallery.ts && cp dist-gallery/thinking-orbs-gallery.html ../assets/thinking-orbs-gallery.html && vite build --config vite.config.live.ts && cp dist-live/thinking-orb-live.html ../assets/thinking-orb-live.html && vite build --config vite.config.roundcarousel.ts && cp dist-round-carousel/round-carousel.html ../assets/round-carousel.html",
-    "build:gallery": "vite build --config vite.config.gallery.ts && cp dist-gallery/thinking-orbs-gallery.html ../assets/thinking-orbs-gallery.html",
+    "dev": "vite --config vite.config.live.ts",
+    "build": "vite build --config vite.config.live.ts && cp dist-live/thinking-orb-live.html ../assets/thinking-orb-live.html && vite build --config vite.config.roundcarousel.ts && cp dist-round-carousel/round-carousel.html ../assets/round-carousel.html",
     "build:live": "vite build --config vite.config.live.ts && cp dist-live/thinking-orb-live.html ../assets/thinking-orb-live.html",
     "build:roundcarousel": "vite build --config vite.config.roundcarousel.ts && cp dist-round-carousel/round-carousel.html ../assets/round-carousel.html",
     "lint": "tsc --noEmit"
