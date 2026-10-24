@@ -22,3 +22,10 @@ ios/DerivedData/
 ios/**/*.xcuserstate
 ios/App/Pods/
 ios/App/App/public/
+
+# Local editor sessions, repair copies and transient working traces
+.antigravity/
+.repair-backups/
+transcript_user_queries.txt
+transcript_edits.txt
+useStepFooterHide_lines.jsonl
