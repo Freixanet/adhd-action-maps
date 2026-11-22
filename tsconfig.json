@@ -25,5 +25,10 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": [
+    "*.ts",
+    "src/**/*",
+    "shared/**/*"
+  ]
 }

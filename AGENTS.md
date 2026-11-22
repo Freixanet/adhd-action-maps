@@ -47,6 +47,8 @@ Never commit `.env` files or API keys.
 Run the checks relevant to the files changed. The normal baseline is:
 
 ```bash
+npm run typecheck
+npm run lint
 npm test
 npm run build
 npm run lint --prefix mobile
@@ -54,8 +56,8 @@ npm run lint --prefix mobile/orb-web
 npm run build --prefix mobile/orb-web
 ```
 
-The root `npm run lint` currently has known pre-existing TypeScript errors; do
-not silently expand that baseline.
+The root `npm run typecheck` checks the server, shared code, and legacy web
+client. Expo and orb-web run their own TypeScript checks via their `lint` scripts.
 
 ## Git discipline
 

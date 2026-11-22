@@ -365,7 +365,7 @@ export default function ComprensionApp() {
   const [isStreamGenerating, setIsStreamGenerating] = useState(false);
   const reduceMotion = useReducedMotion();
 
-  const contentRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const stepFooterRef = useRef<HTMLDivElement>(null);
   const [contentBottomPad, setContentBottomPad] = useState(PAGE_BOTTOM_PAD_PX);
@@ -2787,7 +2787,6 @@ export default function ComprensionApp() {
         <div ref={contentRef} className="page-scroll flex-1 flex flex-col items-center justify-center px-4 sm:px-8">
           <div
             className="home-hero-copy text-center space-y-3 sm:space-y-4 max-w-2xl select-none"
-            onSelectStart={(e) => e.preventDefault()}
           >
             <div className="inline-flex items-center justify-center mb-1">
               <AtomCanvasIcon />

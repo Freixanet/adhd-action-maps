@@ -77,7 +77,7 @@ export function normalizeMapData(
               text: String(block?.text || '').trim(),
               kind,
               label: block?.label
-                ? (String(block.label) as CalloutLabel)
+                ? String(block.label)
                 : DEFAULT_CALLOUT_LABELS[String(block?.kind || 'info')] || 'Idea clave',
               items,
               references: normalizeReferences(block?.references),
