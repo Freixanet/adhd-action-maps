@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type SyntheticEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   FileText,
@@ -49,10 +49,6 @@ const LONG_PRESS_MOVE_THRESHOLD_PX = 10;
 function clearDocumentSelection(): void {
   if (typeof window === 'undefined') return;
   window.getSelection()?.removeAllRanges();
-}
-
-function preventNativeSelection(event: SyntheticEvent): void {
-  event.preventDefault();
 }
 
 function triggerHistoryItemHaptic(): void {
@@ -332,7 +328,6 @@ export default function HistoryPanel({
             handleEntryClick(entry.id);
           }}
           onContextMenu={(e) => handleEntryContextMenu(entry, e)}
-          onSelectStart={preventNativeSelection}
           disabled={disabled}
           className={`w-full text-left px-3 py-2.5 pr-9 rounded-lg transition-all flex items-start gap-2.5 select-none [webkit-user-select:none] touch-pan-y [webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] disabled:opacity-50 disabled:pointer-events-none ${
             isActive
@@ -406,7 +401,6 @@ export default function HistoryPanel({
       className={`mb-8 select-none [webkit-user-select:none] [webkit-touch-callout:none]${
         showTopDivider ? ' mt-5 pt-6 border-t border-neutral-200/80 dark:border-white/5' : ''
       }`}
-      onSelectStart={preventNativeSelection}
     >
       <div className="mb-4 px-2 py-1">
         <span className="text-xs font-bold tracking-widest uppercase text-neutral-400 dark:text-neutral-400">

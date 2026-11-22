@@ -281,7 +281,7 @@ export default function ClassicApp() {
   const [showStepFooter, setShowStepFooter] = useState(false);
   const reduceMotion = useReducedMotion();
 
-  const contentRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const stepFooterRef = useRef<HTMLDivElement>(null);
   const [contentBottomPad, setContentBottomPad] = useState(PAGE_BOTTOM_PAD_PX);
@@ -2271,7 +2271,6 @@ export default function ClassicApp() {
         <div ref={contentRef} className="page-scroll flex-1 flex flex-col items-center justify-center px-4 sm:px-8">
           <div
             className="home-hero-copy text-center space-y-2 sm:space-y-3 max-w-lg select-none"
-            onSelectStart={(e) => e.preventDefault()}
           >
             <div className="inline-flex items-center justify-center mb-1">
               <NucleoIcon className="text-[#1A1A1A] dark:text-[#EDEDED]" />
@@ -2439,7 +2438,7 @@ export default function ClassicApp() {
                 <button
                   id="hidden-submit-btn"
                   type="button"
-                  onClick={handleTransform}
+                  onClick={() => void handleTransform()}
                   disabled={!canSubmit || appState === 'loading'}
                   className={`w-9 h-9 flex items-center justify-center rounded-full transition-all active:scale-95 disabled:opacity-40 select-none shrink-0 ${
                     canSubmit && appState !== 'loading'

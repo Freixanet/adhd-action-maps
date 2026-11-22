@@ -4,12 +4,11 @@ import fs from "fs";
 import path from "path";
 import PDFDocument from "pdfkit";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, type GenerateContentConfig } from "@google/genai";
 import { fetchTranscript } from "youtube-transcript";
 import { extractYouTubeVideoId } from "./youtube";
 import type {
   ActionMapData,
-  MapChatRequest,
   MapChatResponse,
   MapIntent,
   SourceAnalysisResponse,
@@ -38,23 +37,42 @@ import {
   truncateSourceText,
   unwrapSourceText,
   validateMimeType,
-  validateTransformType,
   wrapSourceText,
   SOURCE_TRUNCATION_NOTICE,
 } from "./shared/nucleoPipeline";
+import {
+  generatedMapSchema,
+  geminiChatSchema,
+  geminiErrorSchema,
+  geminiPdfAnalysisSchema,
+  mapChatRequestSchema,
+  mapParamsSchema,
+  mapPayloadSchema,
+  sdkErrorSchema,
+  serverEnvSchema,
+  supabaseMapRowsSchema,
+  supabaseUserSchema,
+  transcriptSchema,
+  transformRequestSchema,
+  type GeneratedMap,
+} from "./serverSchemas";
 
-type AuthenticatedRequest = express.Request & { userId?: string; userEmail?: string; isPro?: boolean };
+type AuthenticatedRequest = express.Request<Record<string, string>, unknown, unknown> & {
+  userId?: string;
+  userEmail?: string;
+  isPro?: boolean;
+};
+type MapRequest = express.Request<{ id: string }, unknown, unknown>;
 
-const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES ?? 15 * 1024 * 1024);
-const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX ?? 10);
-const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 10 * 60 * 1000);
+const env = serverEnvSchema.parse(process.env);
+const { MAX_UPLOAD_BYTES, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS } = env;
 const requestBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function allowedOrigins() {
   return new Set(
     [
-      process.env.APP_URL,
-      ...(process.env.ALLOWED_ORIGINS ?? "").split(","),
+      env.APP_URL,
+      ...(env.ALLOWED_ORIGINS ?? "").split(","),
       "https://optimizador-tdah-production.up.railway.app",
       "https://nucleo-comprension-production.up.railway.app",
       "http://localhost",
@@ -98,8 +116,8 @@ function consumeTransformRateLimit(ip: string, mapId?: string): boolean {
 
 async function authenticateOptional(req: AuthenticatedRequest) {
   const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+  const supabaseUrl = env.SUPABASE_URL;
+  const supabaseAnonKey = env.SUPABASE_ANON_KEY;
   if (!token || !supabaseUrl || !supabaseAnonKey) return;
 
   const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
@@ -107,7 +125,9 @@ async function authenticateOptional(req: AuthenticatedRequest) {
     signal: AbortSignal.timeout(5000),
   });
   if (!response.ok) return;
-  const user = (await response.json()) as { id?: string; email?: string };
+  const result = supabaseUserSchema.safeParse(await response.json());
+  if (!result.success) return;
+  const user = result.data;
   req.userId = user.id;
   req.userEmail = user.email;
   req.isPro = isProUser(user.email);
@@ -118,10 +138,17 @@ function base64Size(data: unknown) {
   return Math.floor((data.length * 3) / 4);
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+function parseTransformBody(input: unknown) {
+  const result = transformRequestSchema.safeParse(input);
+  if (result.success) return { body: result.data };
+  const invalidType = result.error.issues.some((issue) => issue.path[0] === "type");
+  return { error: invalidType ? "Tipo de fuente no válido." : "Solicitud no válida." };
+}
+
+const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
 const analyzeAi = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
+  apiKey: env.GEMINI_API_KEY,
   httpOptions: {
     retryOptions: { attempts: 1 },
   },
@@ -138,7 +165,7 @@ const DEFAULT_MODEL_CHAIN = [
 
 const DEEP_MODEL_CHAIN: string[] = [
   ...new Set([
-    ...(process.env.GEMINI_DEEP_MODEL ?? "gemini-3-pro-preview")
+    ...(env.GEMINI_DEEP_MODEL ?? "gemini-3-pro-preview")
       .split(",")
       .map((m) => m.trim())
       .filter(Boolean),
@@ -147,7 +174,7 @@ const DEEP_MODEL_CHAIN: string[] = [
 ];
 
 const MODEL_CHAIN: string[] = (() => {
-  const envChain = (process.env.GEMINI_MODEL ?? "")
+  const envChain = (env.GEMINI_MODEL ?? "")
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
@@ -203,7 +230,7 @@ async function generateWithFallback(
   client: GoogleGenAI = ai,
   logPrefix?: string
 ): Promise<{ response: Awaited<ReturnType<typeof ai.models.generateContent>>; model: string }> {
-  let lastErr: any;
+  let lastErr: unknown;
 
   for (const model of chain) {
     try {
@@ -220,14 +247,14 @@ async function generateWithFallback(
         console.log(`${logPrefix} model attempt`, { model, status: "ok" });
       }
       return { response, model };
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastErr = err;
       const { statusCode } = describeGeminiError(err);
       if (logPrefix) {
         console.log(`${logPrefix} model attempt`, {
           model,
           status: statusCode,
-          error: String(err?.message || err).slice(0, 160),
+          error: String(err instanceof Error ? err.message : err).slice(0, 160),
         });
       }
       if (statusCode === 429 || statusCode === 503) {
@@ -248,7 +275,7 @@ async function generateStreamWithFallback(
   chain: string[] = MODEL_CHAIN,
   timeoutMs = 60_000
 ) {
-  let lastErr: any;
+  let lastErr: unknown;
 
   for (const model of chain) {
     try {
@@ -261,7 +288,7 @@ async function generateStreamWithFallback(
         }),
       ]);
       return { stream, model };
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastErr = err;
       const { statusCode } = describeGeminiError(err);
       if (statusCode === 429 || statusCode === 503) {
@@ -359,7 +386,7 @@ function writeStreamEvent(res: express.Response, event: {
 }
 
 function shouldLogTransformDebug(): boolean {
-  return process.env.TRANSFORM_DEBUG === "1";
+  return env.TRANSFORM_DEBUG === "1";
 }
 
 function safeTransformDebugLog(label: string, payload: Record<string, unknown>): void {
@@ -393,10 +420,6 @@ function countActionBlocks(map: ActionMapData): number {
     for (const block of step.content) {
       if (!block || typeof block !== "object") continue;
       if (block.kind === "action") {
-        count++;
-        continue;
-      }
-      if (block.type === "list" && block.kind === "action") {
         count++;
         continue;
       }
@@ -1268,7 +1291,7 @@ async function attemptQualityRepair(
     );
 
     return parseAndNormalizeMapJson(response.text || "{}", context, repairModel);
-  } catch (err) {
+  } catch (err: unknown) {
     if (shouldLogTransformDebug()) {
       safeTransformDebugLog("[transform-quality-repair-error]", {
         message: err instanceof Error ? err.message.slice(0, 200) : "unknown",
@@ -1499,10 +1522,6 @@ async function buildTransformContext(body: TransformRequest): Promise<TransformC
     segmentTitle,
   } = body;
 
-  if (!validateTransformType(type)) {
-    return { error: "Tipo de fuente no válido.", status: 400 };
-  }
-
   const resolvedIntent: MapIntent =
     intent === "study" || intent === "apply" ? intent : "understand";
   const resolvedDepth: TransformRequest["depth"] =
@@ -1536,7 +1555,7 @@ async function buildTransformContext(body: TransformRequest): Promise<TransformC
     return { error: "No text provided", status: 400 };
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  if (!env.GEMINI_API_KEY) {
     return { error: "API key is missing on the server.", status: 500 };
   }
 
@@ -1643,10 +1662,10 @@ function geminiGenerationConfig(
   depth: TransformRequest["depth"],
   model: string
 ) {
-  const config: Record<string, unknown> = {
+  const config: GenerateContentConfig = {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
-    responseSchema: schema as any,
+    responseSchema: schema,
     temperature: 0.3,
     topP: 0.9,
     maxOutputTokens,
@@ -1664,7 +1683,7 @@ function parseAndNormalizeMapJson(
   context: TransformContext,
   usedModel: string
 ): ActionMapData {
-  const parsedData = parseJsonMapText(jsonText || "{}");
+  const parsedData = generatedMapSchema.parse(parseJsonMapText(jsonText || "{}"));
   const normalized = normalizeMapData(parsedData, {
     intent: context.resolvedIntent,
     outputLanguage: context.resolvedOutputLanguage,
@@ -1773,7 +1792,7 @@ async function parseMapJsonWithRetry(
 ): Promise<ActionMapData> {
   try {
     return parseAndNormalizeMapJson(jsonText, context, usedModel);
-  } catch (firstError: any) {
+  } catch (firstError: unknown) {
     if (isTransformRequestCancelled(options?.req, options?.res)) {
       throw firstError;
     }
@@ -1920,10 +1939,10 @@ async function handleTransformStream(
 
   const maybeEmitPartial = () => {
     const now = Date.now();
-    const partialParsed = extractPartialMap(fullText);
-    if (!partialParsed) return;
+    const partialParsed = generatedMapSchema.safeParse(extractPartialMap(fullText));
+    if (!partialParsed.success) return;
 
-    const normalized = normalizeMapData(partialParsed, {
+    const normalized = normalizeMapData(partialParsed.data, {
       intent: context.resolvedIntent,
       outputLanguage: context.resolvedOutputLanguage,
       sourceKind: context.type,
@@ -1975,7 +1994,7 @@ async function handleTransformStream(
       }
 
       break;
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastStreamErr = err;
       if (streamStarted) throw err;
       const { statusCode } = describeGeminiError(err);
@@ -2243,7 +2262,7 @@ Debes hacer cambios sustantivos y medibles en densidad, relaciones, matices o ap
 Prioriza enriquecer bloques internos antes de inflar pasos vacíos.
 Devuelve únicamente JSON válido compatible con el esquema.`,
     responseMimeType: "application/json",
-    responseSchema: schema as any,
+    responseSchema: schema,
     temperature: 0.35,
     topP: 0.9,
     maxOutputTokens,
@@ -2304,16 +2323,14 @@ function cacheMap(mapId: string | undefined, map: ActionMapData) {
   if (oldestKey) mapCache.delete(oldestKey);
 }
 
-function normalizeReferences(input: unknown): SourceReference[] {
-  if (!Array.isArray(input)) return [];
+function normalizeReferences(input: SourceReference[] = []): SourceReference[] {
   return input
-    .map((item) => {
-      const ref = item as SourceReference;
+    .map((ref) => {
       if (!ref?.label || !ref?.locator) return null;
       return {
         label: String(ref.label).trim(),
         locator: String(ref.locator).trim(),
-        locatorKind: ref.locatorKind as SourceReference["locatorKind"],
+        locatorKind: ref.locatorKind,
         excerpt: ref.excerpt ? String(ref.excerpt).trim() : undefined,
         note: ref.note ? String(ref.note).trim() : undefined,
       } satisfies SourceReference;
@@ -2354,11 +2371,11 @@ function estimateStepMinutes(
 }
 
 function normalizeMapData(
-  parsed: any,
+  parsed: GeneratedMap,
   fallback: {
     intent: MapIntent;
     outputLanguage: string;
-    sourceKind: string;
+    sourceKind: TransformRequest["type"];
     sourceLabel: string;
     depth?: TransformRequest["depth"];
     sourceTruncated?: boolean;
@@ -2370,16 +2387,16 @@ function normalizeMapData(
     fallback.depth
   );
 
-  const normalizedSteps = cappedRawSteps.map((step: any, index: number) => {
+  const normalizedSteps = cappedRawSteps.map((step, index) => {
         const content = Array.isArray(step?.content)
-          ? step.content.map((block: any) => ({
-              type: String(block?.type || "prose"),
+          ? step.content.map((block) => ({
+              type: block.type ?? "prose",
               text: String(block?.text || "").trim(),
-              kind: block?.kind ? String(block.kind) : undefined,
-              label: block?.label ? String(block.label) : undefined,
+              kind: block.kind,
+              label: block.label,
               items: Array.isArray(block?.items)
                 ? block.items
-                    .map((item: any) =>
+                    .map((item) =>
                       item?.strong
                         ? {
                             strong: String(item.strong),
@@ -2414,7 +2431,7 @@ function normalizeMapData(
     mapVersion: Number.isFinite(parsed?.mapVersion) ? Number(parsed.mapVersion) : 2,
     generationMode: parsed?.generationMode === "study-doc-beta" ? "study-doc-beta" : "classic",
     sourceMetadata: {
-      kind: String(parsed?.sourceMetadata?.kind || fallback.sourceKind) as any,
+      kind: parsed.sourceMetadata?.kind ?? fallback.sourceKind,
       label: String(parsed?.sourceMetadata?.label || fallback.sourceLabel),
       title: parsed?.sourceMetadata?.title ? String(parsed.sourceMetadata.title) : undefined,
       author: parsed?.sourceMetadata?.author ? String(parsed.sourceMetadata.author) : undefined,
@@ -2432,12 +2449,12 @@ function normalizeMapData(
       summary: String(parsed?.coverage?.summary || "Cobertura generada a partir del material disponible."),
       notes: Array.isArray(parsed?.coverage?.notes)
         ? parsed.coverage.notes
-            .map((note: any) =>
+            .map((note) =>
               note?.label && note?.detail
                 ? {
                     label: String(note.label),
                     detail: String(note.detail),
-                    tone: note?.tone === "warning" ? "warning" : "neutral",
+                    tone: note.tone === "warning" ? "warning" as const : "neutral" as const,
                   }
                 : null
             )
@@ -2448,7 +2465,7 @@ function normalizeMapData(
     coreSupport: String(parsed?.coreSupport || ""),
     tldr: Array.isArray(parsed?.tldr)
       ? parsed.tldr
-          .map((item: any) =>
+          .map((item) =>
             item?.title && item?.desc
               ? { title: String(item.title), desc: String(item.desc) }
               : null
@@ -2457,7 +2474,7 @@ function normalizeMapData(
       : [],
     knowledgeSections: Array.isArray(parsed?.knowledgeSections)
       ? parsed.knowledgeSections
-          .map((section: any) =>
+          .map((section) =>
             section?.title && section?.summary
               ? {
                   title: String(section.title),
@@ -2742,8 +2759,8 @@ async function fetchUrlContent(url: string): Promise<string> {
       throw new Error("El enlace no contiene suficiente texto para procesar.");
     }
     return plain;
-  } catch (err: any) {
-    if (err.name === "AbortError") {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "AbortError") {
       throw new Error("La descarga del enlace tardó demasiado. Inténtalo de nuevo.");
     }
     throw err;
@@ -2758,7 +2775,7 @@ async function fetchYouTubeTranscript(url: string): Promise<string> {
     throw new Error("URL de YouTube inválida. Usa un enlace completo al video.");
   }
 
-  let segments;
+  let segments: unknown;
   try {
     segments = await fetchTranscript(url, { lang: "es" });
   } catch {
@@ -2769,7 +2786,7 @@ async function fetchYouTubeTranscript(url: string): Promise<string> {
     }
   }
 
-  const text = segments
+  const text = transcriptSchema.parse(segments)
     .map((segment) => segment.text)
     .join(" ")
     .replace(/\s+/g, " ")
@@ -2784,20 +2801,20 @@ async function fetchYouTubeTranscript(url: string): Promise<string> {
   return text;
 }
 
-function describeGeminiError(err: any): { statusCode: number; errorMessage: string } {
-  let parsed: any = null;
-  if (typeof err?.message === "string") {
+function describeGeminiError(err: unknown): { statusCode: number; errorMessage: string } {
+  const sdkError = sdkErrorSchema.safeParse(err).data;
+  let parsed: ReturnType<typeof geminiErrorSchema.parse>["error"] | undefined;
+  if (sdkError?.message) {
     try {
-      parsed = JSON.parse(err.message)?.error;
+      parsed = geminiErrorSchema.safeParse(JSON.parse(sdkError.message)).data?.error;
     } catch {
       // message is not JSON; ignore
     }
   }
 
-  const rawMessage: string = parsed?.message || err?.message || "";
-  const geminiStatus: string | undefined = parsed?.status;
-  const code = err?.status ?? parsed?.code ?? 500;
-  let statusCode = typeof code === "number" ? code : 500;
+  const rawMessage = parsed?.message || sdkError?.message || "";
+  const geminiStatus = parsed?.status;
+  const statusCode = sdkError?.status ?? parsed?.code ?? 500;
 
   const isQuota =
     statusCode === 429 ||
@@ -2805,11 +2822,10 @@ function describeGeminiError(err: any): { statusCode: number; errorMessage: stri
     /quota exceeded|RESOURCE_EXHAUSTED|too many requests/i.test(rawMessage);
 
   if (isQuota) {
-    const violations: any[] =
-      parsed?.details?.find((d: any) => String(d?.["@type"]).includes("QuotaFailure"))
+    const violations =
+      parsed?.details?.find((detail) => detail["@type"]?.includes("QuotaFailure"))
         ?.violations ?? [];
     const isDaily = violations.some((v) => /PerDay/i.test(v?.quotaId || ""));
-    const limit = violations[0]?.quotaValue;
     const retryMatch = /retry in ([\d.]+)s/i.exec(rawMessage);
     const retrySeconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
 
@@ -2907,7 +2923,7 @@ async function renderCheatsheetPdf(model: ReturnType<typeof buildCheatsheetModel
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT ?? 3000);
+  const { PORT } = env;
 
   app.use(express.json({ limit: "50mb" }));
 
@@ -2955,7 +2971,7 @@ async function startServer() {
     mimeType: string,
     sourceLabel?: string
   ): Promise<SourceAnalysisResponse> {
-    if (!process.env.GEMINI_API_KEY) {
+    if (!env.GEMINI_API_KEY) {
       throw new Error("API key is missing on the server.");
     }
 
@@ -2974,7 +2990,7 @@ async function startServer() {
         ],
         config: {
           responseMimeType: "application/json",
-          responseSchema: pdfAnalyzeSchema as any,
+          responseSchema: pdfAnalyzeSchema,
           temperature: 0.1,
         },
       },
@@ -2986,12 +3002,7 @@ async function startServer() {
     );
     console.log(`[analyze] pdf model used: ${analyzeModel}`);
 
-    const parsed = JSON.parse(response.text || "{}") as {
-      shouldProposeSplit?: boolean;
-      collectionTitle?: string;
-      totalWordsEstimate?: number;
-      parts?: Array<{ title?: string }>;
-    };
+    const parsed = geminiPdfAnalysisSchema.parse(JSON.parse(response.text || "{}"));
 
     const parts = Array.isArray(parsed.parts)
       ? parsed.parts
@@ -3022,17 +3033,15 @@ async function startServer() {
   app.post("/api/transform/analyze", async (req: AuthenticatedRequest, res) => {
     try {
       await authenticateOptional(req);
-      const body = req.body as TransformRequest;
+      const request = parseTransformBody(req.body);
+      if ("error" in request) return res.status(400).json({ error: request.error });
+      const { body } = request;
 
       console.log("[analyze] request", {
         type: body.type,
         fileBytes: base64Size(body.fileData),
         textChars: typeof body.text === "string" ? body.text.length : 0,
       });
-
-      if (!validateTransformType(body.type)) {
-        return res.status(400).json({ error: "Tipo de fuente no válido." });
-      }
 
       if (base64Size(body.fileData) > MAX_UPLOAD_BYTES) {
         return res.status(413).json({ error: "El archivo supera el tamaño permitido." });
@@ -3092,31 +3101,31 @@ async function startServer() {
         totalWords: analysis.totalWords,
         collectionTitle: analysis.collectionTitle,
       } satisfies SourceAnalysisResponse);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Analyze transform failed:", err);
       return res.status(500).json({
-        error: err?.message || "No se pudo analizar la fuente.",
+        error: err instanceof Error && err.message ? err.message : "No se pudo analizar la fuente.",
       });
     }
   });
 
   app.post("/api/transform", async (req: AuthenticatedRequest, res) => {
     try {
+      const request = parseTransformBody(req.body);
       const ip = req.ip || req.socket.remoteAddress || "unknown";
-      const mapId = typeof (req.body as TransformRequest)?.mapId === "string"
-        ? (req.body as TransformRequest).mapId
-        : undefined;
-      if (!consumeTransformRateLimit(ip, mapId)) {
+      if (!consumeTransformRateLimit(ip, request.body?.mapId)) {
         return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
       }
+      if ("error" in request) return res.status(400).json({ error: request.error });
+      const { body } = request;
       await authenticateOptional(req);
 
-      const contextResult = await buildTransformContext(req.body as TransformRequest);
+      const contextResult = await buildTransformContext(body);
       if ("error" in contextResult) {
         return res.status(contextResult.status).json({ error: contextResult.error });
       }
 
-      logTransformEntryDebug(req.body as TransformRequest, contextResult, "/api/transform");
+      logTransformEntryDebug(body, contextResult, "/api/transform");
 
       const { response, model: usedModel } = await generateWithFallback(
         { contents: contextResult.contents },
@@ -3138,7 +3147,7 @@ async function startServer() {
         res,
       });
       res.json(normalized);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
 
       const { statusCode, errorMessage } = describeGeminiError(err);
@@ -3148,24 +3157,24 @@ async function startServer() {
 
   app.post("/api/transform/stream", async (req: AuthenticatedRequest, res) => {
     try {
+      const request = parseTransformBody(req.body);
       const ip = req.ip || req.socket.remoteAddress || "unknown";
-      const mapId = typeof (req.body as TransformRequest)?.mapId === "string"
-        ? (req.body as TransformRequest).mapId
-        : undefined;
-      if (!consumeTransformRateLimit(ip, mapId)) {
+      if (!consumeTransformRateLimit(ip, request.body?.mapId)) {
         return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
       }
+      if ("error" in request) return res.status(400).json({ error: request.error });
+      const { body } = request;
       await authenticateOptional(req);
 
-      const contextResult = await buildTransformContext(req.body as TransformRequest);
+      const contextResult = await buildTransformContext(body);
       if ("error" in contextResult) {
         return res.status(contextResult.status).json({ error: contextResult.error });
       }
 
-      logTransformEntryDebug(req.body as TransformRequest, contextResult, "/api/transform/stream");
+      logTransformEntryDebug(body, contextResult, "/api/transform/stream");
 
       await handleTransformStream(contextResult, res, req);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       const { errorMessage } = describeGeminiError(err);
 
@@ -3180,23 +3189,28 @@ async function startServer() {
     }
   });
 
-  app.post("/api/maps/:id/chat", async (req, res) => {
+  app.post("/api/maps/:id/chat", async (req: MapRequest, res) => {
     try {
       const ip = req.ip || req.socket.remoteAddress || "unknown";
       if (!isWithinRateLimit(ip)) {
         return res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." });
       }
 
-      const mapId = req.params.id;
-      const payload = req.body as MapChatRequest;
+      const params = mapParamsSchema.safeParse(req.params);
+      if (!params.success) return res.status(400).json({ error: "Mapa no válido." });
+      const result = mapChatRequestSchema.safeParse(req.body);
+      if (!result.success) {
+        const invalidQuestion = result.error.issues.some((issue) => issue.path[0] === "question");
+        return res.status(400).json({
+          error: invalidQuestion ? "Escribe una pregunta para continuar." : "Solicitud no válida.",
+        });
+      }
+      const payload = result.data;
+      const mapId = params.data.id;
       const map = payload.map || mapCache.get(mapId);
       if (!map) {
         return res.status(404).json({ error: "Este mapa ya no está disponible en el servidor. Vuelve a abrirlo o regénéralo." });
       }
-      if (!payload?.question?.trim()) {
-        return res.status(400).json({ error: "Escribe una pregunta para continuar." });
-      }
-
       const historyText = Array.isArray(payload.history)
         ? payload.history
             .slice(-6)
@@ -3205,7 +3219,7 @@ async function startServer() {
         : "";
 
       const prompt = [
-        `Pregunta actual: ${payload.question.trim()}`,
+        `Pregunta actual: ${payload.question}`,
         historyText ? `Historial reciente:\n${historyText}` : "",
         "Mapa disponible en JSON:",
         JSON.stringify(map),
@@ -3218,13 +3232,13 @@ async function startServer() {
         config: {
           systemInstruction: CHAT_SYSTEM_PROMPT,
           responseMimeType: "application/json",
-          responseSchema: chatResponseSchema as any,
+          responseSchema: chatResponseSchema,
           temperature: 0.2,
           topP: 0.85,
         },
       });
 
-      const parsed = JSON.parse(response.text || "{}") as MapChatResponse;
+      const parsed = geminiChatSchema.parse(JSON.parse(response.text || "{}"));
       res.json({
         answer: parsed.answer || "No tengo suficiente información en este mapa para responder con rigor.",
         followUps: Array.isArray(parsed.followUps) ? parsed.followUps : [],
@@ -3233,41 +3247,35 @@ async function startServer() {
           ? parsed.limitations.map((item) => String(item))
           : [],
       } satisfies MapChatResponse);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       const { statusCode, errorMessage } = describeGeminiError(err);
       res.status(statusCode).json({ error: errorMessage });
     }
   });
 
-  app.post("/api/maps/:id/cheatsheet.prepare", (req, res) => {
-    const mapId = req.params.id;
-    const map = req.body?.map;
-
-    if (!map || typeof map !== "object" || map === null) {
+  app.post("/api/maps/:id/cheatsheet.prepare", (req: MapRequest, res) => {
+    const params = mapParamsSchema.safeParse(req.params);
+    const payload = mapPayloadSchema.safeParse(req.body);
+    if (!params.success || !payload.success || !payload.data.map) {
       return res.status(400).json({ error: "No se pudo preparar la ficha PDF." });
     }
 
-    try {
-      buildCheatsheetModel(map as ActionMapData);
-    } catch (err) {
-      console.error("No se pudo preparar cheatsheet PDF:", err);
-      return res.status(400).json({ error: "No se pudo preparar la ficha PDF." });
-    }
-
-    mapCache.set(mapId, map as ActionMapData);
+    mapCache.set(params.data.id, payload.data.map);
     res.json({ ok: true });
   });
 
-  app.get("/api/maps/:id/cheatsheet.pdf", async (req, res) => {
+  app.get("/api/maps/:id/cheatsheet.pdf", async (req: MapRequest, res) => {
     try {
-      const mapId = req.params.id;
+      const params = mapParamsSchema.safeParse(req.params);
+      if (!params.success) return res.status(400).json({ error: "Mapa no válido." });
+      const mapId = params.data.id;
       let map = mapCache.get(mapId);
 
       if (!map) {
         const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+        const supabaseUrl = env.SUPABASE_URL;
+        const supabaseAnonKey = env.SUPABASE_ANON_KEY;
 
         if (token && supabaseUrl && supabaseAnonKey) {
           const targetUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/maps?id=eq.${encodeURIComponent(mapId)}&select=session`;
@@ -3280,17 +3288,11 @@ async function startServer() {
           });
 
           if (response.ok) {
-            const rows = await response.json();
-            if (Array.isArray(rows) && rows.length > 0) {
-              const candidate = rows[0]?.session?.data;
-              if (
-                candidate &&
-                typeof candidate === "object" &&
-                (typeof candidate.title === "string" || Array.isArray(candidate.steps))
-              ) {
-                map = candidate as ActionMapData;
-                mapCache.set(mapId, map);
-              }
+            const rows = supabaseMapRowsSchema.safeParse(await response.json());
+            const candidate = rows.data?.[0]?.session.data;
+            if (candidate) {
+              map = candidate;
+              mapCache.set(mapId, map);
             }
           }
         }
@@ -3305,21 +3307,27 @@ async function startServer() {
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="nucleo-cheatsheet-${safeMapId}.pdf"`);
       res.send(pdf);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Error al generar cheatsheet PDF por GET:", err);
       res.status(500).json({ error: "No se pudo generar la ficha PDF." });
     }
   });
 
-  app.post("/api/maps/:id/cheatsheet.pdf", (req, res) => {
-    const payload = req.body as { map?: ActionMapData };
-    const map = payload.map || mapCache.get(req.params.id);
+  app.post("/api/maps/:id/cheatsheet.pdf", (req: MapRequest, res) => {
+    const params = mapParamsSchema.safeParse(req.params);
+    const payload = mapPayloadSchema.safeParse(req.body);
+    if (!params.success || !payload.success) {
+      return res.status(400).json({ error: "No se pudo generar la ficha PDF." });
+    }
+    const mapId = params.data.id;
+    const map = payload.data.map ?? mapCache.get(mapId);
     if (!map) {
       return res.status(404).json({ error: "La ficha ya no está disponible en el servidor." });
     }
     void renderCheatsheetPdf(buildCheatsheetModel(map)).then((pdf) => {
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="nucleo-cheatsheet-${req.params.id}.pdf"`);
+      const safeMapId = mapId.replace(/[^\w.-]+/g, "-");
+      res.setHeader("Content-Disposition", `attachment; filename="nucleo-cheatsheet-${safeMapId}.pdf"`);
       res.send(pdf);
     }).catch((err) => {
       console.error(err);
@@ -3327,7 +3335,7 @@ async function startServer() {
     });
   });
 
-  if (process.env.NODE_ENV !== "production") {
+  if (env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true, allowedHosts: true },
       appType: "spa",
