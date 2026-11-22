@@ -57,7 +57,7 @@ const block = z.object({
   type: z.enum(["prose", "callout", "list"]),
   text: z.string(),
   kind: z.enum(["action", "info", "alert"]).optional(),
-  label: z.enum(["Idea clave", "Matiz", "Ejemplo", "Precaución", "Para aplicarlo"]).optional(),
+  label: optionalString,
   items: z.array(z.object({ strong: z.string(), span: optionalString })).optional(),
   references,
 });

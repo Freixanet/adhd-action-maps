@@ -67,12 +67,7 @@ export type TLDRItem = {
   desc: string;
 };
 
-export type CalloutLabel =
-  | 'Idea clave'
-  | 'Matiz'
-  | 'Ejemplo'
-  | 'Precaución'
-  | 'Para aplicarlo';
+export type CalloutLabel = string;
 
 export type StepListItem = {
   strong: string;

@@ -57,6 +57,18 @@ describe("server input schemas", () => {
 });
 
 describe("upstream response schemas", () => {
+  it.each(["Siguiente paso", "Criterio de decisión"])("preserves the callout label %s", (label) => {
+    const withCallout = {
+      ...map,
+      steps: map.steps.map((step) => ({
+        ...step,
+        content: [{ type: "callout", text: "Da el primer paso.", label }],
+      })),
+    };
+    expect(generatedMapSchema.parse(withCallout)).toEqual(withCallout);
+    expect(mapPayloadSchema.parse({ map: withCallout })).toEqual({ map: withCallout });
+  });
+
   it("accepts incomplete stream snapshots but rejects malformed nested fields", () => {
     const partial = { title: map.title, steps: [{ title: "Paso", content: [{ type: "list" }] }] };
     expect(generatedMapSchema.parse(partial)).toEqual(partial);

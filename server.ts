@@ -2393,7 +2393,7 @@ function normalizeMapData(
               type: block.type ?? "prose",
               text: String(block?.text || "").trim(),
               kind: block.kind,
-              label: block.label,
+              label: block.label || undefined,
               items: Array.isArray(block?.items)
                 ? block.items
                     .map((item) =>
