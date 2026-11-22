@@ -29,6 +29,10 @@ const map = {
 };
 
 describe("server input schemas", () => {
+  it("accepts the APP_URL placeholder from the documented local setup", () => {
+    expect(serverEnvSchema.parse({ APP_URL: "MY_APP_URL" }).APP_URL).toBe("MY_APP_URL");
+  });
+
   it("parses typed environment overrides and rejects invalid numeric settings", () => {
     expect(serverEnvSchema.parse({ PORT: "8080", RATE_LIMIT_MAX: "12" })).toMatchObject({
       PORT: 8080, RATE_LIMIT_MAX: 12, MAX_UPLOAD_BYTES: 15 * 1024 * 1024,

@@ -10,7 +10,7 @@ export const serverEnvSchema = z.object({
   MAX_UPLOAD_BYTES: positiveIntegerEnv(15 * 1024 * 1024),
   RATE_LIMIT_MAX: positiveIntegerEnv(10),
   RATE_LIMIT_WINDOW_MS: positiveIntegerEnv(10 * 60 * 1000),
-  APP_URL: httpUrl.or(z.literal("")).optional(),
+  APP_URL: z.string().optional(),
   ALLOWED_ORIGINS: z.string().optional(),
   SUPABASE_URL: httpUrl.or(z.literal("")).optional(),
   SUPABASE_ANON_KEY: z.string().optional(),
